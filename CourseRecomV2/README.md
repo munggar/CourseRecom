@@ -14,6 +14,8 @@ Repository menyertakan `Dockerfile`, `Dockerfile.frontend`, dan `render.yaml` pa
 
 Untuk frontend production, isi `VITE_API_BASE_URL` dan `API_PROXY_TARGET` dengan URL backend HTTPS berakhiran `/api` bila API dan frontend memakai domain berbeda.
 
+Respons JSON seperti `{"detail":"Not Found"}` pada domain frontend menandakan service Render frontend masih menjalankan `Dockerfile` backend. Pada service frontend, set Dockerfile path menjadi `Dockerfile.frontend`; `Dockerfile` tetap dipakai hanya oleh service backend.
+
 Jalankan stack lokal dengan Docker:
 
 ```bash
