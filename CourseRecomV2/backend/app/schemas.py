@@ -95,6 +95,10 @@ class UserOut(BaseModel):
     phone_number: Optional[str] = None
 
 
+class AccountProfileResponse(UserOut):
+    access_token: Optional[str] = None
+
+
 class AccountProfileUpdate(BaseModel):
     full_name: str = Field(min_length=2, max_length=120)
     email: Optional[str] = Field(default=None, max_length=120)
@@ -113,6 +117,8 @@ class AccountProfileUpdate(BaseModel):
         normalized = re.sub(r'(?:[\s().-]+)', '', value.strip())
         if normalized.startswith('00'):
             normalized = '+' + normalized[2:]
+        elif normalized.startswith('0'):
+            normalized = '+62' + normalized[1:]
         if not re.fullmatch(r'\+?[1-9][0-9]{7,14}', normalized):
             raise ValueError('Nomor telepon harus berisi 8-15 digit dan format internasional yang valid.')
         return normalized
@@ -204,6 +210,8 @@ class ProfileUpdate(BaseModel):
         value = value.strip()
         if not value:
             raise ValueError('Pilih minimal satu peminatan.')
+        if len([interest for interest in value.split(',') if interest.strip()]) > 1:
+            raise ValueError('Pilih satu peminatan saja.')
         return value
 
 

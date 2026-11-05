@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.deps import authenticate_user, create_access_token, get_current_user, get_db, get_password_hash, verify_password
 from app.models import User
-from app.schemas import AccountProfileUpdate, PasswordChange, StudentRegistration, TokenResponse, UserLogin, UserOut
+from app.schemas import AccountProfileResponse, AccountProfileUpdate, PasswordChange, StudentRegistration, TokenResponse, UserLogin, UserOut
 from app.services.validation import get_sks_quota
 from app.services.audit import write_audit
 
@@ -85,7 +85,7 @@ def account_profile(current_user: User = Depends(get_current_user)):
     return current_user
 
 
-@router.put('/auth/profile', response_model=UserOut)
+@router.put('/auth/profile', response_model=AccountProfileResponse)
 def update_account_profile(
     payload: AccountProfileUpdate,
     db: Session = Depends(get_db),
@@ -114,7 +114,14 @@ def update_account_profile(
     write_audit(db, current_user, 'profile_updated', 'user', current_user.id, None, {'password_changed': bool(payload.new_password)})
     db.commit()
     db.refresh(current_user)
-    return current_user
+    response = UserOut.model_validate(current_user).model_dump()
+    if identity_changed or password_changed:
+        response['access_token'] = create_access_token(
+            current_user.nim,
+            current_user.role,
+            current_user.token_version,
+        )
+    return response
 
 
 @router.post('/auth/logout', status_code=status.HTTP_204_NO_CONTENT)

@@ -95,8 +95,12 @@ def test_username_change_invalidates_old_token():
         },
     )
     assert response.status_code == 200
+    refreshed_token = response.json()['access_token']
     reused = client.get('/api/auth/me', headers={'Authorization': f'Bearer {old_token}'})
     assert reused.status_code == 401
+    refreshed = client.get('/api/auth/me', headers={'Authorization': f'Bearer {refreshed_token}'})
+    assert refreshed.status_code == 200
+    assert refreshed.json()['username'] == 'sec-username-renamed'
 
 
 def test_phone_profile_is_normalized_persisted_and_returned():
@@ -120,6 +124,25 @@ def test_phone_profile_is_normalized_persisted_and_returned():
     profile = client.get('/api/auth/profile', headers={'Authorization': f'Bearer {token}'})
     assert profile.status_code == 200, profile.text
     assert profile.json()['phone_number'] == '+628123456789'
+
+
+def test_local_indonesian_phone_number_is_normalized_on_profile_update():
+    db = SessionLocal()
+    user = _create_user(db, 'PHONE-LOCAL')
+    token = create_access_token(user.nim, user.role, user.token_version)
+    db.close()
+
+    response = client.put(
+        '/api/auth/profile',
+        headers={'Authorization': f'Bearer {token}'},
+        json={
+            'full_name': user.full_name,
+            'username': user.username,
+            'phone_number': '085934633905',
+        },
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()['phone_number'] == '+6285934633905'
 
 
 def test_invalid_phone_is_rejected():

@@ -27,6 +27,17 @@ def validate_course_selection(
 
     recommendations = {item['code']: item for item in result['recommendations']}
     rejected = {item['code']: item for item in result['rejected']}
+    mandatory_codes = {
+        code for code, item in recommendations.items()
+        if item.get('mandatory') is True
+        or 'wajib' in str(item.get('category') or '').casefold()
+    }
+    missing_mandatory = sorted(mandatory_codes - set(codes))
+    if missing_mandatory:
+        raise ValueError(
+            'Mata kuliah wajib harus tetap ada di KRS: '
+            + ', '.join(missing_mandatory)
+        )
     unavailable = [code for code in codes if code not in recommendations]
     if unavailable:
         explanations = [

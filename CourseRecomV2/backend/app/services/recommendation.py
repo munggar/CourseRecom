@@ -386,6 +386,7 @@ def build_recommendation_result(db: Session, student: User) -> dict:
             'code': course.code,
             'name': course.name,
             'sks': course.sks,
+            'mandatory': 'wajib' in (course.category or '').casefold(),
             'score': score,
             'valid': not blocks,
             'reasons': reasons,

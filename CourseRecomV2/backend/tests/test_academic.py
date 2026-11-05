@@ -43,6 +43,82 @@ def test_earned_credits_count_passed_course_once_even_after_failed_repeat():
     ], {'A', 'C'}) == 5
 
 
+def test_course_selection_requires_every_recommended_mandatory_course(monkeypatch):
+    from app.services import academic
+
+    engine = create_engine('sqlite:///:memory:')
+    Base.metadata.create_all(engine)
+    recommendations = [
+        {
+            'code': 'REQ101',
+            'name': 'Mata Kuliah Wajib',
+            'sks': 3,
+            'category': 'Wajib',
+            'mandatory': True,
+        },
+        {
+            'code': 'ELC101',
+            'name': 'Mata Kuliah Pilihan',
+            'sks': 3,
+            'category': 'Pilihan',
+            'mandatory': False,
+        },
+    ]
+    monkeypatch.setattr(
+        academic,
+        'build_recommendation_result',
+        lambda *_: {
+            'status': 'ready',
+            'target_semester': 2,
+            'recommendations': recommendations,
+            'rejected': [],
+            'profile': {'kuota_sks': 20},
+        },
+    )
+
+    try:
+        with Session(engine) as db:
+            student = User(
+                nim='MANDATORY-TEST',
+                full_name='Mahasiswa Wajib',
+                role='mahasiswa',
+                password_hash='test',
+            )
+            db.add_all([
+                student,
+                Course(
+                    code='REQ101',
+                    name='Mata Kuliah Wajib',
+                    sks=3,
+                    semester=2,
+                    category='Wajib',
+                    is_active=True,
+                ),
+                Course(
+                    code='ELC101',
+                    name='Mata Kuliah Pilihan',
+                    sks=3,
+                    semester=2,
+                    category='Pilihan',
+                    is_active=True,
+                ),
+            ])
+            db.commit()
+
+            with pytest.raises(ValueError, match='REQ101'):
+                academic.validate_course_selection(db, student, ['ELC101'], 2)
+
+            selected = academic.validate_course_selection(
+                db,
+                student,
+                ['REQ101', 'ELC101'],
+                2,
+            )
+            assert [course['code'] for course in selected] == ['REQ101', 'ELC101']
+    finally:
+        engine.dispose()
+
+
 def _create_capacity_database(path):
     engine = create_engine(f'sqlite:///{path}', connect_args={'check_same_thread': False})
     Base.metadata.create_all(engine)

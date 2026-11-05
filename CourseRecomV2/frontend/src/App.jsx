@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertCircle,
   BookOpenCheck,
@@ -57,7 +57,11 @@ function canonicalizeInterests(interests) {
       LEGACY_INTERESTS[interest.trim().toLowerCase()]
     )).filter(Boolean),
   );
-  return INTEREST_OPTIONS.filter((interest) => selected.has(interest)).join(',');
+  return INTEREST_OPTIONS.find((interest) => selected.has(interest)) || '';
+}
+
+function isMandatoryCourse(course) {
+  return course.mandatory === true || String(course.category || '').toLowerCase().includes('wajib');
 }
 
 function toastTypeFor(message) {
@@ -137,7 +141,17 @@ async function apiRequest(path, options = {}) {
     : null;
 
   if (!response.ok) {
-    const message = typeof data === 'object' && data !== null ? data.detail || data.message || 'Permintaan gagal' : data || 'Permintaan gagal';
+    const detail = data && typeof data === 'object' ? data.detail : null;
+    const message = Array.isArray(detail)
+      ? detail.map((issue) => {
+        if (typeof issue === 'string') return issue;
+        if (!issue || typeof issue !== 'object') return '';
+        const field = Array.isArray(issue.loc) ? issue.loc.at(-1) : '';
+        return [field, issue.msg].filter(Boolean).join(': ') || JSON.stringify(issue);
+      }).filter(Boolean).join(' ')
+      : detail && typeof detail === 'object'
+        ? detail.msg || JSON.stringify(detail)
+        : detail || (typeof data === 'object' && data !== null ? data.message : data) || 'Permintaan gagal';
     throw new Error(message);
   }
 
@@ -153,7 +167,10 @@ function App() {
   const [registrationForm, setRegistrationForm] = useState({ nim: '', username: '', full_name: '', program_study: '', angkatan: '', password: '', passwordConfirmation: '' });
   const [profile, setProfile] = useState(null);
   const [recommendationResult, setRecommendationResult] = useState(EMPTY_RECOMMENDATIONS);
-  const recommendations = recommendationResult.recommendations || [];
+  const recommendations = useMemo(
+    () => recommendationResult.recommendations || [],
+    [recommendationResult.recommendations],
+  );
   const rejectedRecommendations = recommendationResult.rejected || [];
   const [academicHistory, setAcademicHistory] = useState([]);
   const [curriculumCourses, setCurriculumCourses] = useState([]);
@@ -268,7 +285,7 @@ function App() {
   const dismissToast = useCallback((id) => {
     setToasts((previous) => previous.filter((toast) => toast.id !== id));
   }, []);
-  const [draftCourses, setDraftCourses] = useState(() => {
+  const [storedDraftCourses, setDraftCourses] = useState(() => {
     try {
       const savedDraft = localStorage.getItem('courseRecomDraft');
       return savedDraft ? JSON.parse(savedDraft) : [];
@@ -276,6 +293,23 @@ function App() {
       return [];
     }
   });
+  const draftCourses = useMemo(() => {
+    const hasApprovedPlan = studyPlans.some((plan) => (
+      plan.status === 'approved'
+      && plan.semester === recommendationResult.target_semester
+    ));
+    if (recommendationResult.status !== 'ready' || hasApprovedPlan) return storedDraftCourses;
+    const requiredCourses = recommendations.filter(isMandatoryCourse);
+    const existingCodes = new Set(storedDraftCourses.map((course) => course.code));
+    const missingCourses = requiredCourses.filter((course) => !existingCodes.has(course.code));
+    return missingCourses.length ? [...storedDraftCourses, ...missingCourses] : storedDraftCourses;
+  }, [
+    recommendationResult.status,
+    recommendationResult.target_semester,
+    recommendations,
+    storedDraftCourses,
+    studyPlans,
+  ]);
 
   useEffect(() => {
     if (actionMessage) return deferToast(actionMessage);
@@ -579,8 +613,24 @@ function App() {
           new_password: passwordDraft.new_password || null,
         }),
       });
-      setUser(updated);
-      await loadAccountProfile();
+      if (updated.access_token) {
+        localStorage.setItem('courseRecomToken', updated.access_token);
+      }
+      const updatedUser = { ...updated };
+      delete updatedUser.access_token;
+      setUser(updatedUser);
+      setProfile((previousProfile) => (
+        previousProfile ? { ...previousProfile, full_name: updatedUser.full_name } : previousProfile
+      ));
+      setAccountProfileDraft({
+        full_name: updatedUser.full_name || '',
+        email: updatedUser.email || '',
+        username: updatedUser.username || updatedUser.nim || '',
+        phone_number: updatedUser.phone_number || '',
+        program_study: updatedUser.program_study || '',
+        angkatan: updatedUser.angkatan || '',
+      });
+      setPasswordDraft({ current_password: '', new_password: '', confirmation: '' });
       pushToast('Profil berhasil diperbarui.', 'success');
     } catch (error) {
       pushToast(error.message || 'Profil gagal diperbarui.', 'error');
@@ -1265,6 +1315,11 @@ function App() {
   };
 
   const removeFromDraft = (courseCode) => {
+    const course = draftCourses.find((item) => item.code === courseCode);
+    if (course && isMandatoryCourse(course)) {
+      pushToast('Mata kuliah wajib tidak dapat dihapus dari draft KRS.', 'warning');
+      return;
+    }
     if (approvedStudyPlan) {
       pushToast('KRS sudah disetujui dan tidak dapat diubah.', 'warning');
       return;
@@ -1277,7 +1332,7 @@ function App() {
       pushToast('KRS sudah disetujui dan tidak dapat diubah.', 'warning');
       return;
     }
-    setDraftCourses([]);
+    setDraftCourses((currentDraft) => currentDraft.filter(isMandatoryCourse));
   };
 
   const submitStudyPlan = async () => {
@@ -1967,10 +2022,12 @@ function App() {
                   <button
                     className="btn primary"
                     type="button"
-                    disabled={Boolean(approvedStudyPlan) || draftCourses.some((course) => course.code === item.code)}
+                    disabled={isMandatoryCourse(item) || Boolean(approvedStudyPlan) || draftCourses.some((course) => course.code === item.code)}
                     onClick={() => addToDraft(item)}
                   >
-                    {approvedStudyPlan
+                    {isMandatoryCourse(item)
+                      ? 'Otomatis masuk draft (wajib)'
+                      : approvedStudyPlan
                       ? 'KRS sudah disetujui'
                       : draftCourses.some((course) => course.code === item.code) ? 'Sudah di draft' : 'Tambah ke Draft KRS'}
                   </button>
@@ -2015,8 +2072,8 @@ function App() {
                 {draftCourses.map((course) => (
                   <li key={course.code} style={{ marginBottom: 8 }}>
                     {course.code} — {course.name} ({course.sks} SKS)
-                    <button type="button" className="btn outline" style={{ marginLeft: 8 }} disabled={Boolean(approvedStudyPlan)} onClick={() => removeFromDraft(course.code)}>
-                      Hapus
+                  <button type="button" className="btn outline" style={{ marginLeft: 8 }} disabled={Boolean(approvedStudyPlan) || isMandatoryCourse(course)} onClick={() => removeFromDraft(course.code)}>
+                    {isMandatoryCourse(course) ? 'Wajib' : 'Hapus'}
                     </button>
                   </li>
                 ))}
@@ -2024,7 +2081,7 @@ function App() {
             )}
             {draftCourses.length > 0 && (
               <div className="preview-actions">
-                <button type="button" className="btn outline" disabled={Boolean(approvedStudyPlan)} onClick={clearDraft}>Kosongkan Draft</button>
+                <button type="button" className="btn outline" disabled={Boolean(approvedStudyPlan)} onClick={clearDraft}>Hapus mata kuliah pilihan</button>
                 <button
                   type="button"
                   className="btn primary"
@@ -2074,21 +2131,16 @@ function App() {
       return (
         <div className="card">
           <h3>Minat & Profil</h3>
-          <p className="muted">Pilih satu atau kedua peminatan. Pilihan ini memengaruhi skor kecocokan mata kuliah pada rekomendasi.</p>
+          <p className="muted">Pilih satu peminatan. Pilihan ini memengaruhi skor kecocokan mata kuliah pada rekomendasi.</p>
           <div className="interest-options">{INTEREST_OPTIONS.map((interest) => {
-            const selected = profileDraft.split(',').map((item) => item.trim()).includes(interest);
+            const selected = canonicalizeInterests(profileDraft) === interest;
             return (
               <label className="interest-option" key={interest}>
                 <input
-                  type="checkbox"
+                  type="radio"
+                  name="student-interest"
                   checked={selected}
-                  onChange={() => {
-                    const selectedInterests = profileDraft.split(',').map((item) => item.trim()).filter(Boolean);
-                    const next = selected
-                      ? selectedInterests.filter((item) => item !== interest)
-                      : [...selectedInterests, interest];
-                    setProfileDraft(next.join(','));
-                  }}
+                  onChange={() => setProfileDraft(interest)}
                 />
                 {interest}
               </label>

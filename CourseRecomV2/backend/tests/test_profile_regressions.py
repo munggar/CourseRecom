@@ -89,7 +89,7 @@ def test_profile_update_rejects_empty_and_overlong_interests():
     token = create_access_token(student_nim, 'mahasiswa')
     headers = {'Authorization': f'Bearer {token}'}
     try:
-        for invalid_value in ('', '   ', 'x' * 256, 'x' * 300):
+        for invalid_value in ('', '   ', 'Pilihan A,Pilihan B', 'x' * 256, 'x' * 300):
             response = client.put(
                 '/api/mahasiswa/profil',
                 headers=headers,
