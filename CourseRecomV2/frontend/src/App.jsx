@@ -18,7 +18,10 @@ import {
   X,
 } from 'lucide-react';
 
-const API_BASE = (import.meta.env.VITE_API_BASE_URL || '/api').replace(/\/+$/, '');
+const CONFIGURED_API_BASE = (import.meta.env.VITE_API_BASE_URL || '/api').replace(/\/+$/, '');
+const API_BASE = CONFIGURED_API_BASE === '/api' && window.location.hostname !== 'localhost'
+  ? 'https://courserecom.onrender.com/api'
+  : CONFIGURED_API_BASE;
 const IS_PRODUCTION_ENVIRONMENT = String(import.meta.env.VITE_ENVIRONMENT || '').toLowerCase() === 'production';
 
 const EMPTY_RECOMMENDATIONS = {

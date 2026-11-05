@@ -30,4 +30,4 @@ services:
       - key: VITE_ENVIRONMENT
         value: production
       - key: API_PROXY_TARGET
-        value: https://courserecom-api.onrender.com
+        value: https://courserecom.onrender.com
