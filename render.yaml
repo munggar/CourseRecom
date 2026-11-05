@@ -30,4 +30,4 @@ services:
       - key: VITE_ENVIRONMENT
         value: production
       - key: API_PROXY_TARGET
-        sync: false
+        value: https://courserecom-api.onrender.com
