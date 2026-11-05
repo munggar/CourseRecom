@@ -1,0 +1,33 @@
+services:
+  - type: web
+    name: courserecom-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/health
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: SEED_DEMO_USERS
+        value: false
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: QR_VERIFICATION_SECRET
+        generateValue: true
+      - key: FRONTEND_URL
+        sync: false
+      - key: PUBLIC_API_BASE_URL
+        sync: false
+
+  - type: web
+    name: courserecom-frontend
+    runtime: docker
+    dockerfilePath: ./Dockerfile.frontend
+    envVars:
+      - key: VITE_API_BASE_URL
+        sync: false
+      - key: VITE_ENVIRONMENT
+        value: production
+      - key: API_PROXY_TARGET
+        sync: false

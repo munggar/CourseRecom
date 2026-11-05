@@ -4,6 +4,16 @@ CourseRecom membantu mahasiswa menyusun rencana mata kuliah semester berikutnya 
 
 ## Menjalankan dan deploy
 
+### Deployment Render dari repository root
+
+Repository menyertakan `Dockerfile`, `Dockerfile.frontend`, dan `render.yaml` pada root agar aplikasi dapat dipilih meskipun kode proyek berada di folder `CourseRecomV2`.
+
+- Service backend: Dockerfile `Dockerfile`.
+- Service frontend: Dockerfile `Dockerfile.frontend`.
+- Jangan set Root Directory ke `CourseRecomV2` untuk Dockerfile root.
+
+Untuk frontend production, isi `VITE_API_BASE_URL` dan `API_PROXY_TARGET` dengan URL backend HTTPS berakhiran `/api` bila API dan frontend memakai domain berbeda.
+
 Jalankan stack lokal dengan Docker:
 
 ```bash
