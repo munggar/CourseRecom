@@ -13,6 +13,10 @@ export default defineConfig({
     },
   },
   preview: {
+    allowedHosts: [
+      'courserecom.onrender.com',
+      '.onrender.com',
+    ],
     proxy: {
       '/api': {
         target: process.env.API_PROXY_TARGET || 'http://backend:8000',
