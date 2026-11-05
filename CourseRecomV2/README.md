@@ -12,9 +12,9 @@ Repository menyertakan `Dockerfile`, `Dockerfile.frontend`, dan `render.yaml` pa
 - Service frontend: Dockerfile `Dockerfile.frontend`.
 - Jangan set Root Directory ke `CourseRecomV2` untuk Dockerfile root.
 
-Untuk frontend production, isi `VITE_API_BASE_URL` dan `API_PROXY_TARGET` dengan URL backend HTTPS berakhiran `/api` bila API dan frontend memakai domain berbeda.
+Untuk frontend production, gunakan `VITE_API_BASE_URL=/api` dan set `API_PROXY_TARGET` ke origin backend (tanpa `/api`). Proxy frontend meneruskan request API dari origin yang sama, sehingga browser tidak memerlukan izin CORS lintas domain.
 
-URL root backend (`https://courserecom-api.onrender.com/`) memang menjawab `{"detail":"Not Found"}` karena API tidak menyediakan halaman di `/`. Periksa status backend melalui `https://courserecom-api.onrender.com/api/health`; endpoint registrasi mahasiswa adalah `POST /api/auth/register`. Jika alamat ini berubah, perbarui `VITE_API_BASE_URL` ke URL backend yang berakhiran `/api`, lalu deploy ulang frontend karena alamat API ditanam saat image dibangun.
+URL root backend (`https://courserecom-api.onrender.com/`) memang menjawab `{"detail":"Not Found"}` karena API tidak menyediakan halaman di `/`. Periksa status backend melalui `https://courserecom-api.onrender.com/api/health`; endpoint registrasi mahasiswa adalah `POST /api/auth/register`. Jika alamat backend berubah, perbarui `API_PROXY_TARGET` dan deploy ulang frontend.
 
 Respons JSON seperti `{"detail":"Not Found"}` pada domain frontend menandakan service Render frontend masih menjalankan `Dockerfile` backend. Pada service frontend, set Dockerfile path menjadi `Dockerfile.frontend`; `Dockerfile` tetap dipakai hanya oleh service backend.
 
@@ -28,7 +28,7 @@ docker compose up --build
 - Backend dan API docs: http://localhost:8000/docs
 - PostgreSQL lokal Docker: localhost:5432
 
-Salin `.env.example` ke `.env` untuk development lokal. Akun demo hanya di-seed pada environment `development`/`testing`; jangan gunakan konfigurasi development di production. Deployment publik wajib memakai `ENVIRONMENT=production`, `SEED_DEMO_USERS=false`, `VITE_ENVIRONMENT=production`, `JWT_SECRET` dan `QR_VERIFICATION_SECRET` acak yang berbeda (masing-masing minimal 32 karakter), serta `PUBLIC_API_BASE_URL` HTTPS publik berakhiran `/api`. Atur `FRONTEND_URL` ke origin frontend dan `VITE_API_BASE_URL` ke URL API publik yang sama. URL API frontend dan label environment dimasukkan saat image frontend dibangun, jadi ubah keduanya lalu jalankan ulang `docker compose build frontend`.
+Salin `.env.example` ke `.env` untuk development lokal. Akun demo hanya di-seed pada environment `development`/`testing`; jangan gunakan konfigurasi development di production. Deployment publik wajib memakai `ENVIRONMENT=production`, `SEED_DEMO_USERS=false`, `VITE_ENVIRONMENT=production`, `JWT_SECRET` dan `QR_VERIFICATION_SECRET` acak yang berbeda (masing-masing minimal 32 karakter), serta `PUBLIC_API_BASE_URL` HTTPS publik berakhiran `/api`. Atur `FRONTEND_URL` ke origin frontend, `VITE_API_BASE_URL=/api`, dan `API_PROXY_TARGET` ke origin backend tanpa `/api`. Nilai proxy dimasukkan ke image frontend saat build.
 
 Pengaturan utama:
 
@@ -38,7 +38,8 @@ QR_VERIFICATION_SECRET=replace-with-a-different-long-random-secret
 POSTGRES_PASSWORD=replace-with-a-strong-database-password
 FRONTEND_URL=https://course.example.edu
 PUBLIC_API_BASE_URL=https://api.example.edu/api
-VITE_API_BASE_URL=https://api.example.edu/api
+VITE_API_BASE_URL=/api
+API_PROXY_TARGET=https://api.example.edu
 RECOMMENDATION_WEIGHTS={"similar_students":0.30,"academic_history":0.25,"interest":0.20,"curriculum":0.15,"course_pattern":0.10}
 PASSING_GRADES=A,A-,B+,B,B-,C+,C,C-
 TOTAL_CURRICULUM_SKS=144
@@ -52,7 +53,7 @@ Aplikasi menggunakan SQLAlchemy dan PostgreSQL; Supabase dapat dipakai sebagai d
 
 1. Buat proyek PostgreSQL di [Supabase](https://supabase.com/dashboard). Salin connection string dari **Connect**. Untuk backend hosting yang hanya mendukung IPv4, pilih **Session pooler**; gunakan detail host, port, dan user yang diberikan dashboard. Supabase Free menyediakan database 500 MB dan dapat menjeda proyek setelah satu minggu tanpa aktivitas, jadi periksa batas terbaru sebelum penggunaan produksi.
 2. Salin `env.cloud.example` menjadi `env.cloud`, lalu isi `DATABASE_URL` dengan connection string proyek. Format `postgresql://` Supabase didukung dan otomatis diarahkan ke driver psycopg yang sudah dipasang. Gunakan koneksi TLS (`sslmode=require`) dan URL-encode karakter khusus pada password.
-3. Isi `JWT_SECRET` dengan nilai acak yang kuat, `FRONTEND_URL` dengan origin frontend, serta `VITE_API_BASE_URL` dengan URL backend berakhiran `/api`. Untuk menjalankan container aplikasi memakai database Supabase:
+3. Isi `JWT_SECRET` dengan nilai acak yang kuat, `FRONTEND_URL` dengan origin frontend, dan `API_PROXY_TARGET` dengan origin backend (tanpa `/api`); `VITE_API_BASE_URL` tetap `/api`. Untuk menjalankan container aplikasi memakai database Supabase:
 
    ```powershell
    Copy-Item env.cloud.example env.cloud
@@ -60,7 +61,7 @@ Aplikasi menggunakan SQLAlchemy dan PostgreSQL; Supabase dapat dipakai sebagai d
    docker compose --env-file env.cloud -f docker-compose.cloud.yml up --build
    ```
 
-   Konfigurasi cloud ini tidak membuat container database lokal. Deploy API dan frontend ke penyedia hosting yang dipilih dengan environment variable yang sama; `VITE_API_BASE_URL` harus ditetapkan saat image frontend dibangun.
+   Konfigurasi cloud ini tidak membuat container database lokal. Deploy API dan frontend ke penyedia hosting yang dipilih dengan environment variable yang sama; `API_PROXY_TARGET` harus ditetapkan saat image frontend dibangun.
 4. `env.cloud.example` memakai `ENVIRONMENT=production` dan `SEED_DEMO_USERS=false`, sehingga akun demo/password publik tidak dibuat dan login dengan kredensial demo bawaan ditolak. Isi `PUBLIC_API_BASE_URL` dengan URL API HTTPS publik berakhiran `/api`; URL ini yang ditanamkan ke QR, bukan hostname internal Docker. Saat database masih kosong, `BOOTSTRAP_ADMIN_NIM`, `BOOTSTRAP_ADMIN_NAME`, dan `BOOTSTRAP_ADMIN_PASSWORD` membuat satu akun admin awal. Simpan password itu sebagai secret hosting dan hapus/nonaktifkan nilainya sesudah admin berhasil dibuat. Katalog mata kuliah awal tetap di-seed otomatis.
 
 Backend menjalankan migrasi Alembic saat startup. Migrasi mempertahankan histori yang ada dan berhenti dengan diagnostik jika menemukan foreign key orphan atau beberapa KRS pending yang melanggar constraint unik; perbaiki/backup database sebelum retry, jangan hapus histori untuk memaksa migrasi. Baseline migration tidak menyediakan downgrade otomatis. Uji dan backup setiap database lama sebelum production deployment; data dari PostgreSQL/SQLite lain tidak otomatis dipindahkan.

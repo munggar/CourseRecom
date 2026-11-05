@@ -15,6 +15,7 @@ services:
       args:
         VITE_API_BASE_URL: ${VITE_API_BASE_URL:?Set VITE_API_BASE_URL in env.cloud}
         VITE_ENVIRONMENT: ${VITE_ENVIRONMENT:?Set VITE_ENVIRONMENT in env.cloud}
+        API_PROXY_TARGET: ${API_PROXY_TARGET:?Set API_PROXY_TARGET in env.cloud}
     ports:
       - "5173:5173"
     depends_on:
