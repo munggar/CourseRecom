@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" role="img" aria-label="CourseRecom logo">
+  <rect width="200" height="200" rx="34" fill="#0F766E"/>
+  <path d="M58 75c0-13 10-23 23-23h18c15 0 27 12 27 27v22H98V76c0-5-4-9-9-9H73c-5 0-9 4-9 9v53c0 5 4 9 9 9h18v-16h18v16c0 15-12 27-27 27H81c-13 0-23-10-23-23V75Zm72 8h30a14 14 0 0 1 14 14v28a14 14 0 0 1-14 14h-30V83Zm24 20h8v-8h-8v8Zm-22 0h16v10h-16V103Z" fill="#fff"/>
+  <path d="M142 54l16 16 16-16v88h-14V74l-10 10-10-10v68h-14V54h16Z" fill="#F59E0B"/>
+  <text x="100" y="176" font-size="22" text-anchor="middle" fill="#0F766E" font-family="Arial, sans-serif" font-weight="700">CourseRecom</text>
+</svg>

@@ -1,0 +1,21 @@
+services:
+  backend:
+    build:
+      context: ./backend
+    env_file:
+      - ./env.cloud
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL in env.cloud}
+    ports:
+      - "8000:8000"
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:?Set VITE_API_BASE_URL in env.cloud}
+        VITE_ENVIRONMENT: ${VITE_ENVIRONMENT:?Set VITE_ENVIRONMENT in env.cloud}
+    ports:
+      - "5173:5173"
+    depends_on:
+      - backend

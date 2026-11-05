@@ -1,0 +1,7 @@
+.env
+.env.*
+*.pyc
+__pycache__/
+.pytest_cache/
+tests/
+alembic.ini.example

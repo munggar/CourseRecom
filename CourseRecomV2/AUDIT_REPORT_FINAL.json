@@ -1,0 +1,374 @@
+{
+  "report": "CourseRecomV2 final audit reconciliation",
+  "date": "2026-11-05",
+  "statuses": [
+    "FIXED",
+    "PARTIALLY FIXED",
+    "NOT FIXED",
+    "NOT REPRODUCED",
+    "BLOCKED",
+    "NEEDS POLICY DECISION",
+    "NOT TESTED"
+  ],
+  "bugs": [
+    {
+      "id": "BUG-01",
+      "definition": "Penghapusan mahasiswa dan penanganan foreign key.",
+      "status": "FIXED",
+      "tests": [
+        "test_admin_dashboard_lists_students_and_advisors_and_only_admin_can_delete_students"
+      ]
+    },
+    {
+      "id": "BUG-02",
+      "definition": "Risiko penyimpanan JWT di localStorage.",
+      "status": "NOT FIXED",
+      "evidence": "frontend/src/App.jsx masih menggunakan localStorage",
+      "tests": []
+    },
+    {
+      "id": "BUG-03",
+      "definition": "Draft KRS bocor antar-akun.",
+      "status": "PARTIALLY FIXED",
+      "evidence": "draft diprefix dengan NIM dan dibersihkan logout; browser test belum ada",
+      "tests": []
+    },
+    {
+      "id": "BUG-04",
+      "definition": "Otorisasi dan kepemilikan data saat perubahan data.",
+      "status": "FIXED",
+      "tests": [
+        "test_api_rbac.py"
+      ]
+    },
+    {
+      "id": "BUG-05",
+      "definition": "Validasi KPRS belum menyeluruh.",
+      "status": "FIXED",
+      "tests": [
+        "test_kprs_workflow.py"
+      ]
+    },
+    {
+      "id": "BUG-06",
+      "definition": "Validasi KRS dan KPRS tidak konsisten.",
+      "status": "FIXED",
+      "tests": [
+        "test_kprs_workflow.py"
+      ]
+    },
+    {
+      "id": "BUG-07",
+      "definition": "Validasi konfigurasi batas SKS.",
+      "status": "FIXED",
+      "tests": [
+        "test_academic.py"
+      ]
+    },
+    {
+      "id": "BUG-08",
+      "definition": "Manipulasi grade_point dari frontend.",
+      "status": "FIXED",
+      "tests": [
+        "test_khs_parser.py",
+        "test_khs_workflow.py"
+      ]
+    },
+    {
+      "id": "BUG-09",
+      "definition": "Admin override melewati validasi.",
+      "status": "FIXED",
+      "tests": [
+        "test_admin_override_can_unlock_and_replace_courses"
+      ]
+    },
+    {
+      "id": "BUG-10",
+      "definition": "Pemeriksaan bentrok berdasarkan interval waktu.",
+      "status": "FIXED",
+      "tests": [
+        "test_schedule_conflict"
+      ]
+    },
+    {
+      "id": "BUG-11",
+      "definition": "Bentrok dosen dan ruangan.",
+      "status": "FIXED",
+      "evidence": "static review dan layanan akademik",
+      "tests": []
+    },
+    {
+      "id": "BUG-12",
+      "definition": "Bentrok jadwal mahasiswa.",
+      "status": "FIXED",
+      "evidence": "validasi akademik dan KPRS",
+      "tests": []
+    },
+    {
+      "id": "BUG-13",
+      "definition": "Race condition kapasitas mata kuliah.",
+      "status": "FIXED",
+      "tests": [
+        "test_kprs_workflow.py"
+      ]
+    },
+    {
+      "id": "BUG-14",
+      "definition": "Ketidakkonsistenan datetime naive dan aware.",
+      "status": "FIXED",
+      "evidence": "app/services/time_utils.py; suite backend lulus",
+      "tests": []
+    },
+    {
+      "id": "BUG-15",
+      "definition": "Risiko penghapusan StudentRecord saat konfirmasi KHS.",
+      "status": "FIXED",
+      "tests": [
+        "test_khs_workflow.py"
+      ]
+    },
+    {
+      "id": "BUG-16",
+      "definition": "Payload konfirmasi KHS tidak sesuai hasil preview.",
+      "status": "FIXED",
+      "tests": [
+        "test_khs_workflow.py"
+      ]
+    },
+    {
+      "id": "BUG-17",
+      "definition": "Deduplikasi riwayat pengulangan mata kuliah.",
+      "status": "FIXED",
+      "tests": [
+        "test_khs_parser.py",
+        "test_khs_workflow.py"
+      ]
+    },
+    {
+      "id": "BUG-18",
+      "definition": "Penyimpanan dan pengunduhan beberapa dokumen KHS.",
+      "status": "FIXED",
+      "tests": [
+        "test_khs_workflow.py"
+      ]
+    },
+    {
+      "id": "BUG-19",
+      "definition": "Perhitungan IPK dan IPS.",
+      "status": "FIXED",
+      "tests": [
+        "test_academic.py",
+        "test_khs_workflow.py"
+      ]
+    },
+    {
+      "id": "BUG-20",
+      "definition": "Penggunaan katalog mata kuliah statis.",
+      "status": "FIXED",
+      "tests": [
+        "test_course_catalog_integrity.py"
+      ]
+    },
+    {
+      "id": "BUG-21",
+      "definition": "Variabel `now` tidak didefinisikan pada submit KPRS.",
+      "status": "FIXED",
+      "tests": [
+        "test_kprs_workflow.py"
+      ]
+    },
+    {
+      "id": "BUG-22",
+      "definition": "Parsing periode KPRS sebelum validasi keberadaan periode.",
+      "status": "FIXED",
+      "tests": [
+        "test_kprs_workflow.py"
+      ]
+    },
+    {
+      "id": "BUG-23",
+      "definition": "Alur KPRS belum tersambung ke frontend dosen.",
+      "status": "PARTIALLY FIXED",
+      "evidence": "API dosen ada; browser test tidak tersedia",
+      "tests": []
+    },
+    {
+      "id": "BUG-24",
+      "definition": "PDF KRS lama setelah isi KRS berubah.",
+      "status": "FIXED",
+      "tests": [
+        "test_old_official_krs_is_rejected_after_plan_changes"
+      ]
+    },
+    {
+      "id": "BUG-25",
+      "definition": "QR verification tidak memeriksa versi dokumen secara benar.",
+      "status": "FIXED",
+      "tests": [
+        "test_official_krs_pdf_has_hmac_verified_qr_token",
+        "test_old_official_krs_is_rejected_after_plan_changes"
+      ]
+    },
+    {
+      "id": "BUG-26",
+      "definition": "Blob URL dicabut terlalu cepat.",
+      "status": "PARTIALLY FIXED",
+      "evidence": "revoke ditunda 1000 ms; browser test belum tersedia",
+      "tests": []
+    },
+    {
+      "id": "BUG-27",
+      "definition": "Ketidakkonsistenan form registrasi dan reset.",
+      "status": "PARTIALLY FIXED",
+      "evidence": "static review backend/frontend; smoke browser belum tersedia",
+      "tests": []
+    },
+    {
+      "id": "BUG-28",
+      "definition": "Seed akun demo aktif secara default.",
+      "status": "FIXED",
+      "tests": [
+        "test_database_config.py"
+      ]
+    },
+    {
+      "id": "BUG-29",
+      "definition": "Kredensial demo terlihat pada halaman login.",
+      "status": "FIXED",
+      "tests": [
+        "test_database_config.py"
+      ]
+    },
+    {
+      "id": "BUG-30",
+      "definition": "Secret production tidak aman atau menggunakan nilai default.",
+      "status": "FIXED",
+      "tests": [
+        "test_database_config.py"
+      ]
+    },
+    {
+      "id": "BUG-31",
+      "definition": "Fallback alamat API ke localhost pada deployment.",
+      "status": "FIXED",
+      "tests": [
+        "test_verification_url_does_not_fallback_to_localhost_in_production"
+      ]
+    },
+    {
+      "id": "BUG-32",
+      "definition": "Paket distribusi mengandung file sensitif atau tidak diperlukan.",
+      "status": "FIXED",
+      "evidence": "backend/.dockerignore dan frontend/.dockerignore",
+      "tests": []
+    }
+  ],
+  "new_findings": [
+    {
+      "id": "NEW-01",
+      "status": "FIXED",
+      "tests": [
+        "test_password_change_invalidates_old_token",
+        "test_username_change_invalidates_old_token",
+        "test_logout_invalidates_token",
+        "test_new_token_after_reauthentication",
+        "test_other_user_token_is_not_invalidated"
+      ]
+    },
+    {
+      "id": "NEW-02",
+      "status": "PARTIALLY FIXED",
+      "evidence": "endpoint dan frontend history ada; admin browser route belum diuji"
+    },
+    {
+      "id": "NEW-03",
+      "status": "FIXED",
+      "migration": "backend/alembic/versions/20261105_02_phone_token.py",
+      "tests": [
+        "test_profile_phone_number_is_persisted_and_normalized",
+        "test_profile_phone_number_validation"
+      ]
+    },
+    {
+      "id": "NEW-04",
+      "status": "FIXED",
+      "tests": [
+        "test_database_config.py"
+      ]
+    }
+  ],
+  "features": [
+    {
+      "id": "FITUR-LOGIN",
+      "status": "PARTIALLY FIXED",
+      "evidence": "role frontend/backend tersedia; browser kombinasi role belum teruji"
+    },
+    {
+      "id": "FITUR-KRS",
+      "status": "PARTIALLY FIXED",
+      "evidence": "API KPRS tersedia; browser workflow belum teruji"
+    },
+    {
+      "id": "FITUR-PROFIL",
+      "status": "PARTIALLY FIXED",
+      "evidence": "API/database teruji; browser lintas tiga role belum teruji"
+    },
+    {
+      "id": "FITUR-ADVISOR",
+      "status": "PARTIALLY FIXED",
+      "evidence": "API/history/database tersedia; browser dan isolation lintas dosen perlu manual"
+    }
+  ],
+  "changed_files": [
+    "backend/app/config.py",
+    "backend/app/deps.py",
+    "backend/app/api/routes/auth.py",
+    "backend/app/api/routes/admin.py",
+    "backend/app/api/routes/dosen.py",
+    "backend/app/api/routes/mahasiswa.py",
+    "backend/app/services/official_krs.py",
+    "backend/alembic/versions/20261105_02_phone_token.py",
+    "backend/.dockerignore",
+    "frontend/src/App.jsx",
+    "frontend/.dockerignore",
+    "backend/tests/test_security_completion.py",
+    "backend/tests/test_advisor_history.py",
+    "backend/tests/test_database_config.py",
+    "backend/tests/test_official_krs.py",
+    "backend/tests/test_profile_regressions.py",
+    "backend/tests/test_kprs_workflow.py"
+  ],
+  "test_results": {
+    "compileall": "passed",
+    "pytest": "71 passed in 28.13s",
+    "npm_lint": "passed",
+    "npm_build": "passed: 1896 modules transformed",
+    "json_validation": "passed"
+  },
+  "database": {
+    "migration": "backend/alembic/versions/20261105_02_phone_token.py",
+    "database_tested": "SQLite",
+    "production_postgresql_tested": false,
+    "fields": [
+      "users.phone_number",
+      "users.token_version"
+    ]
+  },
+  "browser_testing": {
+    "available": false,
+    "manual_required": [
+      "login role combinations",
+      "cross-account KRS draft",
+      "student and advisor KPRS workflow",
+      "profiles",
+      "advisor assignment/history",
+      "Blob/PDF download"
+    ]
+  },
+  "remaining_risks": [
+    "JWT remains in localStorage and is exposed to any XSS affecting the frontend origin",
+    "Browser UI flows are not browser-automated",
+    "Production PostgreSQL migration was not executed in this session",
+    "Academic policy limits and revision deadlines require a policy decision"
+  ]
+}
