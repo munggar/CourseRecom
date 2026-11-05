@@ -26,8 +26,8 @@ services:
     dockerfilePath: ./Dockerfile.frontend
     envVars:
       - key: VITE_API_BASE_URL
-        sync: false
+        value: https://courserecom-api.onrender.com/api
       - key: VITE_ENVIRONMENT
         value: production
       - key: API_PROXY_TARGET
-        value: https://courserecom.onrender.com
+        value: https://courserecom-api.onrender.com

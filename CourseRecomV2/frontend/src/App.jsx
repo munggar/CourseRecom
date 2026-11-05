@@ -19,9 +19,12 @@ import {
 } from 'lucide-react';
 
 const CONFIGURED_API_BASE = (import.meta.env.VITE_API_BASE_URL || '/api').replace(/\/+$/, '');
-const API_BASE = CONFIGURED_API_BASE === '/api' && window.location.hostname !== 'localhost'
-  ? 'https://courserecom.onrender.com/api'
-  : CONFIGURED_API_BASE;
+const NORMALIZED_API_BASE = /(?:^|\/)api$/i.test(CONFIGURED_API_BASE)
+  ? CONFIGURED_API_BASE
+  : `${CONFIGURED_API_BASE}/api`;
+const API_BASE = NORMALIZED_API_BASE === '/api' && !['localhost', '127.0.0.1'].includes(window.location.hostname)
+  ? 'https://courserecom-api.onrender.com/api'
+  : NORMALIZED_API_BASE;
 const IS_PRODUCTION_ENVIRONMENT = String(import.meta.env.VITE_ENVIRONMENT || '').toLowerCase() === 'production';
 
 const EMPTY_RECOMMENDATIONS = {

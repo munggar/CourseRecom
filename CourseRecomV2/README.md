@@ -14,6 +14,8 @@ Repository menyertakan `Dockerfile`, `Dockerfile.frontend`, dan `render.yaml` pa
 
 Untuk frontend production, isi `VITE_API_BASE_URL` dan `API_PROXY_TARGET` dengan URL backend HTTPS berakhiran `/api` bila API dan frontend memakai domain berbeda.
 
+URL root backend (`https://courserecom-api.onrender.com/`) memang menjawab `{"detail":"Not Found"}` karena API tidak menyediakan halaman di `/`. Periksa status backend melalui `https://courserecom-api.onrender.com/api/health`; endpoint registrasi mahasiswa adalah `POST /api/auth/register`. Jika alamat ini berubah, perbarui `VITE_API_BASE_URL` ke URL backend yang berakhiran `/api`, lalu deploy ulang frontend karena alamat API ditanam saat image dibangun.
+
 Respons JSON seperti `{"detail":"Not Found"}` pada domain frontend menandakan service Render frontend masih menjalankan `Dockerfile` backend. Pada service frontend, set Dockerfile path menjadi `Dockerfile.frontend`; `Dockerfile` tetap dipakai hanya oleh service backend.
 
 Jalankan stack lokal dengan Docker:
