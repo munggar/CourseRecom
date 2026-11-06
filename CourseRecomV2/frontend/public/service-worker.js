@@ -1,5 +1,5 @@
-const CACHE_NAME = 'courserecom-v1';
-const APP_SHELL = ['/', '/logo.svg', '/manifest.webmanifest'];
+const CACHE_NAME = 'courserecom-v2';
+const APP_SHELL = ['/', '/logo.svg', '/logo.png', '/manifest.webmanifest'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL)));
@@ -13,12 +13,29 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
-  if (event.request.url.includes('/api/')) return;
+  const requestUrl = new URL(event.request.url);
+  if (requestUrl.origin !== self.location.origin || requestUrl.pathname.startsWith('/api/')) return;
+
+  if (event.request.mode === 'navigate') {
+    event.respondWith(
+      fetch(event.request)
+        .then(async (response) => {
+          if (response.ok) {
+            await caches.open(CACHE_NAME).then((cache) => cache.put('/', response.clone()));
+          }
+          return response;
+        })
+        .catch(() => caches.match('/'))
+    );
+    return;
+  }
+
   event.respondWith(
-    caches.match(event.request).then((response) => response || fetch(event.request).then((networkResponse) => {
-      const copy = networkResponse.clone();
-      caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+    caches.match(event.request).then((response) => response || fetch(event.request).then(async (networkResponse) => {
+      if (networkResponse.ok) {
+        await caches.open(CACHE_NAME).then((cache) => cache.put(event.request, networkResponse.clone()));
+      }
       return networkResponse;
-    }).catch(() => caches.match('/')))
+    }))
   );
 });
