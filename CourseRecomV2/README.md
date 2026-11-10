@@ -4,19 +4,16 @@ CourseRecom membantu mahasiswa menyusun rencana mata kuliah semester berikutnya 
 
 ## Menjalankan dan deploy
 
-### Deployment Render dari repository root
+### Deployment Render satu service
 
-Repository menyertakan `Dockerfile`, `Dockerfile.frontend`, dan `render.yaml` pada root agar aplikasi dapat dipilih meskipun kode proyek berada di folder `CourseRecomV2`.
+Render Blueprint hanya mendefinisikan satu Web Service, `courserecom-api`. Dockerfile root membangun frontend React dan backend FastAPI dalam satu image; FastAPI menyajikan aplikasi web di `/` dan API di `/api`. Pengguna hanya perlu satu alamat Render, tanpa proxy frontend atau service backend terpisah.
 
-- Service backend: Dockerfile `Dockerfile`.
-- Service frontend: Dockerfile `Dockerfile.frontend`.
-- Jangan set Root Directory ke `CourseRecomV2` untuk Dockerfile root.
+1. Di Render, buat atau perbarui Blueprint dari repository dan pilih root repository sebagai Root Directory (jangan set ke `CourseRecomV2`). Blueprint memakai `render.yaml` dan Dockerfile root.
+2. Atur `DATABASE_URL` ke PostgreSQL persisten. Atur `ENVIRONMENT=production`, `SEED_DEMO_USERS=false`, serta secret `JWT_SECRET` dan `QR_VERIFICATION_SECRET` acak yang berbeda (minimal 32 karakter). Render menyediakan `RENDER_EXTERNAL_URL`; aplikasi menggunakannya otomatis untuk frontend dan URL verifikasi QR. Jangan isi `FRONTEND_URL` atau `PUBLIC_API_BASE_URL` kecuali menggunakan domain frontend/API eksternal khusus.
+3. Tunggu deploy sukses, lalu buka URL `courserecom-api.onrender.com`. Tes `https://<domain-render-anda>/api/health`; endpoint ini semestinya mengembalikan `{"status":"ok","app":"CourseRecom"}`. Halaman utama dan API kini memakai domain yang sama.
+4. Jika sebelumnya ada service frontend Render terpisah, pastikan service gabungan sudah diuji sebelum menghapus service lama. Jangan hapus database lama; pergantian image atau URL tidak memindahkan data antar-database.
 
-Untuk frontend production, gunakan `VITE_API_BASE_URL=/api` dan set `API_PROXY_TARGET` ke origin backend (tanpa `/api`). Proxy frontend meneruskan request API dari origin yang sama, sehingga browser tidak memerlukan izin CORS lintas domain.
-
-URL root backend (`https://courserecom-api.onrender.com/`) memang menjawab `{"detail":"Not Found"}` karena API tidak menyediakan halaman di `/`. Periksa status backend melalui `https://courserecom-api.onrender.com/api/health`; endpoint registrasi mahasiswa adalah `POST /api/auth/register`. Jika alamat backend berubah, perbarui `API_PROXY_TARGET` dan deploy ulang frontend.
-
-Respons JSON seperti `{"detail":"Not Found"}` pada domain frontend menandakan service Render frontend masih menjalankan `Dockerfile` backend. Pada service frontend, set Dockerfile path menjadi `Dockerfile.frontend`; `Dockerfile` tetap dipakai hanya oleh service backend.
+Pada paket Render Free, Web Service dapat sleep setelah 15 menit tanpa trafik dan request pertama setelahnya biasanya perlu menunggu proses bangun. Frontend tidak lagi memerlukan service terpisah, tetapi karena disajikan oleh Web Service yang sama, halaman frontend juga menunggu saat service sedang bangun. Filesystem Render bersifat sementara; gunakan PostgreSQL persisten, bukan SQLite lokal, untuk data production.
 
 Jalankan stack lokal dengan Docker:
 
@@ -28,7 +25,7 @@ docker compose up --build
 - Backend dan API docs: http://localhost:8000/docs
 - PostgreSQL lokal Docker: localhost:5432
 
-Salin `.env.example` ke `.env` untuk development lokal. Akun demo hanya di-seed pada environment `development`/`testing`; jangan gunakan konfigurasi development di production. Deployment publik wajib memakai `ENVIRONMENT=production`, `SEED_DEMO_USERS=false`, `VITE_ENVIRONMENT=production`, `JWT_SECRET` dan `QR_VERIFICATION_SECRET` acak yang berbeda (masing-masing minimal 32 karakter), serta `PUBLIC_API_BASE_URL` HTTPS publik berakhiran `/api`. Atur `FRONTEND_URL` ke origin frontend, `VITE_API_BASE_URL=/api`, dan `API_PROXY_TARGET` ke origin backend tanpa `/api`. Nilai proxy dimasukkan ke image frontend saat build.
+Salin `.env.example` ke `.env` untuk development lokal. Akun demo hanya di-seed pada environment `development`/`testing`; jangan gunakan konfigurasi development di production. Deployment publik wajib memakai `ENVIRONMENT=production`, `SEED_DEMO_USERS=false`, `JWT_SECRET` dan `QR_VERIFICATION_SECRET` acak yang berbeda (masing-masing minimal 32 karakter), serta `PUBLIC_API_BASE_URL` HTTPS publik berakhiran `/api`. Di Render, `PUBLIC_API_BASE_URL` dan `FRONTEND_URL` otomatis memakai `RENDER_EXTERNAL_URL` jika tidak diatur manual. Frontend production dibangun dengan `VITE_API_BASE_URL=/api`; API memakai origin yang sama.
 
 Pengaturan utama:
 

@@ -1,8 +1,10 @@
 from contextlib import asynccontextmanager
+from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from app.api.routes.admin import router as admin_router
 from app.api.routes.auth import router as auth_router
@@ -55,3 +57,8 @@ app.include_router(admin_router, prefix='/api')
 @app.get('/api/health')
 def health():
     return {'status': 'ok', 'app': 'CourseRecom'}
+
+
+frontend_dir = Path(__file__).resolve().parent / 'static'
+if frontend_dir.is_dir():
+    app.mount('/', StaticFiles(directory=frontend_dir, html=True), name='frontend')

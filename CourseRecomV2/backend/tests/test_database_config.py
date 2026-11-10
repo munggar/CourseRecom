@@ -61,6 +61,21 @@ def test_production_requires_public_https_api_base_for_qr():
         )
 
 
+def test_render_public_url_configures_frontend_and_qr_origins(monkeypatch):
+    monkeypatch.setenv('RENDER_EXTERNAL_URL', 'https://courserecom.onrender.com/')
+    monkeypatch.delenv('FRONTEND_URL', raising=False)
+
+    settings = Settings(
+        environment='production',
+        seed_demo_users=False,
+        jwt_secret='a' * 40,
+        qr_verification_secret='b' * 40,
+    )
+
+    assert settings.frontend_url == 'https://courserecom.onrender.com'
+    assert settings.public_api_base_url == 'https://courserecom.onrender.com/api'
+
+
 def test_production_rejects_empty_and_default_secrets():
     with pytest.raises(ValidationError, match='JWT_SECRET'):
         Settings(

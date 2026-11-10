@@ -15,19 +15,3 @@ services:
         generateValue: true
       - key: QR_VERIFICATION_SECRET
         generateValue: true
-      - key: FRONTEND_URL
-        sync: false
-      - key: PUBLIC_API_BASE_URL
-        sync: false
-
-  - type: web
-    name: courserecom-frontend
-    runtime: docker
-    dockerfilePath: ./Dockerfile.frontend
-    envVars:
-      - key: VITE_API_BASE_URL
-        value: /api
-      - key: VITE_ENVIRONMENT
-        value: production
-      - key: API_PROXY_TARGET
-        value: https://courserecom-api.onrender.com

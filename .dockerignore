@@ -1,0 +1,12 @@
+.git
+.venv
+**/__pycache__
+**/*.py[cod]
+**/node_modules
+**/dist
+**/.env
+**/.env.*
+CourseRecomV2/backend/courserecom.db
+CourseRecomV2/env.cloud
+CourseRecomV2/.env.oracle
+.pytest_cache

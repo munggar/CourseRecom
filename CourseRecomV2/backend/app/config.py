@@ -32,6 +32,13 @@ class Settings(BaseSettings):
     def normalize_database_url(self):
         parsed = urlparse(self.database_url)
         is_containerized = os.path.exists('/.dockerenv') or os.environ.get('DOTNET_RUNNING_IN_CONTAINER') == 'true'
+        render_external_url = os.environ.get('RENDER_EXTERNAL_URL', '').rstrip('/')
+
+        if render_external_url:
+            if not os.environ.get('FRONTEND_URL') and self.frontend_url == 'http://localhost:5173':
+                self.frontend_url = render_external_url
+            if not self.public_api_base_url:
+                self.public_api_base_url = f'{render_external_url}/api'
 
         if parsed.scheme in {'postgres', 'postgresql'}:
             self.database_url = self.database_url.replace(
