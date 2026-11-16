@@ -48,6 +48,7 @@ def test_demo_accounts_default_only_in_development_and_testing(monkeypatch):
 def test_demo_account_seeding_cannot_be_enabled_outside_development_or_testing():
     with pytest.raises(ValidationError, match='only be enabled'):
         Settings(environment='production', seed_demo_users=True)
+        database_url='postgresql://user:password@db.example.com/course?sslmode=require',
     with pytest.raises(ValidationError, match='only be enabled'):
         Settings(environment='staging', seed_demo_users=True)
 
@@ -69,6 +70,7 @@ def test_render_public_url_configures_frontend_and_qr_origins(monkeypatch):
 
     settings = Settings(
         environment='production',
+        database_url='postgresql://user:password@db.example.com/course?sslmode=require',
         seed_demo_users=False,
         jwt_secret='a' * 40,
         qr_verification_secret='b' * 40,
@@ -82,6 +84,7 @@ def test_production_rejects_empty_and_default_secrets():
     with pytest.raises(ValidationError, match='JWT_SECRET'):
         Settings(
             environment='production',
+            database_url='postgresql://user:password@db.example.com/course?sslmode=require',
             seed_demo_users=False,
             jwt_secret='',
             qr_verification_secret='q' * 40,
@@ -90,6 +93,7 @@ def test_production_rejects_empty_and_default_secrets():
     with pytest.raises(ValidationError, match='JWT_SECRET'):
         Settings(
             environment='production',
+            database_url='postgresql://user:password@db.example.com/course?sslmode=require',
             seed_demo_users=False,
             jwt_secret='course-recom-dev-secret-change-me',
             qr_verification_secret='q' * 40,
@@ -110,6 +114,7 @@ def test_production_rejects_internal_qr_hosts(public_api_base_url):
     with pytest.raises(ValidationError, match='PUBLIC_API_BASE_URL'):
         Settings(
             environment='production',
+            database_url='postgresql://user:password@db.example.com/course?sslmode=require',
             seed_demo_users=False,
             jwt_secret='a' * 40,
             qr_verification_secret='b' * 40,
