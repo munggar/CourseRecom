@@ -52,7 +52,7 @@ def test_kprs_revalidates_reserves_capacity_and_releases_cancelled_seats():
             sks=3,
             semester=3,
             available_semesters='3',
-            category='Wajib',
+            category='Pilihan',
             capacity=40,
             is_active=True,
         ),
