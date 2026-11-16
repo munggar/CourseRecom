@@ -167,7 +167,7 @@ def test_student_khs_recommendation_submission_and_advisor_approval_flow():
         machine_learning = page.locator(".recommendation-card").filter(has_text="TI301")
         expect(machine_learning).to_be_visible()
         machine_learning.get_by_role("button", name="Tambah ke Draft KRS").click()
-        expect(page.get_by_text("Draft KRS:", exact=False)).to_contain_text("1 mata kuliah")
+        expect(page.locator(".draft-summary")).to_contain_text("1 mata kuliah")
         page.get_by_role("button", name="Ajukan ke Dosen PA").click()
         expect(page.get_by_text("Rencana studi berhasil diajukan ke dosen PA.", exact=False)).to_be_visible()
 
@@ -179,7 +179,7 @@ def test_student_khs_recommendation_submission_and_advisor_approval_flow():
         page.get_by_label("Username").fill("pa001")
         page.get_by_label("Password").fill("password123")
         page.get_by_role("button", name="Masuk").click()
-        expect(page.get_by_role("heading", name="Dashboard Dosen PA")).to_be_visible()
+        expect(page.locator(".topbar-label")).to_contain_text("Dashboard Dosen PA")
         page.locator(".sidebar").get_by_role("button", name="Bimbingan Mahasiswa").click()
         student_plan = page.locator(".history-document").filter(has_text="2203001")
         expect(student_plan).to_be_visible()
