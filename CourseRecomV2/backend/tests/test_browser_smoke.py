@@ -20,6 +20,21 @@ def test_demo_roles_can_navigate_their_browser_pages_on_desktop_and_mobile():
         browser = playwright.chromium.launch()
         page = browser.new_page(viewport={"width": 1440, "height": 1000})
         page.goto(base_url, wait_until="networkidle")
+
+        # Use the admin API through the running app to assign the seeded
+        # student to the seeded advisor in the disposable test database.
+        admin_login = page.request.post(
+            base_url + "/api/auth/login",
+            data={"username": "admin", "password": "password123", "role": "admin"},
+        )
+        assert admin_login.status == 200, admin_login.text
+        admin_token = admin_login.json()["access_token"]
+        assigned = page.request.patch(
+            base_url + "/api/admin/students/2203001/advisor",
+            headers={"Authorization": "Bearer " + admin_token},
+            data={"advisor_nim": "pa001", "reason": "CI browser test"},
+        )
+        assert assigned.status == 200, assigned.text
         expect(page.get_by_role("heading", name="CourseRecom")).to_be_visible()
 
         def login(role_label: str):
