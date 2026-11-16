@@ -79,6 +79,6 @@ def test_demo_roles_can_navigate_their_browser_pages_on_desktop_and_mobile():
         expect(page.get_by_role("navigation", name="Navigasi utama")).to_be_visible()
         page.locator("#mobile-navigation").get_by_role("button", name="Upload KHS").click()
         expect(page.get_by_role("heading", name="Unggah KHS Lengkap")).to_be_visible()
-        expect(page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")).to_be_truthy()
+        assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth") is True
 
         browser.close()
