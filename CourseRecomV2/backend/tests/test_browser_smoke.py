@@ -51,7 +51,7 @@ def test_demo_roles_can_navigate_their_browser_pages_on_desktop_and_mobile():
             page.locator(".sidebar").get_by_role("button", name=nav_label).click()
             expect(page.get_by_role("heading", name=heading).first).to_be_visible()
         page.locator(".sidebar").get_by_role("button", name="Rekomendasi MK").click()
-        expect(page.get_by_text("Unggah dan konfirmasi KHS", exact=False)).to_be_visible()
+        expect(page.get_by_text("Unggah dan konfirmasi KHS untuk melihat rekomendasi mata kuliah.", exact=True)).to_be_visible()
         logout()
 
         # Advisor: dashboard and guidance/review area.
