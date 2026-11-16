@@ -927,6 +927,11 @@ function App() {
           ? `Katalog aktif diganti dengan ${result.rows_received} mata kuliah dari ${result.file_name}.`
           : `Berhasil memperbarui ${result.rows_received} mata kuliah dari ${result.file_name}.`,
       );
+      try {
+        setAdminAuditLogs(await apiRequest('/admin/audit-logs'));
+      } catch {
+        // The catalog import already succeeded; the audit view can refresh later.
+      }
       const nextList = await apiRequest('/admin/courses');
       setCourseList(nextList.map((course) => ({ ...course, _originalCode: course.code })));
     } catch (error) {
@@ -966,6 +971,11 @@ function App() {
         setEditingCourseCode('');
       }
       setImportStatus(`Data mata kuliah ${updated.code} berhasil disimpan.`);
+      try {
+        setAdminAuditLogs(await apiRequest('/admin/audit-logs'));
+      } catch {
+        // The course write already succeeded; the audit view can refresh later.
+      }
     } catch (error) {
       setImportStatus(error.message || 'Data mata kuliah gagal disimpan.');
     } finally {
@@ -981,6 +991,11 @@ function App() {
       await apiRequest(`/admin/courses/${encodeURIComponent(originalCode)}`, { method: 'DELETE' });
       setCourseList((previous) => previous.filter((item) => item._originalCode !== originalCode));
       setImportStatus(`Mata kuliah ${originalCode} dinonaktifkan.`);
+      try {
+        setAdminAuditLogs(await apiRequest('/admin/audit-logs'));
+      } catch {
+        // The course deactivation already succeeded; the audit view can refresh later.
+      }
     } catch (error) {
       setImportStatus(error.message || 'Mata kuliah gagal dinonaktifkan.');
     } finally {
