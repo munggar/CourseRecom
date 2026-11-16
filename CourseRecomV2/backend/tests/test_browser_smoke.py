@@ -1,6 +1,7 @@
 import os
 
 import pytest
+from playwright.sync_api import expect, sync_playwright
 
 
 def test_demo_roles_can_navigate_their_browser_pages_on_desktop_and_mobile():
