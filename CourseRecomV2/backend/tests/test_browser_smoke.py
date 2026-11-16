@@ -104,6 +104,9 @@ def test_student_khs_recommendation_submission_and_advisor_approval_flow():
     student.advisor_id = advisor.id
     db.commit()
     db.close()
+    verify_db = SessionLocal()
+    assert verify_db.query(User).filter(User.nim == "2203001").one().advisor_id == advisor.id
+    verify_db.close()
 
     pdf_buffer = BytesIO()
     pdf = canvas.Canvas(pdf_buffer)
