@@ -56,6 +56,7 @@ def test_production_requires_public_https_api_base_for_qr():
     with pytest.raises(ValidationError, match='PUBLIC_API_BASE_URL'):
         Settings(
             environment='production',
+            database_url='postgresql://user:password@db.example.com/course?sslmode=require',
             seed_demo_users=False,
             jwt_secret='a' * 40,
             qr_verification_secret='b' * 40,
