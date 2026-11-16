@@ -1,7 +1,6 @@
 import os
 
 import pytest
-from playwright.sync_api import expect, sync_playwright
 
 
 def test_demo_roles_can_navigate_their_browser_pages_on_desktop_and_mobile():
@@ -95,6 +94,8 @@ def test_student_khs_recommendation_submission_and_advisor_approval_flow():
 
     from app.database import SessionLocal
     from app.models import User
+
+    from playwright.sync_api import expect, sync_playwright
 
     # Link the seeded demo student to the seeded advisor only in this
     # disposable SQLite database used by the browser test job.
