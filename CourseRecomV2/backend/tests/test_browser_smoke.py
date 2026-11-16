@@ -85,6 +85,10 @@ def test_demo_roles_can_navigate_their_browser_pages_on_desktop_and_mobile():
         browser.close()
 
 def test_student_khs_recommendation_submission_and_advisor_approval_flow():
+    base_url = os.getenv("E2E_BASE_URL")
+    if not base_url:
+        pytest.skip("E2E_BASE_URL is only configured in the isolated browser job")
+
     from io import BytesIO
 
     from reportlab.pdfgen import canvas
@@ -124,7 +128,7 @@ def test_student_khs_recommendation_submission_and_advisor_approval_flow():
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch()
         page = browser.new_page(viewport={"width": 1440, "height": 1000})
-        page.goto(os.environ["E2E_BASE_URL"], wait_until="networkidle")
+        page.goto(base_url, wait_until="networkidle")
 
         # Student uploads a synthetic KHS PDF, checks its extracted preview,
         # confirms the data, then requests recommendations for semester five.
