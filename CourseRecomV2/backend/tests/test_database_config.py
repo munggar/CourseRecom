@@ -38,7 +38,7 @@ def test_demo_accounts_default_only_in_development_and_testing(monkeypatch):
     assert Settings(environment='testing').seed_demo_users is True
     assert Settings(
         environment='production',
-            database_url='postgresql://user:password@db.example.com/course?sslmode=require',
+        database_url='postgresql://user:password@db.example.com/course?sslmode=require',
         jwt_secret='a' * 40,
         qr_verification_secret='b' * 40,
         public_api_base_url='https://api.example.edu/api',
@@ -48,7 +48,6 @@ def test_demo_accounts_default_only_in_development_and_testing(monkeypatch):
 def test_demo_account_seeding_cannot_be_enabled_outside_development_or_testing():
     with pytest.raises(ValidationError, match='only be enabled'):
         Settings(environment='production', seed_demo_users=True)
-        database_url='postgresql://user:password@db.example.com/course?sslmode=require',
     with pytest.raises(ValidationError, match='only be enabled'):
         Settings(environment='staging', seed_demo_users=True)
 
