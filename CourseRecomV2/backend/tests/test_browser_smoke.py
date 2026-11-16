@@ -141,7 +141,7 @@ def test_student_khs_recommendation_submission_and_advisor_approval_flow():
         page.get_by_label("Username").fill("2203001")
         page.get_by_label("Password").fill("password123")
         page.get_by_role("button", name="Masuk").click()
-        expect(page.get_by_role("heading", name="Dashboard Mahasiswa")).to_be_visible()
+        expect(page.locator(".topbar-label")).to_contain_text("Dashboard Mahasiswa")
 
         page.locator(".sidebar").get_by_role("button", name="Upload KHS").click()
         page.locator("#khs-pdf").set_input_files({
