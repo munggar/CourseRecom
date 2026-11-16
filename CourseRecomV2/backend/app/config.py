@@ -72,6 +72,11 @@ class Settings(BaseSettings):
         ):
             self.database_url = 'sqlite:///./courserecom.db'
         production = self.environment.casefold() in {'prod', 'production'}
+        if production and not self.database_url.startswith('postgresql+psycopg://'):
+            raise ValueError(
+                'DATABASE_URL must use a persistent PostgreSQL database in production; '
+                'local SQLite storage is not supported.'
+            )
         if production and self.jwt_secret == 'course-recom-dev-secret-change-me':
             raise ValueError('JWT_SECRET must be explicitly configured in production')
         if production and self.qr_verification_secret == 'course-recom-dev-qr-secret-change-me':
