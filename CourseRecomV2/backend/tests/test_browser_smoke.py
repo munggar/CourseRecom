@@ -102,11 +102,12 @@ def test_student_khs_recommendation_submission_and_advisor_approval_flow():
     db = SessionLocal()
     student = db.query(User).filter(User.nim == "2203001").one()
     advisor = db.query(User).filter(User.nim == "pa001").one()
-    student.advisor_id = advisor.id
+    advisor_id = advisor.id
+    student.advisor_id = advisor_id
     db.commit()
     db.close()
     verify_db = SessionLocal()
-    assert verify_db.query(User).filter(User.nim == "2203001").one().advisor_id == advisor.id
+    assert verify_db.query(User).filter(User.nim == "2203001").one().advisor_id == advisor_id
     verify_db.close()
 
     pdf_buffer = BytesIO()
