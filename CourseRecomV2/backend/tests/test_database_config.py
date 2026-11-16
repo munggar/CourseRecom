@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.config import Settings
 from app.database import Base
-from app.models import StudyPlan, User
+from app.models import Course, StudyPlan, User
 
 
 def test_plain_postgres_url_uses_installed_psycopg_driver():
@@ -38,6 +38,7 @@ def test_demo_accounts_default_only_in_development_and_testing(monkeypatch):
     assert Settings(environment='testing').seed_demo_users is True
     assert Settings(
         environment='production',
+            database_url='postgresql://user:password@db.example.com/course?sslmode=require',
         jwt_secret='a' * 40,
         qr_verification_secret='b' * 40,
         public_api_base_url='https://api.example.edu/api',
@@ -168,3 +169,78 @@ def test_study_plan_index_allows_only_one_pending_plan_per_student():
         ))
         with pytest.raises(IntegrityError):
             db.commit()
+
+
+
+def test_production_rejects_local_sqlite_database():
+    with pytest.raises(ValidationError, match='persistent PostgreSQL'):
+        Settings(
+            environment='production',
+            database_url='sqlite:///./courserecom.db',
+            seed_demo_users=False,
+            jwt_secret='a' * 40,
+            qr_verification_secret='b' * 40,
+            public_api_base_url='https://api.example.edu/api',
+        )
+
+
+def test_production_rejects_missing_database_url():
+    with pytest.raises(ValidationError, match='persistent PostgreSQL'):
+        Settings(
+            environment='production',
+            seed_demo_users=False,
+            jwt_secret='a' * 40,
+            qr_verification_secret='b' * 40,
+            public_api_base_url='https://api.example.edu/api',
+        )
+
+
+def test_cloud_seed_does_not_create_demo_catalog_or_accounts_in_production(monkeypatch):
+    import app.seed as seed
+
+    engine = create_engine('sqlite:///:memory:')
+    Base.metadata.create_all(engine)
+    monkeypatch.setattr(seed, 'SessionLocal', lambda: Session(engine))
+    monkeypatch.setattr(seed.settings, 'environment', 'production')
+    monkeypatch.setattr(seed.settings, 'seed_demo_users', False)
+    monkeypatch.setattr(seed.settings, 'bootstrap_admin_nim', None)
+    monkeypatch.setattr(seed.settings, 'bootstrap_admin_name', None)
+    monkeypatch.setattr(seed.settings, 'bootstrap_admin_password', None)
+
+    seed.seed_data()
+
+    with Session(engine) as db:
+        assert db.query(Course).count() == 0
+        assert db.query(User).count() == 0
+
+    engine.dispose()
+
+
+def test_seed_does_not_reactivate_existing_inactive_course(monkeypatch):
+    import app.seed as seed
+
+    engine = create_engine('sqlite:///:memory:')
+    Base.metadata.create_all(engine)
+    with Session(engine) as db:
+        db.add(Course(
+            code='TI301',
+            name='Course disabled by admin',
+            sks=3,
+            semester=5,
+            category='AI/ML',
+            capacity=40,
+            is_active=False,
+        ))
+        db.commit()
+
+    monkeypatch.setattr(seed, 'SessionLocal', lambda: Session(engine))
+    monkeypatch.setattr(seed.settings, 'seed_demo_users', True)
+
+    seed.seed_data()
+
+    with Session(engine) as db:
+        course = db.query(Course).filter(Course.code == 'TI301').one()
+        assert course.name == 'Course disabled by admin'
+        assert course.is_active is False
+
+    engine.dispose()
