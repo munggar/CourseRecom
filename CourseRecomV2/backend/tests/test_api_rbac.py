@@ -475,9 +475,19 @@ def test_admin_dashboard_lists_students_and_advisors_and_only_admin_can_delete_s
         assert db.query(KhsDocument).filter(KhsDocument.student_id == student_id).count() == 0
         assert db.query(StudyPlan).filter(StudyPlan.student_id == student_id).count() == 0
         assert db.query(User).filter(User.nim == advisor_nim).one().role == 'dosen'
+        assert db.query(AuditLog).filter(
+            AuditLog.entity_type == 'user',
+            AuditLog.entity_id == str(student_id),
+            AuditLog.action == 'student_deleted',
+        ).count() == 1
         db.close()
     finally:
         db = SessionLocal()
+        db.query(AuditLog).filter(
+            AuditLog.entity_type == 'user',
+            AuditLog.entity_id == str(student_id),
+            AuditLog.action == 'student_deleted',
+        ).delete(synchronize_session=False)
         db.query(User).filter(User.nim == student_nim).delete(synchronize_session=False)
         db.query(User).filter(User.nim == advisor_nim).delete(synchronize_session=False)
         db.commit()

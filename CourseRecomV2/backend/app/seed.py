@@ -16,7 +16,7 @@ def build_demo_password() -> str:
 def seed_data() -> None:
     db = SessionLocal()
     try:
-        if db.query(Course).count() == 0:
+        if settings.seed_demo_users and db.query(Course).count() == 0:
             for item in course_catalog:
                 course_data = dict(item)
                 course_data['prerequisite_codes'] = course_data.get('prerequisite_codes', '') or ''

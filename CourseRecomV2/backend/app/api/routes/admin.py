@@ -343,6 +343,15 @@ def delete_student(
             {'advisor_id': None},
             synchronize_session=False,
         )
+        write_audit(
+            db,
+            current_user,
+            'student_deleted',
+            'user',
+            student.id,
+            {'nim': student.nim, 'full_name': student.full_name},
+            None,
+        )
         db.delete(student)
         db.commit()
     except IntegrityError as exc:
@@ -576,6 +585,14 @@ async def import_data(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     try:
+        previous_active_count = db.query(Course).filter(Course.is_active.is_(True)).count()
+        previous_active_codes = [
+            code for (code,) in db.query(Course.code)
+            .filter(Course.is_active.is_(True))
+            .order_by(Course.code)
+            .all()
+        ]
+
         if replace_catalog:
             db.query(Course).update({'is_active': False}, synchronize_session=False)
 
@@ -585,10 +602,25 @@ async def import_data(
                 course = Course(code=item['code'])
                 db.add(course)
             for field, value in item.items():
-                if field == 'available_semesters':
-                    value = value
                 setattr(course, field, value)
             course.is_active = True
+
+        write_audit(
+            db,
+            current_user,
+            'course_catalog_imported',
+            'course_catalog',
+            'active',
+            {
+                'active_count': previous_active_count,
+                'active_codes': previous_active_codes,
+            },
+            {
+                'rows_received': len(courses),
+                'catalog_replaced': replace_catalog,
+                'file_name': filename,
+            },
+        )
         db.commit()
     except SQLAlchemyError:
         db.rollback()
