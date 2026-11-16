@@ -343,6 +343,15 @@ def delete_student(
             {'advisor_id': None},
             synchronize_session=False,
         )
+        write_audit(
+            db,
+            current_user,
+            'student_deleted',
+            'user',
+            student.id,
+            {'nim': student.nim, 'full_name': student.full_name},
+            None,
+        )
         db.delete(student)
         db.commit()
     except IntegrityError as exc:
