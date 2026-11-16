@@ -96,6 +96,7 @@ def test_admin_lecturer_create_read_update_and_delete_cycle():
     nip = f'DOS{suffix}'.upper()
     username = f'lecturer-{suffix}'
     email = f'{username}@example.test'
+    stored_id = None
     try:
         created = client.post('/api/admin/lecturers', headers=ADMIN_HEADERS, json={
             'nip': nip,
@@ -142,12 +143,14 @@ def test_admin_lecturer_create_read_update_and_delete_cycle():
         db = SessionLocal()
         lecturer = db.query(User).filter(User.nim == nip).first()
         if lecturer:
+            stored_id = lecturer.id
             db.delete(lecturer)
-        db.query(AuditLog).filter(
-            AuditLog.entity_type == 'user',
-            AuditLog.action.in_(('lecturer_created', 'lecturer_updated', 'lecturer_deleted')),
-            AuditLog.new_value.like(f'%{nip}%'),
-        ).delete(synchronize_session=False)
+        if stored_id is not None:
+            db.query(AuditLog).filter(
+                AuditLog.entity_type == 'user',
+                AuditLog.entity_id == str(stored_id),
+                AuditLog.action.in_(('lecturer_created', 'lecturer_updated', 'lecturer_deleted')),
+            ).delete(synchronize_session=False)
         db.commit()
         db.close()
 
