@@ -70,3 +70,60 @@ jobs:
         run: npm run lint
       - name: Build production frontend
         run: npm run build
+
+  browser-e2e:
+    name: Browser E2E (desktop and mobile)
+    runs-on: ubuntu-latest
+    env:
+      ENVIRONMENT: testing
+      DATABASE_URL: sqlite:///./courserecom-browser-ci.db
+      SEED_DEMO_USERS: "true"
+      JWT_SECRET: courserecom-ci-browser-jwt-secret-not-used-in-production
+      QR_VERIFICATION_SECRET: courserecom-ci-browser-qr-secret-not-used-in-production
+      FRONTEND_URL: http://127.0.0.1:8000
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: CourseRecomV2/frontend/package-lock.json
+      - name: Install browser and OCR system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y poppler-utils tesseract-ocr tesseract-ocr-ind
+      - name: Install Python and browser dependencies
+        run: |
+          python -m pip install -r CourseRecomV2/backend/requirements.txt
+          python -m pip install playwright
+          python -m playwright install --with-deps chromium
+      - name: Build integrated frontend
+        run: |
+          npm ci --prefix CourseRecomV2/frontend
+          npm run build --prefix CourseRecomV2/frontend
+          mkdir -p CourseRecomV2/backend/app/static
+          cp -R CourseRecomV2/frontend/dist/. CourseRecomV2/backend/app/static/
+      - name: Start isolated application and run browser tests
+        working-directory: CourseRecomV2/backend
+        env:
+          E2E_BASE_URL: http://127.0.0.1:8000
+        run: |
+          python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 > /tmp/courserecom-e2e.log 2>&1 &
+          for attempt in $(seq 1 60); do
+            if curl --silent --fail http://127.0.0.1:8000/api/health > /dev/null; then
+              break
+            fi
+            sleep 2
+          done
+          curl --silent --fail http://127.0.0.1:8000/api/health
+          python -m pytest -q tests/test_browser_smoke.py --tb=short
+      - name: Upload browser server log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: courserecom-browser-e2e-server-log
+          path: /tmp/courserecom-e2e.log
+          if-no-files-found: ignore
