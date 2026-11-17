@@ -14,6 +14,7 @@ from app.schemas import KhsConfirm, ProfileUpdate, RecommendationItem, StudyPlan
 from app.services.khs_parser import (
     GRADE_POINTS,
     estimate_numeric_grade,
+    normalize_historical_khs_data,
     deduplicate_course_entries,
     parse_khs_images,
     parse_khs_pdf,
@@ -85,7 +86,7 @@ def get_curriculum(
 
 
 def _serialize_document(document: KhsDocument) -> dict:
-    data = json.loads(document.parsed_data)
+    data = normalize_historical_khs_data(json.loads(document.parsed_data))
     return {
         'id': document.id,
         'filename': document.filename,
@@ -376,7 +377,7 @@ def edit_confirmed_khs(
     ).first()
     if not document:
         raise HTTPException(status_code=404, detail='Riwayat KHS tidak ditemukan.')
-    parsed = json.loads(document.parsed_data)
+    parsed = normalize_historical_khs_data(json.loads(document.parsed_data))
     courses = parsed.get('courses', [])
     edits = payload.get('courses', [])
     by_key = {(str(item.get('code', '')).upper(), int(item.get('semester', 0))): item for item in edits}
