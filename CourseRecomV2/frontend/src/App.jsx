@@ -1146,7 +1146,9 @@ function App() {
                 A: 4, 'A-': 3.7, 'B+': 3.3, B: 3, 'B-': 2.7,
                 'C+': 2.3, C: 2, 'C-': 1.7, D: 1, E: 0, F: 0,
               }[value.trim().toUpperCase()] ?? null,
-            } : {}),
+              numeric_grade: ({ A: 85, 'A-': 82, 'B+': 78, B: 75, 'B-': 72, 'C+': 68, C: 65, 'C-': 62, D: 50, E: 40, F: 30 })[value.trim().toUpperCase()] ?? '',
+              numeric_grade_estimated: true,
+            } : field === 'numeric_grade' ? { numeric_grade_estimated: false } : {}),
           }
       ));
       return {
