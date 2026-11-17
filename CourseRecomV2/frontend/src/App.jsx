@@ -2256,9 +2256,8 @@ function App() {
                   {!editing && <button className="btn outline" type="button" onClick={() => beginHistoryEdit(doc)}>Edit nilai & IPK</button>}</div>
                   <label>IPK {editing ? <input type="number" min="0" max="4" step="0.01" value={historyEditDraft.ipk} onChange={(event) => setHistoryEditDraft((draft) => ({ ...draft, ipk: event.target.value }))} /> : <strong>{doc.metadata?.ipk ?? '—'}</strong>}</label>
                   {doc.semesters.map((semester) => (
-                    <div key={semester.semester}>
+                    <div key={semester.semester} className="history-semester">
                       <h4>Semester {semester.semester} · {semester.courses.length} mata kuliah</h4>
-                      <label>IPS semester {semester.semester} {editing ? <input type="number" min="0" max="4" step="0.01" value={historyEditDraft.ip_semesters[String(semester.semester)] ?? ''} onChange={(event) => setHistoryEditDraft((draft) => ({ ...draft, ip_semesters: { ...draft.ip_semesters, [String(semester.semester)]: event.target.value } }))} /> : <strong>{semester.ip_semester ?? '—'}</strong>}</label>
                       <div className="table-wrap"><table className="table">
                         <thead><tr><th>Kode</th><th>Mata kuliah</th><th>SKS</th><th>Nilai angka</th><th>Grade</th><th>Keterangan</th></tr></thead>
                         <tbody>{semester.courses.map((course, index) => {
@@ -2271,10 +2270,15 @@ function App() {
                           </tr>;
                         })}</tbody>
                       </table></div>
+                      <div className="semester-summary-item history-ips-result">
+                        <strong>IPS Semester {semester.semester}</strong>
+                        {editing
+                          ? <input aria-label={`Edit IPS semester ${semester.semester}`} type="number" min="0" max="4" step="0.01" value={historyEditDraft.ip_semesters[String(semester.semester)] ?? ''} onChange={(event) => setHistoryEditDraft((draft) => ({ ...draft, ip_semesters: { ...draft.ip_semesters, [String(semester.semester)]: event.target.value } }))} />
+                          : <span>{semester.ip_semester ?? '—'}</span>}
+                      </div>
                     </div>
                   ))}
                   {editing && <div className="preview-actions"><button className="btn primary" type="button" disabled={historyEditBusy} onClick={() => saveHistoryEdit(doc)}>{historyEditBusy ? 'Menyimpan...' : 'Simpan perubahan'}</button><button className="btn outline" type="button" disabled={historyEditBusy} onClick={() => { setHistoryEditId(null); setHistoryEditDraft(null); }}>Batal</button></div>}
-                  <div className="semester-summary-item"><strong>Hasil IPS seluruh semester</strong><span>{doc.semesters.map((item) => `S${item.semester}: ${item.ip_semester ?? '—'}`).join(' · ')}</span></div>
                 </section>
               );
             })}
