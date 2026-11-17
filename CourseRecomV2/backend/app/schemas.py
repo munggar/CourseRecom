@@ -15,8 +15,16 @@ class StudentRegistration(BaseModel):
     full_name: str = Field(min_length=2, max_length=120)
     username: str | None = Field(default=None, min_length=2, max_length=120)
     program_study: str = Field(default='', max_length=120)
-    angkatan: str = Field(default='', max_length=20)
+    angkatan: str = Field(default='', max_length=4)
     password: str = Field(min_length=8, max_length=72)
+
+    @field_validator('angkatan')
+    @classmethod
+    def validate_angkatan(cls, value: str) -> str:
+        value = value.strip()
+        if value and not re.fullmatch(r'\d{4}', value):
+            raise ValueError('Angkatan harus berupa 4 digit angka.')
+        return value
 
     @field_validator('nim', 'full_name')
     @classmethod
@@ -236,8 +244,34 @@ class KhsConfirm(BaseModel):
     program_study: str = ''
     current_semester: int = Field(ge=1, le=14)
     ipk: Optional[float] = Field(default=None, ge=0, le=4)
-    ip_semesters: dict[int, Optional[float]] = Field(default_factory=dict)
+    ip_semesters: dict[int, float] = Field(default_factory=dict)
     courses: List[KhsCourseEntry]
+
+    @field_validator('ip_semesters')
+    @classmethod
+    def validate_ip_semesters(cls, value: dict[int, float]) -> dict[int, float]:
+        for semester, ips in value.items():
+            if not 1 <= semester <= 14:
+                raise ValueError('Nomor semester IPS harus berada pada rentang 1 sampai 14.')
+            if not 0 <= ips <= 4:
+                raise ValueError(f'IPS semester {semester} harus berada di antara 0,00 dan 4,00.')
+        return value
+
+    @model_validator(mode='after')
+    def require_ips_and_calculate_ipk(self):
+        required_semesters = set(range(1, self.current_semester + 1))
+        provided_semesters = set(self.ip_semesters)
+        missing_semesters = sorted(required_semesters - provided_semesters)
+        if missing_semesters:
+            labels = ', '.join(str(item) for item in missing_semesters)
+            raise ValueError(f'IPS wajib diisi untuk semester: {labels}.')
+        unexpected_semesters = sorted(provided_semesters - required_semesters)
+        if unexpected_semesters:
+            labels = ', '.join(str(item) for item in unexpected_semesters)
+            raise ValueError(f'IPS tidak boleh melebihi semester saat ini ({self.current_semester}): {labels}.')
+        ips_values = [self.ip_semesters[semester] for semester in range(1, self.current_semester + 1)]
+        self.ipk = round(sum(ips_values) / len(ips_values), 2)
+        return self
 
 
 class StudyPlanSubmit(BaseModel):
