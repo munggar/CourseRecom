@@ -405,6 +405,9 @@ def edit_confirmed_khs(
                 raise HTTPException(status_code=422, detail='IPS harus berada pada rentang 0,00 sampai 4,00.')
             semester['ip_semester'] = value
     parsed['courses'] = courses
+    for semester in parsed.get('semesters', []):
+        semester_number = int(semester.get('semester', 0) or 0)
+        semester['courses'] = [item for item in courses if int(item.get('semester', 0) or 0) == semester_number]
     document.parsed_data = json.dumps(parsed, ensure_ascii=False)
     document.updated_at = utc_now_naive()
     for record in db.query(StudentRecord).filter(StudentRecord.student_id == current_user.id).all():
