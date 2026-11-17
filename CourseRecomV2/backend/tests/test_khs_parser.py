@@ -92,7 +92,7 @@ def test_parse_uhamka_histori_nilai_uses_academic_terms_and_compact_columns(monk
         'name': 'Algo. dan Dasar Pemrograman',
         'sks': 2,
         'grade': 'A',
-        'numeric_grade': None,
+        'numeric_grade': 85.76,
         'grade_point': 4.0,
         'semester': 1,
     }
@@ -171,7 +171,7 @@ def test_generic_parser_accepts_numeric_course_code_layout():
         'name': 'Algo. dan Dasar Pemrograman',
         'sks': 2,
         'grade': 'A',
-        'numeric_grade': None,
+        'numeric_grade': 85.76,
         'grade_point': 4,
     }
 
