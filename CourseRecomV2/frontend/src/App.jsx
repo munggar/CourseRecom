@@ -24,6 +24,42 @@ const NORMALIZED_API_BASE = /(?:^|\/)api$/i.test(CONFIGURED_API_BASE)
   : `${CONFIGURED_API_BASE}/api`;
 const API_BASE = NORMALIZED_API_BASE;
 const IS_PRODUCTION_ENVIRONMENT = String(import.meta.env.VITE_ENVIRONMENT || '').toLowerCase() === 'production';
+const INITIAL_YEAR = new Date().getFullYear();
+const DEFAULT_ACADEMIC_YEAR = `${INITIAL_YEAR}/${INITIAL_YEAR + 1}`;
+
+function calculateIpkFromSemesterIps(semesters, currentSemester) {
+  const count = Number(currentSemester);
+  if (!Number.isInteger(count) || count < 1) return null;
+  const indexed = new Map((semesters || []).map((item) => [Number(item.semester), item.ip_semester]));
+  const values = [];
+  for (let semester = 1; semester <= count; semester += 1) {
+    const raw = indexed.get(semester);
+    if (raw === '' || raw === null || raw === undefined) return null;
+    const value = Number(raw);
+    if (!Number.isFinite(value) || value < 0 || value > 4) return null;
+    values.push(value);
+  }
+  return Number((values.reduce((total, value) => total + value, 0) / values.length).toFixed(2));
+}
+
+function normalizeKhsPreview(preview) {
+  const courses = Array.isArray(preview.courses)
+    ? preview.courses
+    : (preview.semesters || []).flatMap((semester) => semester.courses || []);
+  const parsedCurrent = Number(preview.metadata?.current_semester);
+  const currentSemester = Number.isInteger(parsedCurrent) && parsedCurrent >= 1 && parsedCurrent <= 14
+    ? parsedCurrent
+    : Math.max(1, ...(preview.semesters || []).map((item) => Number(item.semester) || 0));
+  const bySemester = new Map((preview.semesters || []).map((item) => [Number(item.semester), item]));
+  const semesters = Array.from({ length: currentSemester }, (_, index) => {
+    const semester = index + 1;
+    const existing = bySemester.get(semester);
+    return existing
+      ? { ...existing, semester, courses: courses.filter((course) => Number(course.semester) === semester) }
+      : { semester, ip_semester: '', courses: [] };
+  });
+  return { ...preview, courses, semesters };
+}
 
 const EMPTY_RECOMMENDATIONS = {
   status: 'khs_required',
@@ -126,36 +162,42 @@ async function apiRequest(path, options = {}) {
     headers.set('Authorization', 'Bearer ' + token);
   }
 
-  const response = await fetch(`${API_BASE}${path}`, {
-    ...options,
-    headers,
-  });
-  expireSessionOnUnauthorized(response, token);
+  const { suppressLoader = false, ...requestOptions } = options;
+  if (!suppressLoader) window.dispatchEvent(new Event('courserecom:request-start'));
+  try {
+    const response = await fetch(`${API_BASE}${path}`, {
+      ...requestOptions,
+      headers,
+    });
+    expireSessionOnUnauthorized(response, token);
 
-  const contentType = response.headers.get('content-type') || '';
-  const responseText = response.status === 204 ? '' : await response.text();
-  const data = responseText
-    ? contentType.includes('application/json')
-      ? JSON.parse(responseText)
-      : responseText
-    : null;
+    const contentType = response.headers.get('content-type') || '';
+    const responseText = response.status === 204 ? '' : await response.text();
+    const data = responseText
+      ? contentType.includes('application/json')
+        ? JSON.parse(responseText)
+        : responseText
+      : null;
 
-  if (!response.ok) {
-    const detail = data && typeof data === 'object' ? data.detail : null;
-    const message = Array.isArray(detail)
-      ? detail.map((issue) => {
-        if (typeof issue === 'string') return issue;
-        if (!issue || typeof issue !== 'object') return '';
-        const field = Array.isArray(issue.loc) ? issue.loc.at(-1) : '';
-        return [field, issue.msg].filter(Boolean).join(': ') || JSON.stringify(issue);
-      }).filter(Boolean).join(' ')
-      : detail && typeof detail === 'object'
-        ? detail.msg || JSON.stringify(detail)
-        : detail || (typeof data === 'object' && data !== null ? data.message : data) || 'Permintaan gagal';
-    throw new Error(message);
+    if (!response.ok) {
+      const detail = data && typeof data === 'object' ? data.detail : null;
+      const message = Array.isArray(detail)
+        ? detail.map((issue) => {
+          if (typeof issue === 'string') return issue;
+          if (!issue || typeof issue !== 'object') return '';
+          const field = Array.isArray(issue.loc) ? issue.loc.at(-1) : '';
+          return [field, issue.msg].filter(Boolean).join(': ') || JSON.stringify(issue);
+        }).filter(Boolean).join(' ')
+        : detail && typeof detail === 'object'
+          ? detail.msg || JSON.stringify(detail)
+          : detail || (typeof data === 'object' && data !== null ? data.message : data) || 'Permintaan gagal';
+      throw new Error(message);
+    }
+
+    return data;
+  } finally {
+    if (!suppressLoader) window.dispatchEvent(new Event('courserecom:request-end'));
   }
-
-  return data;
 }
 
 function App() {
@@ -193,6 +235,7 @@ function App() {
   const [overrideReason, setOverrideReason] = useState({});
   const [overrideCourses, setOverrideCourses] = useState({});
   const [settingDraft, setSettingDraft] = useState({
+    active_academic_year: DEFAULT_ACADEMIC_YEAR,
     krs_period_start: '',
     krs_period_end: '',
     krs_fill_deadline: '',
@@ -228,6 +271,11 @@ function App() {
     capacity: 40,
   });
   const [loading, setLoading] = useState(false);
+  const [pendingRequests, setPendingRequests] = useState(0);
+  const [academicYear, setAcademicYear] = useState({
+    academic_year: DEFAULT_ACADEMIC_YEAR,
+    max_angkatan: INITIAL_YEAR,
+  });
   const [loginError, setLoginError] = useState('');
   const [authMessage, setAuthMessage] = useState('');
   const [profileDraft, setProfileDraft] = useState('Kecerdasan Bisnis');
@@ -273,6 +321,27 @@ function App() {
     };
     window.addEventListener('courserecom:session-expired', handleExpiredSession);
     return () => window.removeEventListener('courserecom:session-expired', handleExpiredSession);
+  }, []);
+
+  useEffect(() => {
+    const onRequestStart = () => setPendingRequests((count) => count + 1);
+    const onRequestEnd = () => setPendingRequests((count) => Math.max(0, count - 1));
+    window.addEventListener('courserecom:request-start', onRequestStart);
+    window.addEventListener('courserecom:request-end', onRequestEnd);
+    return () => {
+      window.removeEventListener('courserecom:request-start', onRequestStart);
+      window.removeEventListener('courserecom:request-end', onRequestEnd);
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    apiRequest('/auth/academic-year')
+      .then((result) => {
+        if (!cancelled) setAcademicYear(result);
+      })
+      .catch((error) => console.error('Academic year configuration could not be loaded:', error));
+    return () => { cancelled = true; };
   }, []);
 
   const pushToast = useCallback((message, type = toastTypeFor(message)) => {
@@ -385,7 +454,7 @@ function App() {
     if (user?.role !== 'mahasiswa') return undefined;
     const refreshStudyPlans = async () => {
       try {
-        const plans = await apiRequest('/mahasiswa/rencana-studi');
+        const plans = await apiRequest('/mahasiswa/rencana-studi', { suppressLoader: true });
         setStudyPlans(plans);
         if (plans.some((plan) => (
           plan.status === 'approved'
@@ -1039,8 +1108,7 @@ function App() {
         method: 'POST',
         body: formData,
       });
-      preview.courses = preview.semesters.flatMap((semester) => semester.courses);
-      setKhsPreview(preview);
+      setKhsPreview(normalizeKhsPreview(preview));
       setKhsFiles([]);
       uploadForm.reset();
     } catch (error) {
@@ -1159,16 +1227,6 @@ function App() {
     });
   };
 
-  const addPreviewSemester = () => {
-    setKhsPreview((previous) => {
-      const nextSemester = Math.max(0, ...previous.semesters.map((item) => Number(item.semester))) + 1;
-      return {
-        ...previous,
-        semesters: [...previous.semesters, { semester: nextSemester, ip_semester: '', courses: [] }],
-      };
-    });
-  };
-
   const refreshStudentData = async () => {
     const [profileData, recommendationData, khsDocuments] = await Promise.all([
       apiRequest('/mahasiswa/profil'),
@@ -1211,6 +1269,11 @@ function App() {
       }));
       const currentSemester = Number(khsPreview.metadata.current_semester)
         || Math.max(...courses.map((course) => course.semester));
+      const calculatedIpk = calculateIpkFromSemesterIps(khsPreview.semesters, currentSemester);
+      if (calculatedIpk === null) {
+        setKhsError(`IPS wajib diisi untuk seluruh semester 1 sampai ${currentSemester} dengan nilai 0,00–4,00 sebelum KHS dikonfirmasi.`);
+        return;
+      }
       const response = await apiRequest(`/mahasiswa/khs/${khsPreview.id}/confirm`, {
         method: 'POST',
         body: JSON.stringify({
@@ -1218,10 +1281,10 @@ function App() {
           full_name: khsPreview.metadata.full_name,
           program_study: khsPreview.metadata.program_study || '',
           current_semester: currentSemester,
-          ipk: khsPreview.metadata.ipk === '' ? null : khsPreview.metadata.ipk,
+          ipk: calculatedIpk,
           ip_semesters: Object.fromEntries(khsPreview.semesters.map((semester) => [
             semester.semester,
-            semester.ip_semester === '' ? null : semester.ip_semester,
+            Number(semester.ip_semester),
           ])),
           courses,
         }),
@@ -1551,8 +1614,20 @@ function App() {
                 <label>Program studi
                   <input value={khsPreview.metadata.program_study || ''} onChange={(event) => updatePreviewMetadata('program_study', event.target.value)} />
                 </label>
-                <label>IPK
-                  <input type="number" min="0" max="4" step="0.01" value={khsPreview.metadata.ipk ?? ''} onChange={(event) => updatePreviewMetadata('ipk', event.target.value)} />
+                <label>IPK (otomatis)
+                  <input
+                    type="number"
+                    min="0"
+                    max="4"
+                    step="0.01"
+                    value={calculateIpkFromSemesterIps(
+                      khsPreview.semesters,
+                      Number(khsPreview.metadata.current_semester) || Math.max(...khsPreview.semesters.map((item) => Number(item.semester))),
+                    ) ?? ''}
+                    readOnly
+                    aria-readonly="true"
+                  />
+                  <small className="muted">Rata-rata IPS seluruh semester, dihitung otomatis saat IPS berubah.</small>
                 </label>
               </div>
               <div className="semester-summary">
@@ -1565,16 +1640,20 @@ function App() {
                         onChange={(event) => updatePreviewSemester(semester.semester, 'semester', event.target.value)}
                       />
                     </label>
-                    <label>IP semester
+                    <label>IPS semester {semester.semester} *
                       <input
-                        type="number" min="0" max="4" step="0.01"
+                        type="number"
+                        min="0"
+                        max="4"
+                        step="0.01"
+                        required
                         value={semester.ip_semester ?? ''}
                         onChange={(event) => updatePreviewSemester(semester.semester, 'ip_semester', event.target.value)}
+                        aria-label={`IPS wajib semester ${semester.semester}`}
                       />
                     </label>
                   </div>
                 ))}
-                <button className="btn outline" type="button" onClick={addPreviewSemester}>Tambah semester yang belum terbaca</button>
               </div>
               {khsPreview.semesters.map((semester, semesterIndex) => (
                 <section className="semester-preview" key={`${semester.semester}-${semesterIndex}`}>
@@ -1613,8 +1692,7 @@ function App() {
                 <div key={document.id} className="history-row">
                   <span>{document.filename}</span><span className={`status-pill status-${document.status}`}>{document.status}</span>
                   {document.status === 'pending' && <button type="button" className="btn outline" onClick={() => {
-                    document.courses = document.courses || document.semesters.flatMap((semester) => semester.courses);
-                    setKhsPreview(document);
+                    setKhsPreview(normalizeKhsPreview(document));
                   }}>Lanjutkan pratinjau</button>}
                 </div>
               ))
@@ -2330,6 +2408,22 @@ function App() {
           <section style={{ marginTop: 20 }}>
             <h3>Periode dan Batas Akademik</h3>
             <div className="course-edit-grid">
+              <label className="course-edit-field">
+                <span className="muted">Tahun ajaran aktif</span>
+                <input
+                  type="text"
+                  maxLength="9"
+                  pattern="\d{4}/\d{4}"
+                  placeholder="2026/2027"
+                  value={settingDraft.active_academic_year || ''}
+                  onChange={(event) => setSettingDraft((previous) => ({
+                    ...previous,
+                    active_academic_year: event.target.value.replace(/[^0-9/]/g, '').slice(0, 9),
+                  }))}
+                />
+                <small className="muted">Batas angkatan daftar mahasiswa mengikuti tahun pertama pada tahun ajaran ini.</small>
+                <button className="btn outline" type="button" onClick={() => saveAdminSetting('active_academic_year')}>Simpan tahun ajaran</button>
+              </label>
               {[
                 ['krs_period_start', 'Mulai periode KRS', 'datetime-local'],
                 ['krs_period_end', 'Selesai periode KRS', 'datetime-local'],
@@ -2507,6 +2601,15 @@ function App() {
         <div className="toast-viewport" aria-live="polite">
           {toasts.map((toast) => <ToastItem key={toast.id} toast={toast} onDismiss={dismissToast} />)}
         </div>
+        {(pendingRequests > 0 || loading) && (
+          <div className="global-loading-overlay" role="status" aria-live="polite" aria-label="Aplikasi sedang memproses">
+            <div className="global-loading-card">
+              <span className="global-loading-spinner" aria-hidden="true" />
+              <strong>CourseRecom</strong>
+              <span>Memproses permintaan, mohon tunggu...</span>
+            </div>
+          </div>
+        )}
         <div className="login-box">
           <div style={{ textAlign: 'center', marginBottom: 16 }}>
             <img src="/logo.png" alt="CourseRecom logo" style={{ width: 99, height: 99 }} />
@@ -2534,7 +2637,19 @@ function App() {
                 </label>
                 <label>
                   <span className="muted">Angkatan</span>
-                  <input maxLength="20" inputMode="numeric" value={registrationForm.angkatan} onChange={(e) => setRegistrationForm({ ...registrationForm, angkatan: e.target.value })} />
+                  <input
+                    type="number"
+                    min="1900"
+                    max={academicYear.max_angkatan}
+                    step="1"
+                    inputMode="numeric"
+                    value={registrationForm.angkatan}
+                    onChange={(event) => setRegistrationForm({
+                      ...registrationForm,
+                      angkatan: event.target.value.replace(/\D/g, '').slice(0, 4),
+                    })}
+                  />
+                  <small className="muted">Hanya angka 4 digit, maksimal angkatan {academicYear.max_angkatan} (tahun ajaran {academicYear.academic_year}).</small>
                 </label>
                 <label>
                   <span className="muted">Password (minimal 8 karakter)</span>
@@ -2649,6 +2764,15 @@ function App() {
       <div className="toast-viewport" aria-live="polite">
         {toasts.map((toast) => <ToastItem key={toast.id} toast={toast} onDismiss={dismissToast} />)}
       </div>
+      {(pendingRequests > 0 || loading || khsBusy || studyPlanBusy || lecturerBusy || Boolean(accountBusyNim) || Boolean(courseBusyCode)) && (
+        <div className="global-loading-overlay" role="status" aria-live="polite" aria-label="Aplikasi sedang memproses">
+          <div className="global-loading-card">
+            <span className="global-loading-spinner" aria-hidden="true" />
+            <strong>CourseRecom</strong>
+            <span>Memproses permintaan, mohon tunggu...</span>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
