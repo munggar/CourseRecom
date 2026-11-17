@@ -235,6 +235,7 @@ class KhsCourseEntry(BaseModel):
     sks: int = Field(ge=1, le=10)
     grade: str = Field(min_length=1, max_length=2)
     numeric_grade: Optional[float] = Field(default=None, ge=0, le=100)
+    numeric_grade_estimated: bool = False
     grade_point: Optional[float] = Field(default=None, ge=0, le=4)
 
 
