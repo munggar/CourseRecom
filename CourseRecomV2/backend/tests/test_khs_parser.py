@@ -45,6 +45,7 @@ def test_parse_text_khs_extracts_metadata_and_each_semester(monkeypatch):
         'sks': 3,
         'grade': 'A',
         'numeric_grade': 88.0,
+        'numeric_grade_estimated': False,
         'grade_point': 4.0,
         'semester': 1,
     }
