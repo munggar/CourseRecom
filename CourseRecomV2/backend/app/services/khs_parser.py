@@ -46,6 +46,70 @@ UHAMKA_COURSE_ROW = re.compile(
 def estimate_numeric_grade(grade: str) -> float:
     return ESTIMATED_NUMERIC_GRADES.get(str(grade or '').strip().upper(), 50.0)
 
+def normalize_historical_khs_data(parsed_data: dict) -> dict:
+    """Backfill estimated numeric grades for legacy confirmed KHS records."""
+    data = dict(parsed_data or {})
+    semesters = [
+        dict(item) for item in (data.get('semesters') or [])
+        if isinstance(item, dict)
+    ]
+
+    merged_courses: dict[tuple[str, int], dict] = {}
+    for semester in semesters:
+        semester_number = int(semester.get('semester', 0) or 0)
+        for raw_course in semester.get('courses') or []:
+            if not isinstance(raw_course, dict):
+                continue
+            course = dict(raw_course)
+            course.setdefault('semester', semester_number)
+            key = (
+                str(course.get('code', '')).strip().upper(),
+                int(course.get('semester', 0) or 0),
+            )
+            if key[0]:
+                merged_courses[key] = course
+
+    for raw_course in data.get('courses') or []:
+        if not isinstance(raw_course, dict):
+            continue
+        course = dict(raw_course)
+        key = (
+            str(course.get('code', '')).strip().upper(),
+            int(course.get('semester', 0) or 0),
+        )
+        if not key[0]:
+            continue
+        previous = merged_courses.get(key, {})
+        merged = {**previous, **course}
+        if course.get('numeric_grade') in (None, '') and previous.get('numeric_grade') not in (None, ''):
+            merged['numeric_grade'] = previous['numeric_grade']
+            merged['numeric_grade_estimated'] = previous.get('numeric_grade_estimated', False)
+        merged_courses[key] = merged
+
+    normalized_courses = []
+    for course in merged_courses.values():
+        grade = str(course.get('grade') or '').strip().upper()
+        course['grade'] = grade
+        if course.get('numeric_grade') in (None, '') and grade in GRADE_POINTS:
+            course['numeric_grade'] = estimate_numeric_grade(grade)
+            course['numeric_grade_estimated'] = True
+        else:
+            course['numeric_grade_estimated'] = bool(course.get('numeric_grade_estimated', False))
+        normalized_courses.append(course)
+
+    courses_by_semester: dict[int, list[dict]] = {}
+    for course in normalized_courses:
+        semester_number = int(course.get('semester', 0) or 0)
+        courses_by_semester.setdefault(semester_number, []).append(course)
+
+    for semester in semesters:
+        semester_number = int(semester.get('semester', 0) or 0)
+        semester['courses'] = courses_by_semester.get(semester_number, [])
+
+    data['courses'] = normalized_courses
+    data['semesters'] = semesters
+    return data
+
 
 def _parse_uhamka_course_line(line: str) -> dict | None:
     match = UHAMKA_COURSE_ROW.match(line)
