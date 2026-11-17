@@ -10,6 +10,7 @@ from pypdf import PdfReader
 MAX_PDF_PAGES = 40
 MAX_IMAGE_PIXELS = 12_000_000
 SUPPORTED_IMAGE_FORMATS = {'BMP', 'JPEG', 'PNG', 'TIFF', 'WEBP'}
+ESTIMATED_NUMERIC_GRADES = {'A': 85.0, 'A-': 82.0, 'B+': 78.0, 'B': 75.0, 'B-': 72.0, 'C+': 68.0, 'C': 65.0, 'C-': 62.0, 'D': 50.0, 'E': 40.0, 'F': 30.0}
 GRADE_POINTS = {
     'A': 4.0, 'A-': 3.7, 'B+': 3.3, 'B': 3.0, 'B-': 2.7,
     'C+': 2.3, 'C': 2.0, 'C-': 1.7, 'D': 1.0, 'E': 0.0, 'F': 0.0,
@@ -42,6 +43,10 @@ UHAMKA_COURSE_ROW = re.compile(
 )
 
 
+def estimate_numeric_grade(grade: str) -> float:
+    return ESTIMATED_NUMERIC_GRADES.get(str(grade or '').strip().upper(), 50.0)
+
+
 def _parse_uhamka_course_line(line: str) -> dict | None:
     match = UHAMKA_COURSE_ROW.match(line)
     if not match:
@@ -69,7 +74,8 @@ def _parse_uhamka_course_line(line: str) -> dict | None:
         'name': values['name'].strip(),
         'sks': sks,
         'grade': grade,
-        'numeric_grade': None,
+        'numeric_grade': estimate_numeric_grade(grade),
+        'numeric_grade_estimated': True,
         'grade_point': GRADE_POINTS[grade],
         'academic_year': year,
         'academic_term': values['term'].title() if values['term'] else None,
@@ -97,7 +103,8 @@ def _parse_uhamka_histori_line(line: str) -> dict | None:
         'name': name,
         'sks': sks,
         'grade': grade,
-        'numeric_grade': None,
+        'numeric_grade': estimate_numeric_grade(grade),
+        'numeric_grade_estimated': True,
         'grade_point': GRADE_POINTS[grade],
     }
 
@@ -135,7 +142,8 @@ def _parse_course_line(line: str) -> dict | None:
                 'name': fields[1],
                 'sks': sks,
                 'grade': grade,
-                'numeric_grade': numeric_grade,
+                'numeric_grade': numeric_grade if numeric_grade is not None else estimate_numeric_grade(grade),
+                'numeric_grade_estimated': numeric_grade is None,
                 'grade_point': point,
             }
 
@@ -164,7 +172,8 @@ def _parse_course_line(line: str) -> dict | None:
         'name': name,
         'sks': sks,
         'grade': grade,
-        'numeric_grade': numeric_grade,
+        'numeric_grade': numeric_grade if numeric_grade is not None else estimate_numeric_grade(grade),
+        'numeric_grade_estimated': numeric_grade is None,
         'grade_point': point,
     }
 
