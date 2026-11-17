@@ -176,22 +176,33 @@ def test_khs_preview_is_not_saved_until_confirmation_and_rules_filter_courses(mo
             assert db.query(StudentRecord).filter(StudentRecord.student_id == student_id).count() == 0
             db.close()
 
-            confirmation = client.post(
-                f"/api/mahasiswa/khs/{preview_data['id']}/confirm",
+            confirmation_url = f"/api/mahasiswa/khs/{preview_data['id']}/confirm"
+            confirmation_payload = {
+                'nim': nim,
+                'full_name': 'Mahasiswa Uji',
+                'program_study': 'Teknik Informatika',
+                'current_semester': 2,
+                'ipk': 4.0,
+                'ip_semesters': {'1': 3.5},
+                'courses': [
+                    course
+                    for semester in preview_data['semesters']
+                    for course in semester['courses']
+                ],
+            }
+            missing_ips = client.post(
+                confirmation_url,
                 headers=headers,
-                json={
-                    'nim': nim,
-                    'full_name': 'Mahasiswa Uji',
-                    'program_study': 'Teknik Informatika',
-                    'current_semester': 2,
-                    'ipk': 3.4,
-                    'ip_semesters': {'1': 3.5, '2': 3.4},
-                    'courses': [
-                        course
-                        for semester in preview_data['semesters']
-                        for course in semester['courses']
-                    ],
-                },
+                json=confirmation_payload,
+            )
+            assert missing_ips.status_code == 422
+            assert 'IPS wajib diisi' in missing_ips.text
+
+            confirmation_payload['ip_semesters'] = {'1': 3.5, '2': 3.4}
+            confirmation = client.post(
+                confirmation_url,
+                headers=headers,
+                json=confirmation_payload,
             )
             assert confirmation.status_code == 200
             assert confirmation.json()['status'] == 'confirmed'
@@ -212,6 +223,10 @@ def test_khs_preview_is_not_saved_until_confirmation_and_rules_filter_courses(mo
             }
             assert grades_by_semester == {1: 'C', 2: 'B'}
             db.close()
+
+            profile_after_confirmation = client.get('/api/mahasiswa/profil', headers=headers)
+            assert profile_after_confirmation.status_code == 200
+            assert profile_after_confirmation.json()['ipk'] == 3.45
 
             result = client.get('/api/mahasiswa/rekomendasi', headers=headers)
             assert result.status_code == 200
