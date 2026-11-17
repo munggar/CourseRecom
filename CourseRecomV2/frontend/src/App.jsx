@@ -27,6 +27,25 @@ const IS_PRODUCTION_ENVIRONMENT = String(import.meta.env.VITE_ENVIRONMENT || '')
 const INITIAL_YEAR = new Date().getFullYear();
 const DEFAULT_ACADEMIC_YEAR = `${INITIAL_YEAR}/${INITIAL_YEAR + 1}`;
 
+// Mean numeric scores calculated from the examples supplied by the user.
+// E/F and plus/minus variants are estimates because those distinctions were
+// not represented in the supplied sample rows.
+const ESTIMATED_NUMERIC_GRADES = Object.freeze({
+  A: 85.76,
+  B: 76.58,
+  C: 63.60,
+  D: 52.00,
+  E: 40.00,
+  F: 0.00,
+});
+
+function estimateNumericGradeFromLetter(grade) {
+  const baseLetter = String(grade ?? '').trim().toUpperCase().slice(0, 1);
+  return Object.prototype.hasOwnProperty.call(ESTIMATED_NUMERIC_GRADES, baseLetter)
+    ? ESTIMATED_NUMERIC_GRADES[baseLetter]
+    : null;
+}
+
 function calculateIpkFromSemesterIps(semesters, currentSemester) {
   const count = Number(currentSemester);
   if (!Number.isInteger(count) || count < 1) return null;
@@ -43,9 +62,18 @@ function calculateIpkFromSemesterIps(semesters, currentSemester) {
 }
 
 function normalizeKhsPreview(preview) {
-  const courses = Array.isArray(preview.courses)
+  const courses = (Array.isArray(preview.courses)
     ? preview.courses
-    : (preview.semesters || []).flatMap((semester) => semester.courses || []);
+    : (preview.semesters || []).flatMap((semester) => semester.courses || [])).map((course) => ({
+    ...course,
+    numeric_grade: (
+      course.numeric_grade === null
+      || course.numeric_grade === undefined
+      || course.numeric_grade === ''
+    )
+      ? (estimateNumericGradeFromLetter(course.grade) ?? '')
+      : course.numeric_grade,
+  }));
   const parsedCurrent = Number(preview.metadata?.current_semester);
   const currentSemester = Number.isInteger(parsedCurrent) && parsedCurrent >= 1 && parsedCurrent <= 14
     ? parsedCurrent
@@ -1139,6 +1167,7 @@ function App() {
             ...course,
             [field]: value,
             ...(field === 'grade' ? {
+              numeric_grade: estimateNumericGradeFromLetter(value) ?? '',
               grade_point: {
                 A: 4, 'A-': 3.7, 'B+': 3.3, B: 3, 'B-': 2.7,
                 'C+': 2.3, C: 2, 'C-': 1.7, D: 1, E: 0, F: 0,
@@ -1635,6 +1664,10 @@ function App() {
                   <small className="muted">Rata-rata IPS seluruh semester, dihitung otomatis saat IPS berubah.</small>
                 </label>
               </div>
+              <p className="muted">
+                Nilai angka terisi otomatis sebagai perkiraan berdasarkan contoh data yang diberikan.
+                Jika nilai angka asli terlihat pada KHS, lo bisa mengoreksinya langsung sebelum konfirmasi.
+              </p>
               <div className="semester-summary">
                 {khsPreview.semesters.map((semester, index) => (
                   <div className="semester-summary-item" key={`${semester.semester}-${index}`}>
@@ -2213,7 +2246,13 @@ function App() {
                     <div className="table-wrap"><table className="table">
                       <thead><tr><th>Kode</th><th>Mata kuliah</th><th>SKS</th><th>Nilai angka</th><th>Grade</th></tr></thead>
                       <tbody>{semester.courses.map((course, index) => (
-                        <tr key={`${course.code}-${index}`}><td>{course.code}</td><td>{course.name}</td><td>{course.sks}</td><td>{course.numeric_grade ?? '—'}</td><td>{course.grade}</td></tr>
+                        <tr key={`${course.code}-${index}`}><td>{course.code}</td><td>{course.name}</td><td>{course.sks}</td><td>{
+                          course.numeric_grade !== null
+                          && course.numeric_grade !== undefined
+                          && course.numeric_grade !== ''
+                            ? course.numeric_grade
+                            : (estimateNumericGradeFromLetter(course.grade) ?? '—')
+                        }</td><td>{course.grade}</td></tr>
                       ))}</tbody>
                     </table></div>
                   </div>
