@@ -292,24 +292,29 @@ function App() {
   const [actionMessage, setActionMessage] = useState('');
   const downloadOfficialKrs = useCallback(async (planId) => {
     const token = localStorage.getItem('courseRecomToken');
-    const response = await fetch(`${API_BASE}/mahasiswa/rencana-studi/${planId}/pdf-resmi`, {
-      headers: token ? { Authorization: 'Bearer ' + token } : {},
-    });
-    expireSessionOnUnauthorized(response, token);
-    if (!response.ok) throw new Error('PDF resmi belum tersedia.');
-    const contentType = response.headers.get('content-type') || '';
-    if (!contentType.includes('application/pdf')) {
-      throw new Error('Respons server bukan dokumen PDF.');
+    window.dispatchEvent(new Event('courserecom:request-start'));
+    try {
+      const response = await fetch(`${API_BASE}/mahasiswa/rencana-studi/${planId}/pdf-resmi`, {
+        headers: token ? { Authorization: 'Bearer ' + token } : {},
+      });
+      expireSessionOnUnauthorized(response, token);
+      if (!response.ok) throw new Error('PDF resmi belum tersedia.');
+      const contentType = response.headers.get('content-type') || '';
+      if (!contentType.includes('application/pdf')) {
+        throw new Error('Respons server bukan dokumen PDF.');
+      }
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `KRS-${planId}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } finally {
+      window.dispatchEvent(new Event('courserecom:request-end'));
     }
-    const blob = await response.blob();
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `KRS-${planId}.pdf`;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
   }, []);
   const [toasts, setToasts] = useState([]);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
