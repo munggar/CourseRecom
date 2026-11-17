@@ -226,3 +226,50 @@ def test_image_parser_returns_photo_specific_guidance_when_ocr_has_no_rows(monke
 def test_parse_khs_images_rejects_invalid_images():
     with pytest.raises(ValueError, match='Gambar tidak valid'):
         khs_parser.parse_khs_images([b'not an image'])
+
+
+
+def test_normalize_historical_khs_backfills_estimates_and_preserves_real_scores():
+    legacy = {
+        'metadata': {'current_semester': 2},
+        'semesters': [
+            {
+                'semester': 1,
+                'ip_semester': 3.25,
+                'courses': [
+                    {'semester': 1, 'code': '03045018', 'name': 'Algoritma', 'sks': 2, 'grade': 'B', 'numeric_grade': None},
+                    {'semester': 1, 'code': '03045022', 'name': 'Bahasa', 'sks': 2, 'grade': 'C', 'numeric_grade': None},
+                ],
+            },
+            {
+                'semester': 2,
+                'ip_semester': 3.50,
+                'courses': [
+                    {'semester': 2, 'code': '03045011', 'name': 'Kalkulus', 'sks': 2, 'grade': 'A', 'numeric_grade': 91.0},
+                ],
+            },
+        ],
+    }
+
+    normalized = khs_parser.normalize_historical_khs_data(legacy)
+
+    assert [course['numeric_grade'] for course in normalized['semesters'][0]['courses']] == [75.0, 65.0]
+    assert [course['numeric_grade_estimated'] for course in normalized['semesters'][0]['courses']] == [True, True]
+    assert normalized['semesters'][1]['courses'][0]['numeric_grade'] == 91.0
+    assert normalized['semesters'][1]['courses'][0]['numeric_grade_estimated'] is False
+    assert len(normalized['courses']) == 3
+    assert normalized['semesters'][0]['ip_semester'] == 3.25
+
+
+def test_normalize_historical_khs_uses_flat_course_list_when_semester_courses_missing():
+    legacy = {
+        'courses': [
+            {'semester': 1, 'code': 'TI101', 'name': 'Algoritma', 'sks': 3, 'grade': 'B+'},
+        ],
+        'semesters': [{'semester': 1, 'ip_semester': 3.4, 'courses': []}],
+    }
+
+    normalized = khs_parser.normalize_historical_khs_data(legacy)
+
+    assert normalized['semesters'][0]['courses'][0]['numeric_grade'] == 78.0
+    assert normalized['semesters'][0]['courses'][0]['numeric_grade_estimated'] is True
