@@ -14,6 +14,21 @@ GRADE_POINTS = {
     'A': 4.0, 'A-': 3.7, 'B+': 3.3, 'B': 3.0, 'B-': 2.7,
     'C+': 2.3, 'C': 2.0, 'C-': 1.7, 'D': 1.0, 'E': 0.0, 'F': 0.0,
 }
+
+# Estimated numeric values calculated as the mean of the sample rows supplied
+# by the user (A=85.76, B=76.58, C=63.60, D=52.00). E/F have no sample rows;
+# those two fallback values are conservative placeholders. Grade +/- variants
+# inherit the estimate for their base letter because the supplied samples do
+# not distinguish plus/minus grades.
+NUMERIC_GRADE_ESTIMATES = {
+    'A': 85.76, 'B': 76.58, 'C': 63.60, 'D': 52.00, 'E': 40.00, 'F': 0.00,
+}
+
+
+def estimate_numeric_grade(grade: str | None) -> float | None:
+    normalized = str(grade or '').strip().upper()
+    base_letter = normalized[:1]
+    return NUMERIC_GRADE_ESTIMATES.get(base_letter)
 COURSE_ROW = re.compile(
     r'^\s*(?:\d{1,3}[.)]?\s+)?'
     r'(?P<code>[A-Z][A-Z0-9./-]{1,}|[0-9]{6,})\s+'
@@ -69,7 +84,7 @@ def _parse_uhamka_course_line(line: str) -> dict | None:
         'name': values['name'].strip(),
         'sks': sks,
         'grade': grade,
-        'numeric_grade': None,
+        'numeric_grade': estimate_numeric_grade(grade),
         'grade_point': GRADE_POINTS[grade],
         'academic_year': year,
         'academic_term': values['term'].title() if values['term'] else None,
@@ -130,6 +145,8 @@ def _parse_course_line(line: str) -> dict | None:
                     point = float(fields[grade_index + 1].replace(',', '.'))
                 except ValueError:
                     pass
+            if numeric_grade is None:
+                numeric_grade = estimate_numeric_grade(grade)
             return {
                 'code': fields[0].upper(),
                 'name': fields[1],
@@ -149,7 +166,7 @@ def _parse_course_line(line: str) -> dict | None:
     try:
         sks = int(values['sks'])
         point = float(values['point'].replace(',', '.')) if values['point'] else GRADE_POINTS[grade]
-        numeric_grade = float(values['score'].replace(',', '.')) if values['score'] else None
+        numeric_grade = float(values['score'].replace(',', '.')) if values['score'] else estimate_numeric_grade(grade)
     except (ValueError, KeyError):
         return None
     if (
