@@ -136,9 +136,9 @@ def test_khs_preview_is_not_saved_until_confirmation_and_rules_filter_courses(mo
                     'semester': 1,
                     'ip_semester': 3.5,
                     'courses': [
-                        {'semester': 1, 'code': 'PRE001', 'name': 'Prasyarat', 'sks': 3, 'grade': 'A', 'numeric_grade': 90, 'grade_point': 4},
+                        {'semester': 1, 'code': 'PRE001', 'name': 'Prasyarat', 'sks': 3, 'grade': 'A', 'numeric_grade': None, 'grade_point': 4},
                         {'semester': 1, 'code': 'TST303', 'name': 'Kursus Pernah Lulus', 'sks': 3, 'grade': 'B', 'numeric_grade': 80, 'grade_point': 3},
-                        {'semester': 1, 'code': 'PRE002', 'name': 'Prasyarat Nilai D', 'sks': 3, 'grade': 'D', 'numeric_grade': 60, 'grade_point': 1},
+                        {'semester': 1, 'code': 'PRE002', 'name': 'Prasyarat Nilai D', 'sks': 3, 'grade': 'D', 'numeric_grade': None, 'grade_point': 1},
                         {'semester': 1, 'code': 'PRE003', 'name': 'Prasyarat Nilai E', 'sks': 3, 'grade': 'E', 'numeric_grade': 40, 'grade_point': 0},
                         {'semester': 1, 'code': '030450026', 'name': 'Jaringan Komp. & Kom.Data', 'sks': 3, 'grade': 'A', 'numeric_grade': 90, 'grade_point': 4},
                         {'semester': 1, 'code': 'TST308', 'name': 'Kursus yang Harus Diulang', 'sks': 3, 'grade': 'E', 'numeric_grade': 40, 'grade_point': 0},
@@ -149,7 +149,7 @@ def test_khs_preview_is_not_saved_until_confirmation_and_rules_filter_courses(mo
                     'semester': 2,
                     'ip_semester': 3.4,
                     'courses': [
-                        {'semester': 2, 'code': 'OTHER1', 'name': 'Kursus Lain', 'sks': 3, 'grade': 'B', 'numeric_grade': 80, 'grade_point': 3},
+                        {'semester': 2, 'code': 'OTHER1', 'name': 'Kursus Lain', 'sks': 3, 'grade': 'B', 'numeric_grade': None, 'grade_point': 3},
                     ],
                 },
             ],
@@ -171,6 +171,14 @@ def test_khs_preview_is_not_saved_until_confirmation_and_rules_filter_courses(mo
             assert preview.status_code == 200, preview.text
             preview_data = preview.json()
             assert preview_data['status'] == 'pending'
+            preview_scores = {
+                course['code']: course['numeric_grade']
+                for semester in preview_data['semesters']
+                for course in semester['courses']
+            }
+            assert preview_scores['PRE001'] == 85.76
+            assert preview_scores['PRE002'] == 52.00
+            assert preview_scores['OTHER1'] == 76.58
 
             db = SessionLocal()
             assert db.query(StudentRecord).filter(StudentRecord.student_id == student_id).count() == 0
@@ -190,6 +198,12 @@ def test_khs_preview_is_not_saved_until_confirmation_and_rules_filter_courses(mo
                     for course in semester['courses']
                 ],
             }
+            # Even when a client omits a numeric score, the backend applies the
+            # same deterministic estimate before persisting the confirmed KHS.
+            next(
+                course for course in confirmation_payload['courses']
+                if course['code'] == 'OTHER1'
+            )['numeric_grade'] = None
             missing_ips = client.post(
                 confirmation_url,
                 headers=headers,
@@ -222,11 +236,30 @@ def test_khs_preview_is_not_saved_until_confirmation_and_rules_filter_courses(mo
                 for record in saved_duplicate_records
             }
             assert grades_by_semester == {1: 'C', 2: 'B'}
+            numeric_grades_by_semester = {
+                record.semester: record.numeric_grade
+                for record in saved_duplicate_records
+            }
+            assert numeric_grades_by_semester == {1: 70.0, 2: 76.58}
             db.close()
 
             profile_after_confirmation = client.get('/api/mahasiswa/profil', headers=headers)
             assert profile_after_confirmation.status_code == 200
             assert profile_after_confirmation.json()['ipk'] == 3.45
+            profile_taken_courses = {
+                item['code']: item['numeric_grade']
+                for item in profile_after_confirmation.json()['taken_courses']
+            }
+            assert profile_taken_courses['OTHER1'] == 76.58
+
+            history_after_confirmation = client.get('/api/mahasiswa/khs', headers=headers)
+            assert history_after_confirmation.status_code == 200
+            history_scores = {
+                course['code']: course['numeric_grade']
+                for semester in history_after_confirmation.json()[0]['semesters']
+                for course in semester['courses']
+            }
+            assert history_scores['OTHER1'] == 76.58
 
             result = client.get('/api/mahasiswa/rekomendasi', headers=headers)
             assert result.status_code == 200
