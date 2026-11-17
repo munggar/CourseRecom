@@ -29,6 +29,8 @@ def estimate_numeric_grade(grade: str | None) -> float | None:
     normalized = str(grade or '').strip().upper()
     base_letter = normalized[:1]
     return NUMERIC_GRADE_ESTIMATES.get(base_letter)
+
+
 COURSE_ROW = re.compile(
     r'^\s*(?:\d{1,3}[.)]?\s+)?'
     r'(?P<code>[A-Z][A-Z0-9./-]{1,}|[0-9]{6,})\s+'
@@ -112,7 +114,7 @@ def _parse_uhamka_histori_line(line: str) -> dict | None:
         'name': name,
         'sks': sks,
         'grade': grade,
-        'numeric_grade': None,
+        'numeric_grade': estimate_numeric_grade(grade),
         'grade_point': GRADE_POINTS[grade],
     }
 
