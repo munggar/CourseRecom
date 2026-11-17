@@ -2,7 +2,7 @@ import hashlib
 import json
 from pathlib import PurePath
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status, Body
 from fastapi.responses import Response
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -13,6 +13,7 @@ from app.models import Course, KhsDocument, KrsDocument, OfficialKrsDocument, St
 from app.schemas import KhsConfirm, ProfileUpdate, RecommendationItem, StudyPlanSubmit, StudyPlanUpdate, KprsMutation
 from app.services.khs_parser import (
     GRADE_POINTS,
+    estimate_numeric_grade,
     deduplicate_course_entries,
     parse_khs_images,
     parse_khs_pdf,
@@ -264,7 +265,8 @@ def confirm_khs(
             'name': course.name.strip(),
             'sks': course.sks,
             'grade': grade,
-            'numeric_grade': course.numeric_grade,
+            'numeric_grade': course.numeric_grade if course.numeric_grade is not None else estimate_numeric_grade(grade),
+            'numeric_grade_estimated': course.numeric_grade_estimated or course.numeric_grade is None,
             'grade_point': GRADE_POINTS[grade],
         })
 
