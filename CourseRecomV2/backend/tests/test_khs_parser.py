@@ -45,6 +45,7 @@ def test_parse_text_khs_extracts_metadata_and_each_semester(monkeypatch):
         'sks': 3,
         'grade': 'A',
         'numeric_grade': 88.0,
+        'numeric_grade_estimated': False,
         'grade_point': 4.0,
         'semester': 1,
     }
@@ -92,7 +93,8 @@ def test_parse_uhamka_histori_nilai_uses_academic_terms_and_compact_columns(monk
         'name': 'Algo. dan Dasar Pemrograman',
         'sks': 2,
         'grade': 'A',
-        'numeric_grade': None,
+        'numeric_grade': 85.0,
+        'numeric_grade_estimated': True,
         'grade_point': 4.0,
         'semester': 1,
     }
@@ -171,7 +173,8 @@ def test_generic_parser_accepts_numeric_course_code_layout():
         'name': 'Algo. dan Dasar Pemrograman',
         'sks': 2,
         'grade': 'A',
-        'numeric_grade': None,
+        'numeric_grade': 85.0,
+        'numeric_grade_estimated': True,
         'grade_point': 4,
     }
 

@@ -285,6 +285,9 @@ function App() {
   const [passwordDraft, setPasswordDraft] = useState({ current_password: '', new_password: '', confirmation: '' });
   const [importStatus, setImportStatus] = useState('');
   const [khsPreview, setKhsPreview] = useState(null);
+  const [historyEditId, setHistoryEditId] = useState(null);
+  const [historyEditDraft, setHistoryEditDraft] = useState(null);
+  const [historyEditBusy, setHistoryEditBusy] = useState(false);
   const [khsFiles, setKhsFiles] = useState([]);
   const [khsBusy, setKhsBusy] = useState(false);
   const [khsError, setKhsError] = useState('');
@@ -1143,7 +1146,9 @@ function App() {
                 A: 4, 'A-': 3.7, 'B+': 3.3, B: 3, 'B-': 2.7,
                 'C+': 2.3, C: 2, 'C-': 1.7, D: 1, E: 0, F: 0,
               }[value.trim().toUpperCase()] ?? null,
-            } : {}),
+              numeric_grade: ({ A: 85, 'A-': 82, 'B+': 78, B: 75, 'B-': 72, 'C+': 68, C: 65, 'C-': 62, D: 50, E: 40, F: 30 })[value.trim().toUpperCase()] ?? '',
+              numeric_grade_estimated: true,
+            } : field === 'numeric_grade' ? { numeric_grade_estimated: false } : {}),
           }
       ));
       return {
@@ -1269,7 +1274,8 @@ function App() {
         name: course.name.trim(),
         sks: Number(course.sks),
         grade: course.grade.trim().toUpperCase(),
-        numeric_grade: course.numeric_grade === '' ? null : course.numeric_grade,
+        numeric_grade: course.numeric_grade === '' ? null : Number(course.numeric_grade),
+        numeric_grade_estimated: Boolean(course.numeric_grade_estimated),
         grade_point: course.grade_point,
       }));
       const currentSemester = Number(khsPreview.metadata.current_semester)
@@ -1308,6 +1314,41 @@ function App() {
       setKhsError(error.message || 'Konfirmasi KHS gagal.');
     } finally {
       setKhsBusy(false);
+    }
+  };
+
+  const beginHistoryEdit = (document) => {
+    setHistoryEditId(document.id);
+    setHistoryEditDraft({
+      ipk: document.metadata?.ipk ?? '',
+      courses: (document.courses || []).map((course) => ({ ...course })),
+      ip_semesters: Object.fromEntries((document.semesters || []).map((item) => [String(item.semester), item.ip_semester ?? ''])),
+    });
+  };
+
+  const saveHistoryEdit = async (document) => {
+    if (!historyEditDraft) return;
+    setHistoryEditBusy(true);
+    try {
+      const response = await apiRequest(`/mahasiswa/khs/${document.id}/edit`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          ipk: historyEditDraft.ipk === '' ? null : Number(historyEditDraft.ipk),
+          courses: historyEditDraft.courses.map((course) => ({
+            semester: Number(course.semester), code: course.code, numeric_grade: Number(course.numeric_grade),
+          })),
+          ip_semesters: historyEditDraft.ip_semesters,
+        }),
+      });
+      setAcademicHistory((previous) => previous.map((item) => item.id === document.id ? response.document : item));
+      setHistoryEditId(null);
+      setHistoryEditDraft(null);
+      await refreshStudentData();
+      pushToast('Nilai angka, IPK, dan IPS berhasil diperbarui.', 'success');
+    } catch (error) {
+      pushToast(error.message || 'Perubahan riwayat KHS gagal disimpan.', 'error');
+    } finally {
+      setHistoryEditBusy(false);
     }
   };
 
@@ -2204,22 +2245,39 @@ function App() {
           <h2>Riwayat KHS</h2>
           {academicHistory.filter((doc) => doc.status === 'confirmed').length === 0
             ? <p className="muted">Belum ada KHS yang dikonfirmasi.</p>
-            : academicHistory.filter((doc) => doc.status === 'confirmed').map((doc) => (
-              <section className="history-document" key={doc.id}>
-                <h3>{doc.filename} · {doc.metadata.current_semester} semester</h3>
-                {doc.semesters.map((semester) => (
-                  <div key={semester.semester}>
-                    <h4>Semester {semester.semester} · {semester.courses.length} mata kuliah · IP semester {semester.ip_semester ?? '—'}</h4>
-                    <div className="table-wrap"><table className="table">
-                      <thead><tr><th>Kode</th><th>Mata kuliah</th><th>SKS</th><th>Nilai angka</th><th>Grade</th></tr></thead>
-                      <tbody>{semester.courses.map((course, index) => (
-                        <tr key={`${course.code}-${index}`}><td>{course.code}</td><td>{course.name}</td><td>{course.sks}</td><td>{course.numeric_grade ?? '—'}</td><td>{course.grade}</td></tr>
-                      ))}</tbody>
-                    </table></div>
+            : academicHistory.filter((doc) => doc.status === 'confirmed').map((doc) => {
+              const editing = historyEditId === doc.id && historyEditDraft;
+              return (
+                <section className="history-document" key={doc.id}>
+                  <div className="preview-header"><div>
+                    <h3>{doc.filename} · {doc.metadata.current_semester} semester</h3>
+                    <p className="muted">Nilai angka yang ditandai perkiraan bukan nilai asli pada KHS. Silakan edit jika memiliki nilai resmi.</p>
                   </div>
-                ))}
-              </section>
-            ))}
+                  {!editing && <button className="btn outline" type="button" onClick={() => beginHistoryEdit(doc)}>Edit nilai & IPK</button>}</div>
+                  <label>IPK {editing ? <input type="number" min="0" max="4" step="0.01" value={historyEditDraft.ipk} onChange={(event) => setHistoryEditDraft((draft) => ({ ...draft, ipk: event.target.value }))} /> : <strong>{doc.metadata?.ipk ?? '—'}</strong>}</label>
+                  {doc.semesters.map((semester) => (
+                    <div key={semester.semester}>
+                      <h4>Semester {semester.semester} · {semester.courses.length} mata kuliah</h4>
+                      <label>IPS semester {semester.semester} {editing ? <input type="number" min="0" max="4" step="0.01" value={historyEditDraft.ip_semesters[String(semester.semester)] ?? ''} onChange={(event) => setHistoryEditDraft((draft) => ({ ...draft, ip_semesters: { ...draft.ip_semesters, [String(semester.semester)]: event.target.value } }))} /> : <strong>{semester.ip_semester ?? '—'}</strong>}</label>
+                      <div className="table-wrap"><table className="table">
+                        <thead><tr><th>Kode</th><th>Mata kuliah</th><th>SKS</th><th>Nilai angka</th><th>Grade</th><th>Keterangan</th></tr></thead>
+                        <tbody>{semester.courses.map((course, index) => {
+                          const draftIndex = historyEditDraft?.courses.findIndex((item) => item.code === course.code && Number(item.semester) === Number(semester.semester));
+                          const draftCourse = editing && draftIndex >= 0 ? historyEditDraft.courses[draftIndex] : course;
+                          return <tr key={`${course.code}-${index}`}>
+                            <td>{course.code}</td><td>{course.name}</td><td>{course.sks}</td>
+                            <td>{editing ? <input aria-label={`Edit nilai angka ${course.code}`} type="number" min="0" max="100" step="0.01" value={draftCourse.numeric_grade ?? ''} onChange={(event) => setHistoryEditDraft((draft) => ({ ...draft, courses: draft.courses.map((item, idx) => idx === draftIndex ? { ...item, numeric_grade: event.target.value } : item) }))} /> : (course.numeric_grade ?? '—')}</td>
+                            <td>{course.grade}</td><td>{course.numeric_grade_estimated ? 'Perkiraan, bukan nilai asli' : 'Nilai tercantum / telah dikoreksi'}</td>
+                          </tr>;
+                        })}</tbody>
+                      </table></div>
+                    </div>
+                  ))}
+                  {editing && <div className="preview-actions"><button className="btn primary" type="button" disabled={historyEditBusy} onClick={() => saveHistoryEdit(doc)}>{historyEditBusy ? 'Menyimpan...' : 'Simpan perubahan'}</button><button className="btn outline" type="button" disabled={historyEditBusy} onClick={() => { setHistoryEditId(null); setHistoryEditDraft(null); }}>Batal</button></div>}
+                  <div className="semester-summary-item"><strong>Hasil IPS seluruh semester</strong><span>{doc.semesters.map((item) => `S${item.semester}: ${item.ip_semester ?? '—'}`).join(' · ')}</span></div>
+                </section>
+              );
+            })}
           <button type="button" className="btn primary" onClick={() => setView('khs')}>Unggah KHS terbaru</button>
         </div>
       );

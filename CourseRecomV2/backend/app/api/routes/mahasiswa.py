@@ -2,7 +2,7 @@ import hashlib
 import json
 from pathlib import PurePath
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status, Body
 from fastapi.responses import Response
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -13,6 +13,7 @@ from app.models import Course, KhsDocument, KrsDocument, OfficialKrsDocument, St
 from app.schemas import KhsConfirm, ProfileUpdate, RecommendationItem, StudyPlanSubmit, StudyPlanUpdate, KprsMutation
 from app.services.khs_parser import (
     GRADE_POINTS,
+    estimate_numeric_grade,
     deduplicate_course_entries,
     parse_khs_images,
     parse_khs_pdf,
@@ -264,7 +265,8 @@ def confirm_khs(
             'name': course.name.strip(),
             'sks': course.sks,
             'grade': grade,
-            'numeric_grade': course.numeric_grade,
+            'numeric_grade': course.numeric_grade if course.numeric_grade is not None else estimate_numeric_grade(grade),
+            'numeric_grade_estimated': course.numeric_grade_estimated or course.numeric_grade is None,
             'grade_point': GRADE_POINTS[grade],
         })
 
@@ -358,6 +360,62 @@ def confirm_khs(
     db.commit()
     db.refresh(document)
     return {'status': 'confirmed', 'document': _serialize_document(document)}
+
+
+@router.patch('/mahasiswa/khs/{document_id}/edit')
+def edit_confirmed_khs(
+    document_id: int,
+    payload: dict = Body(...),
+    current_user: User = Depends(require_roles('mahasiswa')),
+    db: Session = Depends(get_db),
+):
+    document = db.query(KhsDocument).filter(
+        KhsDocument.id == document_id,
+        KhsDocument.student_id == current_user.id,
+        KhsDocument.status == 'confirmed',
+    ).first()
+    if not document:
+        raise HTTPException(status_code=404, detail='Riwayat KHS tidak ditemukan.')
+    parsed = json.loads(document.parsed_data)
+    courses = parsed.get('courses', [])
+    edits = payload.get('courses', [])
+    by_key = {(str(item.get('code', '')).upper(), int(item.get('semester', 0))): item for item in edits}
+    for course in courses:
+        key = (str(course.get('code', '')).upper(), int(course.get('semester', 0)))
+        if key in by_key:
+            score = float(by_key[key].get('numeric_grade', course.get('numeric_grade', 0)))
+            if not 0 <= score <= 100:
+                raise HTTPException(status_code=422, detail='Nilai angka harus berada pada rentang 0 sampai 100.')
+            course['numeric_grade'] = score
+            course['numeric_grade_estimated'] = False
+    ipk = payload.get('ipk', parsed.get('metadata', {}).get('ipk'))
+    if ipk is not None:
+        ipk = float(ipk)
+        if not 0 <= ipk <= 4:
+            raise HTTPException(status_code=422, detail='IPK harus berada pada rentang 0,00 sampai 4,00.')
+        parsed.setdefault('metadata', {})['ipk'] = ipk
+        current_user.ipk = ipk
+        current_user.kuota_sks = get_sks_quota(ipk, db)
+    ips_values = payload.get('ip_semesters', {})
+    for semester in parsed.get('semesters', []):
+        key = str(semester.get('semester'))
+        if key in ips_values or semester.get('semester') in ips_values:
+            value = float(ips_values.get(key, ips_values.get(semester.get('semester'))))
+            if not 0 <= value <= 4:
+                raise HTTPException(status_code=422, detail='IPS harus berada pada rentang 0,00 sampai 4,00.')
+            semester['ip_semester'] = value
+    parsed['courses'] = courses
+    for semester in parsed.get('semesters', []):
+        semester_number = int(semester.get('semester', 0) or 0)
+        semester['courses'] = [item for item in courses if int(item.get('semester', 0) or 0) == semester_number]
+    document.parsed_data = json.dumps(parsed, ensure_ascii=False)
+    document.updated_at = utc_now_naive()
+    for record in db.query(StudentRecord).filter(StudentRecord.student_id == current_user.id).all():
+        match = next((item for item in courses if item['code'] == record.course_code and item['semester'] == record.semester), None)
+        if match:
+            record.numeric_grade = match.get('numeric_grade')
+    db.commit()
+    return {'status': 'updated', 'document': _serialize_document(document)}
 
 
 @router.get('/mahasiswa/profil')
