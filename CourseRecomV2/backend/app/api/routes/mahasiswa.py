@@ -14,6 +14,7 @@ from app.schemas import KhsConfirm, ProfileUpdate, RecommendationItem, StudyPlan
 from app.services.khs_parser import (
     GRADE_POINTS,
     deduplicate_course_entries,
+    estimate_numeric_grade,
     parse_khs_images,
     parse_khs_pdf,
 )
@@ -85,6 +86,16 @@ def get_curriculum(
 
 def _serialize_document(document: KhsDocument) -> dict:
     data = json.loads(document.parsed_data)
+
+    def fill_missing_numeric_grades(courses):
+        for course in courses or []:
+            if course.get('numeric_grade') is None:
+                course['numeric_grade'] = estimate_numeric_grade(course.get('grade'))
+
+    fill_missing_numeric_grades(data.get('courses'))
+    for semester in data.get('semesters', []):
+        fill_missing_numeric_grades(semester.get('courses'))
+
     return {
         'id': document.id,
         'filename': document.filename,
@@ -258,13 +269,18 @@ def confirm_khs(
             raise HTTPException(status_code=422, detail=f'Grade {grade} untuk {code} tidak dikenali.')
         if course.numeric_grade is not None and not 0 <= course.numeric_grade <= 100:
             raise HTTPException(status_code=422, detail=f'Nilai angka {code} harus berada di antara 0 dan 100.')
+        numeric_grade = (
+            course.numeric_grade
+            if course.numeric_grade is not None
+            else estimate_numeric_grade(grade)
+        )
         cleaned_courses.append({
             'semester': course.semester,
             'code': code,
             'name': course.name.strip(),
             'sks': course.sks,
             'grade': grade,
-            'numeric_grade': course.numeric_grade,
+            'numeric_grade': numeric_grade,
             'grade_point': GRADE_POINTS[grade],
         })
 
@@ -418,7 +434,11 @@ def get_profile(
                 'name': record.course_name,
                 'sks': record.sks,
                 'grade': record.grade,
-                'numeric_grade': record.numeric_grade,
+                'numeric_grade': (
+                    record.numeric_grade
+                    if record.numeric_grade is not None
+                    else estimate_numeric_grade(record.grade)
+                ),
                 'grade_point': record.grade_point,
                 'passed': _passed(record),
             }
