@@ -379,6 +379,29 @@ def test_student_registration_rejects_short_password():
     assert response.status_code == 422
 
 
+def test_student_registration_enforces_numeric_angkatan_and_active_academic_year():
+    academic_year = client.get('/api/auth/academic-year')
+    assert academic_year.status_code == 200
+    max_year = academic_year.json()['max_angkatan']
+
+    non_numeric = client.post('/api/auth/register', json={
+        'nim': f'NEW{uuid4().hex[:12]}',
+        'full_name': 'Mahasiswa Angkatan Tidak Valid',
+        'angkatan': f'{max_year}A',
+        'password': 'password-baru-123',
+    })
+    assert non_numeric.status_code == 422
+
+    future_year = client.post('/api/auth/register', json={
+        'nim': f'NEW{uuid4().hex[:12]}',
+        'full_name': 'Mahasiswa Angkatan Masa Depan',
+        'angkatan': str(max_year + 1),
+        'password': 'password-baru-123',
+    })
+    assert future_year.status_code == 422
+    assert str(max_year) in future_year.text
+
+
 def test_admin_dashboard_lists_students_and_advisors_and_only_admin_can_delete_students():
     ensure_schema()
     suffix = uuid4().hex[:12]

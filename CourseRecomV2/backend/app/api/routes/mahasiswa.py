@@ -235,6 +235,18 @@ def confirm_khs(
         raise HTTPException(status_code=422, detail='Nama mahasiswa wajib diisi.')
     if not payload.courses:
         raise HTTPException(status_code=422, detail='KHS harus memiliki minimal satu mata kuliah.')
+    missing_ips = [
+        semester for semester in range(1, payload.current_semester + 1)
+        if semester not in payload.ip_semesters
+    ]
+    if missing_ips:
+        labels = ', '.join(str(item) for item in missing_ips)
+        raise HTTPException(
+            status_code=422,
+            detail=f'IPS wajib diisi untuk seluruh semester 1 sampai {payload.current_semester}. Semester kosong: {labels}.',
+        )
+    if any(not 0 <= ips <= 4 for ips in payload.ip_semesters.values()):
+        raise HTTPException(status_code=422, detail='IPS setiap semester harus berada di antara 0,00 dan 4,00.')
 
     cleaned_courses = []
     for course in payload.courses:

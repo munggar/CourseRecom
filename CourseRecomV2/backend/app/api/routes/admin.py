@@ -1,4 +1,5 @@
 import json
+import re
 from datetime import timezone
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
@@ -656,6 +657,14 @@ def update_setting(
             json.loads(payload.value)
         except json.JSONDecodeError as exc:
             raise HTTPException(status_code=422, detail='max_sks_by_ips harus berupa JSON yang valid.') from exc
+    if payload.key == 'active_academic_year':
+        match = re.fullmatch(r'(\d{4})/(\d{4})', payload.value.strip())
+        if not match or int(match.group(2)) != int(match.group(1)) + 1:
+            raise HTTPException(
+                status_code=422,
+                detail='Tahun ajaran harus menggunakan format berurutan, misalnya 2026/2027.',
+            )
+        payload.value = payload.value.strip()
     setting = db.query(SystemSetting).filter(SystemSetting.key == payload.key).first()
     old_value = setting.value if setting else None
     if not setting:
