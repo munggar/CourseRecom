@@ -1,3 +1,7 @@
+import re
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
@@ -5,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.deps import authenticate_user, create_access_token, get_current_user, get_db, get_password_hash, verify_password
-from app.models import User
+from app.models import SystemSetting, User
 from app.schemas import AccountProfileResponse, AccountProfileUpdate, PasswordChange, StudentRegistration, TokenResponse, UserLogin, UserOut
 from app.services.validation import get_sks_quota
 from app.services.audit import write_audit
@@ -13,8 +17,32 @@ from app.services.audit import write_audit
 router = APIRouter()
 
 
+def _academic_year_context(db: Session) -> dict[str, int | str]:
+    setting = db.query(SystemSetting).filter(SystemSetting.key == 'active_academic_year').first()
+    current_year = datetime.now(ZoneInfo('Asia/Jakarta')).year
+    academic_year = setting.value.strip() if setting and setting.value else f'{current_year}/{current_year + 1}'
+    match = re.fullmatch(r'(\d{4})/(\d{4})', academic_year)
+    if not match or int(match.group(2)) != int(match.group(1)) + 1:
+        academic_year = f'{current_year}/{current_year + 1}'
+    return {
+        'academic_year': academic_year,
+        'max_angkatan': int(academic_year.split('/')[0]),
+    }
+
+
+@router.get('/auth/academic-year')
+def get_academic_year(db: Session = Depends(get_db)):
+    return _academic_year_context(db)
+
+
 @router.post('/auth/register', status_code=status.HTTP_201_CREATED, response_model=UserOut)
 def register_student(payload: StudentRegistration, db: Session = Depends(get_db)):
+    academic_year = _academic_year_context(db)
+    if payload.angkatan and int(payload.angkatan) > academic_year['max_angkatan']:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f'Angkatan maksimal adalah {academic_year["max_angkatan"]} sesuai tahun ajaran {academic_year["academic_year"]}.',
+        )
     if db.query(User).filter(User.nim == payload.nim).first():
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='NIM sudah terdaftar.')
     username = (payload.username or payload.nim).strip()
