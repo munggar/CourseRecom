@@ -36,7 +36,7 @@ INTEREST_ALIASES = {
         'ai/ml', 'ai', 'artificial intelligence', 'machine learning',
         'business intelligence', 'data analytics',
     },
-    'software engineer': {'software engineer', 'software engineering', 'data science', 'rekayasa perangkat lunak', 'pengembangan perangkat lunak'},
+    'software engineer': {'software engineer', 'software engineering', 'rekayasa perangkat lunak', 'pengembangan perangkat lunak'},
     'manajer proyek ti': {'manajer proyek ti', 'manajemen proyek ti', 'it project manager', 'technology project management'},
     'data scientist': {'data scientist', 'data science', 'ilmu data', 'analitika data'},
     'analisis dan rekayasa jaringan': {'analisis dan rekayasa jaringan', 'jaringan komputer', 'network engineering', 'network analysis'},
