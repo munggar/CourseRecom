@@ -317,22 +317,26 @@ def test_admin_cannot_change_or_close_parallel_class_with_active_krs_reservation
         capacity=20,
         is_active=True,
     )
+    room_301_code = f'FT3{int(suffix[:2], 16) % 90 + 10}'
+    room_302_code = f'FT4{int(suffix[2:4], 16) % 90 + 10}'
     room_301 = Room(
-        code='FT301', floor=3, room_number='01', capacity=40,
-        room_type='Ruang kuliah', is_active=True, source_status='test',
-        source_url=None, notes='Room test fixture', verified_at=now, created_at=now,
+        code=room_301_code, floor=3, room_number=room_301_code[3:],
+        capacity=40, room_type='Ruang kuliah', is_active=True,
+        source_status='test', source_url=None, notes='Room test fixture',
+        verified_at=now, created_at=now,
     )
     room_302 = Room(
-        code='FT302', floor=3, room_number='02', capacity=40,
-        room_type='Ruang kuliah', is_active=True, source_status='test',
-        source_url=None, notes='Room test fixture', verified_at=now, created_at=now,
+        code=room_302_code, floor=4, room_number=room_302_code[3:],
+        capacity=40, room_type='Ruang kuliah', is_active=True,
+        source_status='test', source_url=None, notes='Room test fixture',
+        verified_at=now, created_at=now,
     )
     db.add_all([student, course, room_301, room_302])
     db.flush()
     section = CourseClass(
         course_code=code,
         class_name='A',
-        room='FT301',
+        room=room_301_code,
         day='Senin',
         start_time='08:00',
         end_time='10:30',
@@ -370,7 +374,7 @@ def test_admin_cannot_change_or_close_parallel_class_with_active_krs_reservation
         'course_code': code,
         'class_name': 'A',
         'lecturer_id': None,
-        'room': 'FT301',
+        'room': room_301_code,
         'day': 'Senin',
         'start_time': '08:00',
         'end_time': '10:30',
@@ -382,7 +386,7 @@ def test_admin_cannot_change_or_close_parallel_class_with_active_krs_reservation
         changed_schedule = client.put(
             f'/api/admin/classes/{class_id}',
             headers=ADMIN_HEADERS,
-            json={**base_payload, 'room': 'FT302', 'day': 'Selasa'},
+            json={**base_payload, 'room': room_302_code, 'day': 'Selasa'},
         )
         assert changed_schedule.status_code == 409, changed_schedule.text
         assert 'dikunci' in changed_schedule.json()['detail']
@@ -411,11 +415,11 @@ def test_admin_cannot_change_or_close_parallel_class_with_active_krs_reservation
         db = SessionLocal()
         stored_class = db.query(CourseClass).filter(CourseClass.id == class_id).one()
         stored_plan = db.query(StudyPlan).filter(StudyPlan.id == plan_id).one()
-        assert stored_class.room == 'FT301'
+        assert stored_class.room == room_301_code
         assert stored_class.day == 'Senin'
         assert stored_class.is_open is True
         assert stored_class.capacity == 8
-        assert json.loads(stored_plan.courses_json)[0]['room'] == 'FT301'
+        assert json.loads(stored_plan.courses_json)[0]['room'] == room_301_code
         db.close()
     finally:
         db = SessionLocal()
@@ -426,7 +430,7 @@ def test_admin_cannot_change_or_close_parallel_class_with_active_krs_reservation
         db.query(StudyPlan).filter(StudyPlan.id == plan_id).delete(synchronize_session=False)
         db.query(CourseClass).filter(CourseClass.id == class_id).delete(synchronize_session=False)
         db.query(Course).filter(Course.code == code).delete(synchronize_session=False)
-        db.query(Room).filter(Room.code.in_(['FT301', 'FT302'])).delete(synchronize_session=False)
+        db.query(Room).filter(Room.code.in_([room_301_code, room_302_code])).delete(synchronize_session=False)
         db.query(User).filter(User.id == student_id).delete(synchronize_session=False)
         db.commit()
         db.close()
