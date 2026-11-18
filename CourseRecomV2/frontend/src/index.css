@@ -2264,6 +2264,11 @@ footer {
     width: 44px;
     height: 44px;
     margin-left: auto;
+    border: 1px solid rgb(255 255 255 / 32%);
+    border-radius: 11px;
+    color: #fff;
+    background: rgb(255 255 255 / 10%);
+    cursor: pointer;
   }
 
   .mobile-menu-backdrop {
