@@ -19,9 +19,9 @@ def upgrade() -> None:
     op.create_table(
         'advisor_feedback',
         sa.Column('id', sa.Integer(), primary_key=True),
-        sa.Column('student_id', sa.Integer(), sa.ForeignKey('users.id'), nullable=False),
-        sa.Column('study_plan_id', sa.Integer(), sa.ForeignKey('study_plans.id'), nullable=False),
-        sa.Column('reviewer_id', sa.Integer(), sa.ForeignKey('users.id'), nullable=False),
+        sa.Column('student_id', sa.Integer(), sa.ForeignKey('users.id', ondelete='CASCADE'), nullable=False),
+        sa.Column('study_plan_id', sa.Integer(), sa.ForeignKey('study_plans.id', ondelete='CASCADE'), nullable=False),
+        sa.Column('reviewer_id', sa.Integer(), sa.ForeignKey('users.id', ondelete='SET NULL'), nullable=True),
         sa.Column('semester', sa.Integer(), nullable=False),
         sa.Column('affected_course_codes_json', sa.Text(), nullable=False, server_default='[]'),
         sa.Column('reason_category', sa.String(length=40), nullable=False, server_default='general'),
