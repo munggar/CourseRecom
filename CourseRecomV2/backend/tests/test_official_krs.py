@@ -1,5 +1,7 @@
 import hashlib
 import json
+from io import BytesIO
+from pypdf import PdfReader
 from datetime import datetime, timezone
 from uuid import uuid4
 
@@ -28,8 +30,24 @@ def test_official_krs_pdf_has_hmac_verified_qr_token():
         'Mahasiswa Uji',
         15,
         5,
-        [{'code': 'IF101', 'name': 'Pengujian', 'sks': 3}],
+        [{
+            'code': 'IF101',
+            'name': 'Pengujian Sistem',
+            'sks': 3,
+            'class_name': '5A',
+            'day': 'Senin',
+            'start_time': '08:00',
+            'end_time': '10:30',
+            'room': 'FT301',
+            'lecturer_name': 'Dosen Contoh, M.Kom.',
+        }],
         'http://localhost/api/krs/verify/' + token,
+        program_study='Sistem dan Teknologi Informasi',
+        faculty_name='Fakultas Teknologi Industri dan Informatika',
+        academic_term='Semester Ganjil 2026/2027 (Semester ke-5)',
+        advisor_name='Dosen Pembimbing',
+        advisor_nim='NIP001',
+        issue_date='Jakarta, 18 November 2026',
     )
 
     assert verified['plan'] == 15
@@ -38,6 +56,21 @@ def test_official_krs_pdf_has_hmac_verified_qr_token():
     assert verify_token(token + 'tampered') is None
     assert content.startswith(b'%PDF')
     assert hashlib.sha256(content).hexdigest() == content_hash
+    pdf_text = '\\n'.join(page.extract_text() or '' for page in PdfReader(BytesIO(content)).pages)
+    for label in (
+        'UNIVERSITAS MUHAMMADIYAH PROF. DR. HAMKA',
+        'KRS MAHASISWA',
+        'Fakultas Teknologi Industri dan Informatika',
+        'Sistem dan Teknologi Informasi',
+        'Mata Kuliah',
+        'Jadwal Kuliah',
+        'Pengajar',
+        'Pengujian Sistem',
+        'Dosen Pembimbing',
+        'Jumlah Mata Kuliah',
+        'Jumlah SKS Mata Kuliah',
+    ):
+        assert label in pdf_text
 
 
 def test_verification_url_uses_configured_public_api_and_rejects_internal_hosts(monkeypatch):
@@ -94,6 +127,7 @@ def test_old_official_krs_is_rejected_after_plan_changes():
     db.add(plan)
     db.flush()
     canonical = json.dumps({
+        'format_version': 2,
         'plan_id': plan.id,
         'student_id': student.id,
         'status': plan.status,
