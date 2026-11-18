@@ -2577,8 +2577,9 @@ function App() {
       return (
         <div className="card">
           <h3>Minat & Profil</h3>
-          <p className="muted">Pilih satu peminatan. Pilihan ini memengaruhi skor kecocokan mata kuliah pada rekomendasi.</p>
-          <div className="interest-options">{INTEREST_OPTIONS.map((interest) => {
+          <p className="muted">Pilih satu bidang minat sesuai program studi. Pilihan ini memengaruhi skor kecocokan mata kuliah pada rekomendasi.</p>
+          <p className="muted">{PROGRAM_INTERESTS[user?.program_study]?.kind || 'Bidang minat'} · {PROGRAM_INTERESTS[user?.program_study]?.note || 'Pilihan bidang minat mahasiswa.'}</p>
+          <div className="interest-options">{(PROGRAM_INTERESTS[user?.program_study]?.options || INTEREST_OPTIONS).map((interest) => {
             const selected = canonicalizeInterests(profileDraft) === interest;
             return (
               <label className="interest-option" key={interest}>
