@@ -177,6 +177,17 @@ def _interest_topic_score(course: Course, interests: str) -> tuple[float | None,
     return score, detail
 
 
+def _similar_students_factor(
+    similarities: dict[str, float],
+    course_identity: str,
+    peer_count: int,
+) -> float | None:
+    if peer_count <= 0:
+        return None
+    # A missing vote among an available peer cohort is a real 0%, not missing data.
+    return similarities.get(course_identity, 0.0)
+
+
 def _score_with_available_factors(
     factors: dict[str, float | None],
     weights: dict[str, float],
@@ -537,7 +548,7 @@ def build_recommendation_result(db: Session, student: User) -> dict:
         reasons.append(f'Sesuai kurikulum semester {target_semester}')
 
         course_identity = _course_identity(course.code, course.name)
-        similar_score = similarities.get(course_identity) if peer_count else None
+        similar_score = _similar_students_factor(similarities, course_identity, peer_count)
         peer_count_for_course, peer_total = cohort_counts.get(
             course_identity,
             (0, peer_count),
