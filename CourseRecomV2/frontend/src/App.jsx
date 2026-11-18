@@ -1296,8 +1296,10 @@ function App() {
     Object.entries(kprsClassSelections).forEach(([code, id]) => { if (id) selections[code] = Number(id); });
     for (const code of courses) {
       const options = studentClasses.filter((section) => section.course_code === code);
-      if (options.length && !options.some((section) => Number(section.class_id) === Number(selections[code]))) {
-        setActionMessage(`Pilih kelas paralel yang tersedia untuk ${code} sebelum mengajukan KPRS.`);
+      const previousClassId = sourcePlan?.courses?.find((course) => course.code === code)?.class_id;
+      const selectedSection = options.find((section) => Number(section.class_id) === Number(selections[code]));
+      if (options.length && (!selectedSection || !selectedSection.is_open || (selectedSection.remaining_seats <= 0 && Number(previousClassId) !== Number(selectedSection.class_id)))) {
+        setActionMessage(`Pilih kelas paralel yang masih dibuka dan memiliki kursi untuk ${code}.`);
         return;
       }
     }
@@ -1954,7 +1956,7 @@ function App() {
       }
       for (const course of draftCourses) {
         const sections = studentClasses.filter((section) => section.course_code === course.code);
-        if (sections.length && !sections.some((section) => Number(section.class_id) === Number(course.class_id) && section.remaining_seats > 0)) {
+        if (sections.length && !sections.some((section) => Number(section.class_id) === Number(course.class_id) && section.is_open && section.remaining_seats > 0)) {
           pushToast(`Pilih kelas yang masih tersedia untuk ${course.code} sebelum mengajukan KRS.`, 'warning');
           return;
         }
@@ -2453,8 +2455,8 @@ function App() {
                   <table className="table">
                     <thead><tr><th>Sebelum</th><th>Sesudah</th></tr></thead>
                     <tbody><tr>
-                      <td>{request.before.map((course) => `${course.code} (${course.sks} SKS)`).join(', ')}</td>
-                      <td>{request.after.map((course) => `${course.code} (${course.sks} SKS)`).join(', ')}</td>
+                      <td>{request.before.map((course) => `${course.code} (${course.sks} SKS)${course.class_name ? ` · Kelas ${course.class_name} · ${course.day} ${course.start_time}-${course.end_time} · ${course.room}` : ''}`).join('; ')}</td>
+                      <td>{request.after.map((course) => `${course.code} (${course.sks} SKS)${course.class_name ? ` · Kelas ${course.class_name} · ${course.day} ${course.start_time}-${course.end_time} · ${course.room}` : ''}`).join('; ')}</td>
                     </tr></tbody>
                   </table>
                 </div>
@@ -2492,7 +2494,7 @@ function App() {
                   <thead><tr><th>Mata kuliah</th><th>SKS</th><th>Skor</th><th>Prasyarat</th><th>Alasan rekomendasi</th></tr></thead>
                   <tbody>{plan.courses.map((course) => (
                     <tr key={course.code}>
-                      <td>{course.name}<br /><span className="muted">{course.code} · {course.category}</span></td>
+                      <td>{course.name}<br /><span className="muted">{course.code} · {course.category}</span>{course.class_name && <small className="draft-class-meta"><span><CalendarDays size={13} /> {course.class_name}</span><span><Clock3 size={13} /> {course.day} {course.start_time}-{course.end_time}</span><span><MapPin size={13} /> {course.room}</span></small>}</td>
                       <td>{course.sks}</td>
                       <td>{course.score}%</td>
                       <td>{course.prerequisite_text || '—'}</td>
