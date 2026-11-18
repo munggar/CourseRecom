@@ -1,5 +1,6 @@
 import hashlib
 import json
+from datetime import datetime
 from pathlib import PurePath
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile, status
@@ -9,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.deps import get_db, require_roles
-from app.models import AdvisorCourseFeedback, Course, CourseClass, KhsDocument, KrsDocument, OfficialKrsDocument, StudentRecord, StudyPlan, User, KprsRequest
+from app.models import AdvisorCourseFeedback, Course, CourseClass, KhsDocument, KrsDocument, OfficialKrsDocument, StudentRecord, StudyPlan, User, KprsRequest, SystemSetting
 from app.schemas import KhsConfirm, KhsHistoryEdit, ProfileUpdate, RecommendationItem, StudyPlanSubmit, StudyPlanUpdate, KprsMutation
 from app.services.khs_parser import (
     GRADE_POINTS,
@@ -1240,6 +1241,7 @@ def download_official_krs(
     ).first()
     courses = json.loads(plan.courses_json)
     canonical = json.dumps({
+        'format_version': 2,
         'plan_id': plan.id,
         'student_id': current_user.id,
         'status': plan.status,
@@ -1268,6 +1270,25 @@ def download_official_krs(
         verification_url = build_verification_url(str(request.base_url), token)
     except ValueError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
+    academic_year_setting = db.query(SystemSetting).filter(
+        SystemSetting.key == 'active_academic_year'
+    ).first()
+    academic_year = academic_year_setting.value if academic_year_setting else ''
+    if not academic_year:
+        current_year = datetime.now(WIB).year
+        academic_year = f'{current_year}/{current_year + 1}'
+    term_label = 'Ganjil' if int(plan.semester) % 2 else 'Genap'
+    academic_term = f'Semester {term_label} {academic_year} (Semester ke-{plan.semester})'
+    advisor = db.query(User).filter(
+        User.id == current_user.advisor_id,
+        User.role == 'dosen',
+    ).first() if current_user.advisor_id else None
+    now_wib = datetime.now(WIB)
+    months_id = [
+        'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+        'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember',
+    ]
+    issue_date = f'Jakarta, {now_wib.day} {months_id[now_wib.month - 1]} {now_wib.year}'
     content, content_hash = build_official_krs_pdf(
         current_user.nim,
         current_user.full_name,
@@ -1275,6 +1296,12 @@ def download_official_krs(
         plan.semester,
         courses,
         verification_url,
+        program_study=current_user.program_study or '',
+        faculty_name='Fakultas Teknologi Industri dan Informatika',
+        academic_term=academic_term,
+        advisor_name=advisor.full_name if advisor else '',
+        advisor_nim=advisor.nim if advisor else '',
+        issue_date=issue_date,
     )
     issued = OfficialKrsDocument(
         study_plan_id=plan.id,
@@ -1352,6 +1379,7 @@ def _official_krs_is_current(plan: StudyPlan, issued: OfficialKrsDocument, paylo
     ):
         return False
     canonical = json.dumps({
+        'format_version': 2,
         'plan_id': plan.id,
         'student_id': plan.student_id,
         'status': plan.status,
