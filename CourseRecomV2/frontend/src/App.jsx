@@ -1507,11 +1507,11 @@ function App() {
     && recommendationResult.target_semester != null
     && plan.semester === recommendationResult.target_semester
   ));
-  const interestDistribution = INTEREST_OPTIONS.map((interest) => ({
+  const interestDistribution = [...new Set(
+    mentees.map((student) => canonicalizeInterests(student.interests || '')).filter(Boolean),
+  )].map((interest) => ({
     name: interest,
-    count: mentees.filter((student) => canonicalizeInterests(student.interests || '')
-      .split(',')
-      .includes(interest)).length,
+    count: mentees.filter((student) => canonicalizeInterests(student.interests || '') === interest).length,
   }));
   const mostPopularInterest = [...interestDistribution].sort((left, right) => right.count - left.count)[0];
   const pendingPlans = studyPlans.filter((plan) => plan.status === 'pending');
@@ -3032,7 +3032,7 @@ function App() {
                     {(PROGRAM_INTERESTS[registrationForm.program_study]?.options || []).map((interest) => <option key={interest} value={interest}>{interest}</option>)}
                   </select>
                   <small className="muted">{registrationForm.program_study === 'Sistem dan Teknologi Informasi'
-                    ? 'Pilihan mengikuti data peminatan STI yang digunakan pada CourseRecom.'
+                    ? 'Catatan: laman prodi STI saat ini menggunakan Manajemen Teknologi Informasi (MTI); Manajemen Sistem Informasi (MSI) dipertahankan sebagai label lama yang diminta.'
                     : 'Untuk program studi yang belum mempublikasikan jalur formal, pilihan ini dicatat sebagai bidang minat akademik.'}</small>
                 </label>
                 <label>
