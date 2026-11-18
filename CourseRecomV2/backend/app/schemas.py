@@ -14,7 +14,8 @@ class StudentRegistration(BaseModel):
     nim: str = Field(min_length=2, max_length=20)
     full_name: str = Field(min_length=2, max_length=120)
     username: str | None = Field(default=None, min_length=2, max_length=120)
-    program_study: str = Field(default='', max_length=120)
+    program_study: str = Field(min_length=2, max_length=120)
+    interests: str = Field(min_length=2, max_length=255)
     angkatan: str = Field(default='', max_length=4)
     password: str = Field(min_length=8, max_length=72)
 
@@ -292,6 +293,7 @@ class StudyPlanSubmit(BaseModel):
 class StudyPlanReview(BaseModel):
     status: str
     advisor_note: str = Field(default='', max_length=2000)
+    rejected_course_codes: List[str] = Field(default_factory=list, max_length=30)
 
     @field_validator('status')
     @classmethod
@@ -302,9 +304,14 @@ class StudyPlanReview(BaseModel):
 
     @model_validator(mode='after')
     def require_note_for_revision(self):
-        if self.status == 'revision_requested' and not self.advisor_note.strip():
-            raise ValueError('Catatan dosen wajib diisi saat meminta revisi.')
         self.advisor_note = self.advisor_note.strip()
+        if self.status == 'revision_requested' and len(self.advisor_note) < 10:
+            raise ValueError('Alasan revisi dosen PA wajib diisi minimal 10 karakter.')
+        self.rejected_course_codes = [code.strip().upper() for code in self.rejected_course_codes]
+        if len(set(self.rejected_course_codes)) != len(self.rejected_course_codes):
+            raise ValueError('Mata kuliah yang ditandai ditolak tidak boleh duplikat.')
+        if self.status == 'revision_requested' and not self.rejected_course_codes:
+            raise ValueError('Pilih minimal satu mata kuliah yang perlu direvisi.')
         return self
 
 
@@ -354,3 +361,10 @@ class KprsMutation(BaseModel):
 class KprsReview(BaseModel):
     status: Literal['approved', 'revision_requested', 'rejected']
     note: str = Field(min_length=3, max_length=2000)
+
+    @model_validator(mode='after')
+    def require_reason_for_negative_decision(self):
+        self.note = self.note.strip()
+        if self.status in {'revision_requested', 'rejected'} and len(self.note) < 10:
+            raise ValueError('Alasan revisi/penolakan KPRS wajib diisi minimal 10 karakter.')
+        return self
