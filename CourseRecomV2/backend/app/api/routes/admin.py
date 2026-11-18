@@ -76,6 +76,7 @@ def register_lecturer(
         password_hash=get_password_hash(payload.password),
     )
     db.add(lecturer)
+    db.flush()
     directory_entry = db.query(LecturerDirectory).filter(LecturerDirectory.nidn == nip).first()
     if directory_entry:
         directory_entry.linked_user_id = lecturer.id
