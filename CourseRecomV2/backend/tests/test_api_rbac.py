@@ -170,6 +170,20 @@ def test_krs_documents_and_plans_enforce_student_ownership():
         ).all()
         assert len(upload_events) == 2
         assert len(delete_events) == 1
+
+        own_plan_delete = client.delete(
+            f'/api/mahasiswa/rencana-studi/{plan_b_id}',
+            headers={
+                'Authorization': 'Bearer ' + create_access_token(student_b_nim, 'mahasiswa'),
+            },
+        )
+        assert own_plan_delete.status_code == 204
+        plan_delete_audit = db.query(AuditLog).filter(
+            AuditLog.actor_id == student_b_id,
+            AuditLog.action == 'study_plan_deleted',
+            AuditLog.entity_id == str(plan_b_id),
+        ).one()
+        assert 'draft' in plan_delete_audit.old_value
         db.close()
     finally:
         db = SessionLocal()
