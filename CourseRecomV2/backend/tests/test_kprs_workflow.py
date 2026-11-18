@@ -169,7 +169,7 @@ def test_kprs_revalidates_reserves_capacity_and_releases_cancelled_seats():
         revision = client.patch(
             f'/api/dosen/rencana-studi/{student_b_plan_id}',
             headers=advisor_headers,
-            json={'status': 'revision_requested', 'advisor_note': 'Perbarui pilihan mata kuliah.'},
+            json={'status': 'revision_requested', 'advisor_note': 'Perbarui pilihan mata kuliah.', 'rejected_course_codes': [replacement_code]},
         )
         assert revision.status_code == 200
         second_request = client.post(
