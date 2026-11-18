@@ -2,7 +2,7 @@ from collections.abc import Mapping, Sequence
 
 from sqlalchemy.orm import Session
 
-from app.models import Course, CourseClass, User
+from app.models import Course, CourseClass, User, Room
 from app.services.recommendation import build_recommendation_result
 from app.services.validation import has_schedule_conflict
 
@@ -111,6 +111,18 @@ def validate_course_selection(
             section = next((candidate for candidate in sections if candidate.id == class_id), None)
             if section is None or not section.is_open:
                 raise ValueError(f'Kelas paralel yang dipilih untuk {code} tidak tersedia atau sudah ditutup.')
+            room = db.query(Room).filter(
+                Room.code == section.room.strip().upper(),
+                Room.is_active.is_(True),
+            ).first()
+            if room is None:
+                raise ValueError(
+                    f'Ruang {section.room} untuk mata kuliah {code} belum diverifikasi/diaktifkan Admin.'
+                )
+            if room.capacity is not None and section.capacity > room.capacity:
+                raise ValueError(
+                    f'Kapasitas kelas {code} melebihi kapasitas fisik ruang {section.room}.'
+                )
             lecturer = db.query(User).filter(User.id == section.lecturer_id, User.role == 'dosen').first() if section.lecturer_id else None
             item.update({
                 'class_id': section.id,
