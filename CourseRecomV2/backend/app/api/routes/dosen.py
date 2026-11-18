@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.deps import get_db, require_roles
-from app.models import KhsDocument, KrsDocument, KprsRequest, StudyPlan, User
+from app.models import AdvisorCourseFeedback, KhsDocument, KrsDocument, KprsRequest, StudyPlan, User
 from fastapi.responses import Response
 from app.schemas import KprsReview, StudyPlanReview
 from app.services.academic import validate_course_selection
@@ -109,6 +109,16 @@ def review_study_plan(
     if not student:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Rencana studi tidak ditemukan.')
 
+    stored_courses = json.loads(plan.courses_json)
+    if payload.status == 'revision_requested':
+        stored_by_code = {str(item.get('code', '')).upper(): item for item in stored_courses}
+        unknown_codes = set(payload.rejected_course_codes) - set(stored_by_code)
+        if unknown_codes:
+            raise HTTPException(status_code=422, detail=f'Mata kuliah tidak ditemukan pada KRS: {", ".join(sorted(unknown_codes))}.')
+        for code in payload.rejected_course_codes:
+            course = stored_by_code[code]
+            if course.get('mandatory') or 'wajib' in str(course.get('category', '')).lower() or 'wajib' in str(course.get('description', '')).lower():
+                raise HTTPException(status_code=422, detail=f'Mata kuliah wajib {code} tidak boleh ditolak secara manual.')
     if payload.status == 'approved':
         try:
             assert_krs_period_open(db)
@@ -128,6 +138,17 @@ def review_study_plan(
 
     plan.status = payload.status
     plan.advisor_note = payload.advisor_note
+    if payload.status == 'revision_requested':
+        for code in payload.rejected_course_codes:
+            db.add(AdvisorCourseFeedback(
+                student_id=student.id,
+                study_plan_id=plan.id,
+                reviewer_id=current_user.id,
+                semester=plan.semester,
+                course_code=code,
+                reason=payload.advisor_note,
+                created_at=utc_now_naive(),
+            ))
     plan.reviewer_id = current_user.id
     plan.updated_at = utc_now_naive()
     write_audit(
@@ -137,7 +158,7 @@ def review_study_plan(
         'study_plan',
         plan.id,
         {'status': 'pending'},
-        {'status': payload.status, 'advisor_note': payload.advisor_note},
+        {'status': payload.status, 'advisor_note': payload.advisor_note, 'rejected_course_codes': payload.rejected_course_codes},
     )
     db.commit()
     db.refresh(plan)
