@@ -530,7 +530,6 @@ function App() {
     course_code: '', class_name: '', lecturer_id: '', room: '', day: 'Senin',
     start_time: '08:00', end_time: '09:40', capacity: 40, semester: '1', is_open: true,
   });
-  const [guideRole, setGuideRole] = useState('Semua');
   const [guideSearch, setGuideSearch] = useState('');
   const [kprsClassSelections, setKprsClassSelections] = useState({});
   const [editingCourseCode, setEditingCourseCode] = useState('');
@@ -3143,22 +3142,40 @@ function App() {
 
     if (view === 'panduan') {
       const searchTerm = guideSearch.trim().toLocaleLowerCase('id-ID');
+      const guideRole = user?.role === 'admin'
+        ? null
+        : user?.role === 'dosen'
+          ? 'Dosen PA'
+          : 'Mahasiswa';
+      const isAdminGuide = user?.role === 'admin';
+      const guideHeading = isAdminGuide
+        ? 'Panduan lengkap seluruh peran'
+        : guideRole === 'Dosen PA'
+          ? 'Panduan khusus Dosen PA'
+          : 'Panduan khusus Mahasiswa';
+      const guideDescription = isAdminGuide
+        ? 'Seluruh panduan penggunaan CourseRecom untuk Admin Prodi, Dosen PA, dan Mahasiswa tersedia di halaman ini.'
+        : guideRole === 'Dosen PA'
+          ? 'Halaman ini hanya menampilkan panduan dan alur kerja Dosen Pembimbing Akademik sesuai hak akses akun Anda.'
+          : 'Halaman ini hanya menampilkan panduan dan alur akademik yang dapat digunakan oleh akun Mahasiswa.';
+      const guideScope = isAdminGuide
+        ? 'Menampilkan seluruh panduan lintas peran'
+        : `Menampilkan panduan khusus ${guideRole}`;
       const visibleSections = GUIDE_SECTIONS.filter((section) => (
-        (guideRole === 'Semua' || section.role === guideRole)
+        (isAdminGuide || section.role === guideRole)
         && (!searchTerm || [section.role, section.title, section.intro, ...section.steps].join(' ').toLocaleLowerCase('id-ID').includes(searchTerm))
       ));
-      const roles = ['Semua', 'Semua Akun', 'Mahasiswa', 'Dosen PA', 'Admin Prodi'];
       return (
         <div className="guide-page">
           <section className="guide-hero">
             <div className="guide-hero-content">
               <span className="guide-eyebrow"><HelpCircle size={15} /> PUSAT BANTUAN COURSERECOM</span>
-              <h2>Panduan lengkap penggunaan aplikasi</h2>
-              <p>Petunjuk langkah demi langkah untuk setiap menu, fitur, keputusan akademik, dan alur kerja. Pilih peran akun atau cari kata kunci untuk menemukan bagian yang dibutuhkan.</p>
+              <h2>{guideHeading}</h2>
+              <p>{guideDescription}</p>
               <div className="guide-hero-meta">
-                <span><Users size={15} /> 3 level akun</span>
-                <span><BookOpenCheck size={15} /> Alur dari awal sampai akhir</span>
-                <span><ShieldCheck size={15} /> Hak akses sesuai peran</span>
+                <span><Users size={15} /> {isAdminGuide ? '3 level akun' : guideRole}</span>
+                <span><BookOpenCheck size={15} /> {isAdminGuide ? 'Seluruh alur aplikasi' : 'Alur sesuai peran akun'}</span>
+                <span><ShieldCheck size={15} /> Hak akses terpisah</span>
               </div>
             </div>
             <div className="guide-hero-art" aria-hidden="true">
@@ -3170,18 +3187,19 @@ function App() {
             </div>
           </section>
           <section className="guide-toolbar">
-            <div className="guide-role-filters" aria-label="Filter panduan berdasarkan peran">
-              {roles.map((role) => <button type="button" key={role} className={guideRole === role ? 'active' : ''} onClick={() => setGuideRole(role)}>{role}</button>)}
-            </div>
             <label className="guide-search">
               <Search size={17} />
-              <input value={guideSearch} onChange={(event) => setGuideSearch(event.target.value)} placeholder="Cari fitur, misalnya KHS, KPRS, kelas paralel..." />
+              <input
+                value={guideSearch}
+                onChange={(event) => setGuideSearch(event.target.value)}
+                placeholder={isAdminGuide ? 'Cari di seluruh panduan, misalnya KRS, KHS, kelas paralel...' : `Cari dalam panduan ${guideRole}, misalnya KRS atau KHS...`}
+              />
               {guideSearch && <button type="button" onClick={() => setGuideSearch('')} aria-label="Hapus pencarian">×</button>}
             </label>
           </section>
           <div className="guide-summary-row">
             <strong>{visibleSections.length} bagian panduan</strong>
-            <span>Konten dapat dibuka per topik agar mudah dibaca di desktop maupun ponsel.</span>
+            <span>{guideScope}. Konten dapat dibuka per topik di desktop maupun ponsel.</span>
           </div>
           <div className="guide-section-grid">
             {visibleSections.map((section, index) => (
@@ -3200,10 +3218,15 @@ function App() {
             ))}
           </div>
           {visibleSections.length === 0 && (
-            <div className="guide-empty"><Search size={28} /><strong>Panduan tidak ditemukan</strong><span>Coba kata kunci lain atau pilih filter Semua.</span><button className="btn outline" type="button" onClick={() => { setGuideRole('Semua'); setGuideSearch(''); }}>Reset filter</button></div>
+            <div className="guide-empty">
+              <Search size={28} />
+              <strong>Panduan tidak ditemukan</strong>
+              <span>Tidak ada topik yang cocok dengan kata kunci tersebut pada panduan akun ini.</span>
+              <button className="btn outline" type="button" onClick={() => setGuideSearch('')}>Hapus pencarian</button>
+            </div>
           )}
           <section className="guide-help-footer">
-            <div><strong>Butuh bantuan?</strong><p>Mulai dari petunjuk sesuai peran. Untuk akun, penetapan Dosen PA, periode akademik, dan kelas paralel, hubungi Admin Prodi.</p></div>
+            <div><strong>Butuh bantuan?</strong><p>{isAdminGuide ? 'Gunakan panduan lintas peran untuk memeriksa alur aplikasi. Untuk kebijakan akademik resmi, koordinasikan dengan pengelola program studi.' : 'Mulai dari petunjuk yang tersedia pada halaman ini. Untuk akun, penetapan Dosen PA, periode akademik, dan kelas paralel, hubungi Admin Prodi.'}</p></div>
             <button className="btn primary" type="button" onClick={() => setView('dashboard')}>Kembali ke Dashboard</button>
           </section>
         </div>
