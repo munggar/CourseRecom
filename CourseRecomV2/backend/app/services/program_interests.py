@@ -6,39 +6,39 @@ specialization is confirmed by the program's published curriculum.
 """
 PROGRAM_INTERESTS = {
     "Sistem dan Teknologi Informasi": {
-        "kind": "Peminatan program studi",
-        "options": ["Manajemen Sistem Informasi", "Kecerdasan Bisnis"],
-        "note": "Pilihan mengikuti struktur peminatan yang telah digunakan pada data STI CourseRecom.",
+        "kind": "Peminatan resmi program studi",
+        "options": ["Manajemen Teknologi Informasi", "Kecerdasan Bisnis"],
+        "note": "Mengikuti dua peminatan yang ditampilkan pada laman resmi Prodi STI UHAMKA. Label lama Manajemen Sistem Informasi diperlakukan sebagai data legacy.",
     },
     "Teknik Informatika": {
-        "kind": "Bidang minat akademik",
-        "options": ["Software Engineering", "Data Science", "Jaringan Komputer", "UI/UX"],
-        "note": "Bidang minat akademik berdasarkan profil kompetensi lulusan; bukan klaim peminatan formal.",
+        "kind": "Arah minat berdasarkan profil lulusan",
+        "options": [
+            "Software Engineer",
+            "Manajer Proyek TI",
+            "Data Scientist",
+            "Analisis dan Rekayasa Jaringan",
+            "Perancangan UI/UX",
+        ],
+        "note": "Pilihan dirangkum dari profil lulusan dan capaian pembelajaran di laman resmi Prodi Teknik Informatika; bukan peminatan formal.",
     },
     "Teknik Mesin": {
-        "kind": "Peminatan program studi",
-        "options": ["Manufaktur", "Konversi Energi"],
-        "note": "Bidang peminatan yang tercantum pada informasi program studi.",
+        "kind": "Arah minat berdasarkan bidang keilmuan",
+        "options": ["Manufaktur", "Energi dan Konversi Energi", "Material", "Sistem Mekanikal"],
+        "note": "Dirangkum dari visi dan misi Prodi Teknik Mesin UHAMKA yang menyebut bidang manufaktur, energi, material, dan mekanikal; bukan klaim jalur peminatan formal.",
     },
     "Teknik Elektro": {
-        "kind": "Bidang minat akademik",
-        "options": [
-            "Telekomunikasi - Satelit",
-            "Telekomunikasi - Optik",
-            "Telekomunikasi - Nirkabel dan Antena",
-            "Industri Cerdas",
-        ],
-        "note": "Bidang akademik/spesialisasi; konfirmasi ke prodi untuk penamaan kurikulum resmi.",
+        "kind": "Spesialisasi bidang program studi",
+        "options": ["Teknik Telekomunikasi"],
+        "note": "Laman resmi Prodi Teknik Elektro menyebut spesialisasi bidang Teknik Telekomunikasi; tidak memecahnya menjadi subpeminatan yang belum terverifikasi.",
     },
     "Teknologi Rekayasa Mekatronika": {
-        "kind": "Bidang minat akademik",
+        "kind": "Arah minat berdasarkan profil lulusan",
         "options": [
-            "Robotika",
-            "Otomasi Industri",
+            "Pengembangan Robotika",
             "Pemeliharaan Industri",
             "Manajemen Proyek Mekatronika",
         ],
-        "note": "Bidang minat berdasarkan profil kompetensi lulusan; bukan klaim peminatan formal.",
+        "note": "Mengikuti tiga profil lulusan resmi TRM: Robotics Development Engineer, Industrial Maintenance Engineer, dan Mechatronics Project Manager; bukan peminatan formal.",
     },
 }
 
