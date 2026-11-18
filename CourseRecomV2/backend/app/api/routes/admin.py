@@ -1049,6 +1049,8 @@ def create_room(
         raise HTTPException(status_code=409, detail=f'Ruang {code} sudah terdaftar.')
     if payload.is_active and payload.capacity is None:
         raise HTTPException(status_code=422, detail='Isi kapasitas ruang sebelum mengaktifkan ruang.')
+    if payload.is_active and len(payload.notes.strip()) < 10:
+        raise HTTPException(status_code=422, detail='Catatan verifikasi fisik minimal 10 karakter sebelum ruang diaktifkan.')
     room = Room(
         code=code,
         floor=int(code[2]),
@@ -1083,6 +1085,8 @@ def update_room(
         raise HTTPException(status_code=404, detail='Ruang tidak ditemukan.')
     if payload.is_active and payload.capacity is None:
         raise HTTPException(status_code=422, detail='Isi kapasitas ruang sebelum mengaktifkan ruang.')
+    if payload.is_active and len(payload.notes.strip()) < 10:
+        raise HTTPException(status_code=422, detail='Catatan verifikasi fisik minimal 10 karakter sebelum ruang diaktifkan.')
     room_classes = db.query(CourseClass).filter(CourseClass.room == code).all()
     if not payload.is_active:
         open_classes = sum(1 for item in room_classes if item.is_open)
