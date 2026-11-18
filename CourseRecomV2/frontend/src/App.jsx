@@ -72,29 +72,47 @@ const EMPTY_RECOMMENDATIONS = {
   semester_antara: [],
 };
 const INTEREST_OPTIONS = [
-  'Manajemen Sistem Informasi',
+  'Manajemen Teknologi Informasi',
   'Kecerdasan Bisnis',
+  'Software Engineer',
+  'Manajer Proyek TI',
+  'Data Scientist',
+  'Analisis dan Rekayasa Jaringan',
+  'Perancangan UI/UX',
+  'Manufaktur',
+  'Energi dan Konversi Energi',
+  'Material',
+  'Sistem Mekanikal',
+  'Teknik Telekomunikasi',
+  'Pengembangan Robotika',
+  'Pemeliharaan Industri',
+  'Manajemen Proyek Mekatronika',
 ];
 const PROGRAM_INTERESTS = {
   'Sistem dan Teknologi Informasi': {
-    kind: 'Peminatan program studi',
-    options: ['Manajemen Sistem Informasi', 'Kecerdasan Bisnis'],
+    kind: 'Peminatan resmi program studi',
+    options: ['Manajemen Teknologi Informasi', 'Kecerdasan Bisnis'],
+    note: 'Mengikuti peminatan pada laman resmi STI UHAMKA. Label Manajemen Sistem Informasi adalah data lama di CourseRecom.',
   },
   'Teknik Informatika': {
-    kind: 'Bidang minat akademik',
-    options: ['Software Engineering', 'Data Science', 'Jaringan Komputer', 'UI/UX'],
+    kind: 'Arah minat berdasarkan profil lulusan',
+    options: ['Software Engineer', 'Manajer Proyek TI', 'Data Scientist', 'Analisis dan Rekayasa Jaringan', 'Perancangan UI/UX'],
+    note: 'Dirangkum dari profil lulusan dan CPL Prodi Teknik Informatika, bukan peminatan formal.',
   },
   'Teknik Mesin': {
-    kind: 'Peminatan program studi',
-    options: ['Manufaktur', 'Konversi Energi'],
+    kind: 'Arah minat berdasarkan bidang keilmuan',
+    options: ['Manufaktur', 'Energi dan Konversi Energi', 'Material', 'Sistem Mekanikal'],
+    note: 'Mengacu pada bidang manufaktur, energi, material, dan mekanikal yang dipublikasikan Prodi Teknik Mesin, bukan peminatan formal.',
   },
   'Teknik Elektro': {
-    kind: 'Bidang minat akademik',
-    options: ['Telekomunikasi - Satelit', 'Telekomunikasi - Optik', 'Telekomunikasi - Nirkabel dan Antena', 'Industri Cerdas'],
+    kind: 'Spesialisasi bidang program studi',
+    options: ['Teknik Telekomunikasi'],
+    note: 'Laman resmi Teknik Elektro menyebut spesialisasi bidang Teknik Telekomunikasi.',
   },
   'Teknologi Rekayasa Mekatronika': {
-    kind: 'Bidang minat akademik',
-    options: ['Robotika', 'Otomasi Industri', 'Pemeliharaan Industri', 'Manajemen Proyek Mekatronika'],
+    kind: 'Arah minat berdasarkan profil lulusan',
+    options: ['Pengembangan Robotika', 'Pemeliharaan Industri', 'Manajemen Proyek Mekatronika'],
+    note: 'Mengikuti tiga profil lulusan resmi TRM, bukan peminatan formal.',
   },
 };
 const PROGRAM_STUDY_OPTIONS = Object.keys(PROGRAM_INTERESTS);
@@ -113,10 +131,12 @@ const RECOMMENDATION_FACTOR_HINTS = {
   course_pattern: 'Proporsi mahasiswa pembanding yang mengambil mata kuliah tersebut pada semester target.',
 };
 const LEGACY_INTERESTS = {
-  'manajemen sistem informasi': 'Manajemen Sistem Informasi',
-  'manajemen & sistem informasi': 'Manajemen Sistem Informasi',
-  'peminatan manajemen si': 'Manajemen Sistem Informasi',
-  msi: 'Manajemen Sistem Informasi',
+  'manajemen sistem informasi': 'Manajemen Teknologi Informasi',
+  'manajemen teknologi informasi': 'Manajemen Teknologi Informasi',
+  'mti': 'Manajemen Teknologi Informasi',
+  'manajemen & sistem informasi': 'Manajemen Teknologi Informasi',
+  'peminatan manajemen si': 'Manajemen Teknologi Informasi',
+  msi: 'Manajemen Teknologi Informasi',
   'kecerdasan bisnis': 'Kecerdasan Bisnis',
   'peminatan kecerdasan bisnis': 'Kecerdasan Bisnis',
   kb: 'Kecerdasan Bisnis',
@@ -872,7 +892,7 @@ function App() {
         username: '',
         full_name: '',
         program_study: 'Sistem dan Teknologi Informasi',
-        interests: 'Manajemen Sistem Informasi',
+        interests: 'Manajemen Teknologi Informasi',
         angkatan: '',
         password: '',
         passwordConfirmation: '',
@@ -3032,7 +3052,7 @@ function App() {
                     {(PROGRAM_INTERESTS[registrationForm.program_study]?.options || []).map((interest) => <option key={interest} value={interest}>{interest}</option>)}
                   </select>
                   <small className="muted">{registrationForm.program_study === 'Sistem dan Teknologi Informasi'
-                    ? 'Catatan: laman prodi STI saat ini menggunakan Manajemen Teknologi Informasi (MTI); Manajemen Sistem Informasi (MSI) dipertahankan sebagai label lama yang diminta.'
+                    ? 'Mengikuti dua peminatan resmi STI: Manajemen Teknologi Informasi (MTI) dan Kecerdasan Bisnis (KB).'
                     : 'Untuk program studi yang belum mempublikasikan jalur formal, pilihan ini dicatat sebagai bidang minat akademik.'}</small>
                 </label>
                 <label>
