@@ -391,7 +391,7 @@ class StudyPlanOverride(BaseModel):
 
 
 class RoomMutation(BaseModel):
-    code: str = Field(min_length=5, max_length=10, pattern=r'^FT[234]\\d{2}$')
+    code: str = Field(min_length=5, max_length=10, pattern=r'^FT[234]\d{2}$')
     capacity: int | None = Field(default=None, ge=1, le=1000)
     room_type: str = Field(default='Ruang kuliah', min_length=2, max_length=40)
     is_active: bool = False
@@ -407,10 +407,10 @@ class CourseClassMutation(BaseModel):
     course_code: str = Field(min_length=2, max_length=20)
     class_name: str = Field(min_length=1, max_length=40)
     lecturer_id: int | None = None
-    room: str = Field(min_length=5, max_length=10, pattern=r'^FT[234]\\d{2}$')
+    room: str = Field(min_length=5, max_length=10, pattern=r'^FT[234]\d{2}$')
     day: Literal['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu']
-    start_time: str = Field(pattern=r'^([01]\\d|2[0-3]):[0-5]\\d$')
-    end_time: str | None = Field(default=None, pattern=r'^([01]\\d|2[0-3]):[0-5]\\d$')
+    start_time: str = Field(pattern=r'^([01]\d|2[0-3]):[0-5]\d$')
+    end_time: str | None = Field(default=None, pattern=r'^([01]\d|2[0-3]):[0-5]\d$')
     capacity: int = Field(ge=1, le=10000)
     semester: str = Field(min_length=1, max_length=2)
     is_open: bool = True
