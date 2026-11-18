@@ -74,7 +74,8 @@ COURSE_TOPIC_KEYWORDS = {
     ),
     'it_infrastructure': (
         'infrastruktur teknologi informasi', 'infrastruktur ti', 'jaringan komputer',
-        'computer network', 'networking', 'cloud computing', 'arsitektur komputer',
+        'jaringan', 'komunikasi data', 'telekomunikasi', 'computer network',
+        'networking', 'cloud computing', 'arsitektur komputer',
         'computer architecture', 'server administration',
     ),
     'enterprise_systems': (
