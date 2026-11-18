@@ -398,9 +398,17 @@ class CourseClassMutation(BaseModel):
     day: str = Field(min_length=1, max_length=20)
     start_time: str = Field(pattern=r'^([01]\d|2[0-3]):[0-5]\d$')
     end_time: str = Field(pattern=r'^([01]\d|2[0-3]):[0-5]\d$')
-    capacity: int = Field(ge=0, le=10000)
-    semester: str = Field(min_length=1, max_length=20)
+    capacity: int = Field(ge=1, le=10000)
+    semester: str = Field(min_length=1, max_length=2)
     is_open: bool = True
+
+    @field_validator('semester')
+    @classmethod
+    def validate_semester(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized.isdigit() or not 1 <= int(normalized) <= 14:
+            raise ValueError('Semester kelas harus berupa angka 1 sampai 14.')
+        return str(int(normalized))
 
 class KprsMutation(BaseModel):
     study_plan_id: int = Field(gt=0)
