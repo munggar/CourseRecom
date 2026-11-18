@@ -98,7 +98,11 @@ function canonicalizeInterests(interests) {
 }
 
 function isMandatoryCourse(course) {
-  return course.mandatory === true || String(course.category || '').toLowerCase().includes('wajib');
+  const category = String(course.category || '');
+  const description = String(course.description || '');
+  return course.mandatory === true
+    || /\bwajib\b/i.test(category)
+    || /\bwajib(?:\s+semester\s+\d+)?\b/i.test(description);
 }
 
 function toastTypeFor(message) {
@@ -2232,7 +2236,8 @@ function App() {
                 <section className="mandatory-recommendations" aria-label="Mata kuliah wajib otomatis">
                   <h3>Mata kuliah wajib (otomatis ditambahkan)</h3>
                   <p className="muted">Mata kuliah berikut otomatis dimasukkan ke Draft KRS oleh sistem. Kamu tidak perlu memilihnya secara manual.</p>
-                  {mandatoryRecommendations.map((item) => (
+                  <div className="recommendation-grid recommendation-grid-mandatory">
+                    {mandatoryRecommendations.map((item) => (
                     <article className="recommendation-card recommendation-card-mandatory" key={item.code} aria-disabled="true">
                       <div className="recommendation-heading">
                         <div>
@@ -2244,11 +2249,14 @@ function App() {
                       <p className="mandatory-course-note">Mata kuliah wajib sudah ditambahkan ke Draft KRS dan tidak dapat dipilih atau dihapus secara manual.</p>
                       <button className="btn mandatory-disabled" type="button" disabled>Otomatis masuk Draft KRS</button>
                     </article>
-                  ))}
+                    ))}
+                  </div>
                 </section>
               )}
               <h3>Rekomendasi mata kuliah pilihan</h3>
-              {optionalRecommendations.length ? optionalRecommendations.map((item) => (
+              {optionalRecommendations.length ? (
+                <div className="recommendation-grid">
+                  {optionalRecommendations.map((item) => (
                 <article className="recommendation-card" key={item.code}>
                   <div className="recommendation-heading">
                     <div>
@@ -2282,7 +2290,9 @@ function App() {
                       : draftCourses.some((course) => course.code === item.code) ? 'Sudah di draft' : 'Tambah ke Draft KRS'}
                   </button>
                 </article>
-              )) : <p className="muted">Belum ada mata kuliah pilihan yang lolos aturan akademik untuk semester target ini.</p>}
+                  ))}
+                </div>
+              ) : <p className="muted">Belum ada mata kuliah pilihan yang lolos aturan akademik untuk semester target ini.</p>}
               {recommendationResult.semester_antara?.length > 0 && (
                 <section className="rejected-section">
                   <h3>Wajib diulang di Semester Antara</h3>
