@@ -105,6 +105,18 @@ class StudyPlan(Base):
     updated_at = Column(DateTime, nullable=False)
 
 
+class AdvisorCourseFeedback(Base):
+    __tablename__ = 'advisor_course_feedback'
+    id = Column(Integer, primary_key=True, index=True)
+    student_id = Column(Integer, ForeignKey('users.id'), nullable=False, index=True)
+    study_plan_id = Column(Integer, ForeignKey('study_plans.id'), nullable=False, index=True)
+    reviewer_id = Column(Integer, ForeignKey('users.id'), nullable=False, index=True)
+    semester = Column(Integer, nullable=False, index=True)
+    course_code = Column(String(20), nullable=False, index=True)
+    reason = Column(Text, nullable=False)
+    created_at = Column(DateTime, nullable=False)
+
+
 class RecommendationModelVersion(Base):
     __tablename__ = 'recommendation_model_versions'
     id = Column(Integer, primary_key=True, index=True)
