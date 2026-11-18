@@ -484,6 +484,7 @@ function App() {
   const [mentees, setMentees] = useState([]);
   const [adminAdvisors, setAdminAdvisors] = useState([]);
   const [lecturerDirectory, setLecturerDirectory] = useState([]);
+  const [lecturerDirectoryDraft, setLecturerDirectoryDraft] = useState({});
   const [roomList, setRoomList] = useState([]);
   const [roomForm, setRoomForm] = useState({ code: '', capacity: '', room_type: 'Ruang kuliah', is_active: false, notes: '' });
   const [editingRoomCode, setEditingRoomCode] = useState('');
@@ -1620,6 +1621,28 @@ function App() {
       is_active: Boolean(room.is_active),
       notes: room.notes || '',
     });
+  };
+
+  const saveLecturerDirectoryLink = async (entry) => {
+    if (user?.role !== 'admin') return;
+    const rawUserId = lecturerDirectoryDraft[entry.id] ?? entry.linked_user_id ?? '';
+    const userId = rawUserId ? Number(rawUserId) : null;
+    try {
+      await apiRequest(`/admin/lecturer-directory/${entry.id}/link`, {
+        method: 'PATCH',
+        body: JSON.stringify({ user_id: userId }),
+      });
+      const directory = await apiRequest('/admin/lecturer-directory');
+      setLecturerDirectory(directory);
+      setLecturerDirectoryDraft((previous) => {
+        const next = { ...previous };
+        delete next[entry.id];
+        return next;
+      });
+      setActionMessage(userId ? 'Profil dosen berhasil ditautkan ke akun login.' : 'Tautan akun dosen berhasil dilepas.');
+    } catch (error) {
+      setActionMessage(error.message || 'Pemetaan profil dan akun dosen gagal disimpan.');
+    }
   };
 
   const refreshClassList = async () => {
@@ -3487,7 +3510,7 @@ function App() {
             <p className="muted">Data berasal dari profil resmi FTII. Status akun terhubung otomatis bila NIDN pada direktori sama dengan NIP/ID akun dosen; entri direktori bukan berarti akun login sudah dibuat.</p>
             <div className="table-wrap">
               <table className="table">
-                <thead><tr><th>NIDN</th><th>Nama</th><th>Program Studi</th><th>Bidang Keahlian</th><th>Status Akun</th><th>Sumber</th></tr></thead>
+                <thead><tr><th>NIDN / ID Profil</th><th>Nama</th><th>Program Studi</th><th>Bidang Keahlian</th><th>Status Akun</th><th>Pemetaan</th><th>Sumber</th></tr></thead>
                 <tbody>
                   {lecturerDirectory.map((entry) => (
                     <tr key={entry.id}>
@@ -3496,10 +3519,30 @@ function App() {
                       <td>{entry.program_study}</td>
                       <td>{entry.expertise || 'Tidak dicantumkan'}</td>
                       <td><span className={entry.linked_user_id ? 'class-status-open' : 'class-status-closed'}>{entry.linked_user_id ? `Akun: ${entry.account_nip}` : 'Belum ada akun terhubung'}</span></td>
+                      <td>
+                        <div className="directory-link-controls">
+                          <select
+                            aria-label={`Tautkan akun dosen untuk ${entry.full_name}`}
+                            value={lecturerDirectoryDraft[entry.id] ?? (entry.linked_user_id || '')}
+                            onChange={(event) => setLecturerDirectoryDraft((previous) => ({ ...previous, [entry.id]: event.target.value }))}
+                          >
+                            <option value="">Belum ditautkan</option>
+                            {adminAdvisors.map((account) => (
+                              <option key={account.id} value={account.id}>{account.full_name} · {account.nim}</option>
+                            ))}
+                          </select>
+                          <button
+                            className="btn outline"
+                            type="button"
+                            disabled={(lecturerDirectoryDraft[entry.id] ?? String(entry.linked_user_id || '')) === String(entry.linked_user_id || '')}
+                            onClick={() => saveLecturerDirectoryLink(entry)}
+                          >Simpan</button>
+                        </div>
+                      </td>
                       <td><a href={entry.profile_url} target="_blank" rel="noreferrer">Profil resmi</a></td>
                     </tr>
                   ))}
-                  {!lecturerDirectory.length && <tr><td colSpan="6" className="muted">Direktori dosen belum dimuat.</td></tr>}
+                  {!lecturerDirectory.length && <tr><td colSpan="7" className="muted">Direktori dosen belum dimuat.</td></tr>}
                 </tbody>
               </table>
             </div>
