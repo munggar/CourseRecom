@@ -1649,8 +1649,8 @@ function App() {
 
   const reviewKprs = async (requestId, status) => {
     const note = kprsReviewNotes[requestId] ?? '';
-    if (!note.trim()) {
-      setActionMessage('Catatan keputusan KPRS wajib diisi.');
+    if (!note.trim() || (status !== 'approved' && note.trim().length < 10)) {
+      setActionMessage(status === 'approved' ? 'Catatan keputusan KPRS wajib diisi.' : 'Alasan revisi/penolakan KPRS wajib diisi minimal 10 karakter.');
       return;
     }
     setStudyPlanBusy(true);
