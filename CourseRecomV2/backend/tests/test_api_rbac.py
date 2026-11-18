@@ -392,6 +392,8 @@ def test_student_registration_enforces_numeric_angkatan_and_active_academic_year
     non_numeric = client.post('/api/auth/register', json={
         'nim': f'NEW{uuid4().hex[:12]}',
         'full_name': 'Mahasiswa Angkatan Tidak Valid',
+        'program_study': 'Sistem dan Teknologi Informasi',
+        'interests': 'Manajemen Sistem Informasi',
         'angkatan': f'{max_year}A',
         'password': 'password-baru-123',
     })
