@@ -1469,16 +1469,59 @@ function App() {
   };
 
   const beginHistoryEdit = (document) => {
+    const ip_semesters = Object.fromEntries((document.semesters || []).map((item) => [String(item.semester), item.ip_semester ?? '']));
+    const currentIps = (document.semesters || []).map((item) => ip_semesters[String(item.semester)]);
+    const completeIps = currentIps.length > 0 && currentIps.every((value) => (
+      value !== '' && Number.isFinite(Number(value)) && Number(value) >= 0 && Number(value) <= 4
+    ));
+    const calculatedIpk = completeIps
+      ? (currentIps.reduce((sum, value) => sum + Number(value), 0) / currentIps.length).toFixed(2)
+      : document.metadata?.ipk ?? '';
     setHistoryEditId(document.id);
     setHistoryEditDraft({
-      ipk: document.metadata?.ipk ?? '',
+      ipk: calculatedIpk,
       courses: (document.courses || []).map((course) => ({ ...course })),
-      ip_semesters: Object.fromEntries((document.semesters || []).map((item) => [String(item.semester), item.ip_semester ?? ''])),
+      ip_semesters,
+    });
+  };
+
+  const updateHistoryIps = (document, semesterNumber, value) => {
+    setHistoryEditDraft((draft) => {
+      if (!draft) return draft;
+      const ip_semesters = { ...draft.ip_semesters, [String(semesterNumber)]: value };
+      const semesterValues = (document.semesters || []).map((item) => ip_semesters[String(item.semester)]);
+      const completeIps = semesterValues.length > 0 && semesterValues.every((item) => (
+        item !== '' && Number.isFinite(Number(item)) && Number(item) >= 0 && Number(item) <= 4
+      ));
+      return {
+        ...draft,
+        ip_semesters,
+        ipk: completeIps
+          ? (semesterValues.reduce((sum, item) => sum + Number(item), 0) / semesterValues.length).toFixed(2)
+          : draft.ipk,
+      };
     });
   };
 
   const saveHistoryEdit = async (document) => {
     if (!historyEditDraft) return;
+    const invalidCourse = historyEditDraft.courses.find((course) => (
+      course.numeric_grade === '' || !Number.isFinite(Number(course.numeric_grade))
+      || Number(course.numeric_grade) < 0 || Number(course.numeric_grade) > 100
+    ));
+    if (invalidCourse) {
+      pushToast(`Nilai angka ${invalidCourse.code} harus diisi antara 0 sampai 100.`, 'error');
+      return;
+    }
+    const submittedIps = Object.fromEntries(
+      Object.entries(historyEditDraft.ip_semesters)
+        .filter(([, value]) => value !== '' && value !== null)
+        .map(([semester, value]) => [semester, Number(value)]),
+    );
+    if (Object.values(submittedIps).some((value) => !Number.isFinite(value) || value < 0 || value > 4)) {
+      pushToast('IPS harus berada di antara 0,00 sampai 4,00.', 'error');
+      return;
+    }
     setHistoryEditBusy(true);
     try {
       const response = await apiRequest(`/mahasiswa/khs/${document.id}/edit`, {
@@ -1488,14 +1531,14 @@ function App() {
           courses: historyEditDraft.courses.map((course) => ({
             semester: Number(course.semester), code: course.code, numeric_grade: Number(course.numeric_grade),
           })),
-          ip_semesters: historyEditDraft.ip_semesters,
+          ip_semesters: submittedIps,
         }),
       });
       setAcademicHistory((previous) => previous.map((item) => item.id === document.id ? response.document : item));
       setHistoryEditId(null);
       setHistoryEditDraft(null);
       await refreshStudentData();
-      pushToast('Nilai angka, IPK, dan IPS berhasil diperbarui.', 'success');
+      pushToast('Nilai angka, IPS, dan IPK yang dihitung dari rata-rata IPS berhasil diperbarui.', 'success');
     } catch (error) {
       pushToast(error.message || 'Perubahan riwayat KHS gagal disimpan.', 'error');
     } finally {
@@ -2560,7 +2603,8 @@ function App() {
                     <p className="muted">Nilai angka yang ditandai perkiraan bukan nilai asli pada KHS. Silakan edit jika memiliki nilai resmi.</p>
                   </div>
                   {!editing && <button className="btn outline" type="button" onClick={() => beginHistoryEdit(doc)}>Edit nilai & IPK</button>}</div>
-                  <label>IPK {editing ? <input type="number" min="0" max="4" step="0.01" value={historyEditDraft.ipk} onChange={(event) => setHistoryEditDraft((draft) => ({ ...draft, ipk: event.target.value }))} /> : <strong>{doc.metadata?.ipk ?? '—'}</strong>}</label>
+                  <label>IPK {editing ? <input type="number" min="0" max="4" step="0.01" value={historyEditDraft.ipk} readOnly={doc.semesters.length > 0 && doc.semesters.every((semester) => historyEditDraft.ip_semesters[String(semester.semester)] !== '' && Number.isFinite(Number(historyEditDraft.ip_semesters[String(semester.semester)])))} title="IPK dihitung otomatis dari rata-rata IPS seluruh semester." onChange={(event) => setHistoryEditDraft((draft) => ({ ...draft, ipk: event.target.value }))} /> : <strong>{doc.metadata?.ipk ?? '—'}</strong>}</label>
+                  {editing && <small className="muted">IPK dihitung otomatis dari rata-rata IPS. Perbarui IPS semester untuk memperbarui IPK.</small>}
                   {doc.semesters.map((semester) => (
                     <div key={semester.semester} className="history-semester">
                       <h4>Semester {semester.semester} · {semester.courses.length} mata kuliah</h4>
@@ -2579,7 +2623,7 @@ function App() {
                       <div className="semester-summary-item history-ips-result">
                         <strong>IPS Semester {semester.semester}</strong>
                         {editing
-                          ? <input aria-label={`Edit IPS semester ${semester.semester}`} type="number" min="0" max="4" step="0.01" value={historyEditDraft.ip_semesters[String(semester.semester)] ?? ''} onChange={(event) => setHistoryEditDraft((draft) => ({ ...draft, ip_semesters: { ...draft.ip_semesters, [String(semester.semester)]: event.target.value } }))} />
+                          ? <input aria-label={`Edit IPS semester ${semester.semester}`} type="number" min="0" max="4" step="0.01" value={historyEditDraft.ip_semesters[String(semester.semester)] ?? ''} onChange={(event) => updateHistoryIps(doc, semester.semester, event.target.value)} />
                           : <span>{semester.ip_semester ?? '—'}</span>}
                       </div>
                     </div>
