@@ -157,6 +157,23 @@ async def preview_khs(
         created_at=utc_now_naive(),
     )
     db.add(document)
+    db.flush()
+    write_audit(
+        db,
+        current_user,
+        'khs_preview_uploaded',
+        'khs_document',
+        document.id,
+        None,
+        {
+            'filename': document.filename,
+            'sha256': document.sha256,
+            'size': len(document.content or b''),
+            'file_count': len(uploads),
+            'source_type': parsed.get('source_type', 'pdf' if is_pdf else 'image'),
+            'status': document.status,
+        },
+    )
     db.commit()
     db.refresh(document)
     return _serialize_document(document)
@@ -209,6 +226,19 @@ def discard_khs_preview(
     )
     if not document:
         raise HTTPException(status_code=404, detail='Pratinjau KHS tidak ditemukan atau sudah diproses.')
+    write_audit(
+        db,
+        current_user,
+        'khs_preview_discarded',
+        'khs_document',
+        document.id,
+        {
+            'status': document.status,
+            'filename': document.filename,
+            'sha256': document.sha256,
+        },
+        None,
+    )
     db.delete(document)
     db.commit()
     return {'status': 'discarded'}
@@ -374,6 +404,24 @@ def confirm_khs(
     if payload.ipk is None:
         current_user.ipk = latest_attempt_gpa(cleaned_courses)
     current_user.kuota_sks = get_sks_quota(current_user.ipk, db)
+    write_audit(
+        db,
+        current_user,
+        'khs_confirmed',
+        'khs_document',
+        document.id,
+        {'status': 'pending'},
+        {
+            'status': 'confirmed',
+            'program_study': submitted_program,
+            'current_semester': latest_semester,
+            'course_count': len(cleaned_courses),
+            'passed_course_count': sum(1 for item in cleaned_courses if item['grade'] in PASSING_GRADES),
+            'estimated_numeric_grade_count': sum(1 for item in cleaned_courses if item['numeric_grade_estimated']),
+            'ipk': current_user.ipk,
+            'sks_lulus': current_user.sks_lulus,
+        },
+    )
     db.commit()
     db.refresh(document)
     return {'status': 'confirmed', 'document': _serialize_document(document)}
@@ -689,9 +737,21 @@ def update_my_study_plan(
     except ValueError as exc:
         db.rollback()
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    previous_status = plan.status
+    previous_codes = [item.get('code') for item in json.loads(plan.courses_json)]
+    new_codes = [item['code'] for item in courses]
     plan.courses_json = json.dumps(courses, ensure_ascii=False)
     plan.status = 'draft'
     plan.updated_at = utc_now_naive()
+    write_audit(
+        db,
+        current_user,
+        'study_plan_updated',
+        'study_plan',
+        plan.id,
+        {'status': previous_status, 'course_codes': previous_codes},
+        {'status': plan.status, 'course_codes': new_codes},
+    )
     db.commit()
     db.refresh(plan)
     return _serialize_study_plan(plan)
@@ -748,7 +808,21 @@ def submit_kprs(payload: KprsMutation, current_user: User = Depends(require_role
         updated_at=now,
     )
     db.add(request)
-    write_audit(db, current_user, 'kprs_submitted', 'kprs_request', original.id, {'plan_id': original.id}, {'reason': payload.reason})
+    db.flush()
+    write_audit(
+        db,
+        current_user,
+        'kprs_submitted',
+        'kprs_request',
+        request.id,
+        {'study_plan_id': original.id, 'course_codes': [item.get('code') for item in before]},
+        {
+            'study_plan_id': original.id,
+            'status': 'pending',
+            'reason': payload.reason,
+            'course_codes': [item.get('code') for item in courses],
+        },
+    )
     db.commit()
     db.refresh(request)
     return {'id': request.id, 'status': request.status, 'before': before, 'after': courses}
@@ -841,9 +915,19 @@ def resubmit_my_study_plan(
     except (KeyError, TypeError, json.JSONDecodeError, ValueError) as exc:
         db.rollback()
         raise HTTPException(status_code=422, detail=f'KRS tidak lagi valid: {exc}') from exc
+    previous_status = plan.status
     plan.status = 'pending'
     plan.advisor_note = ''
     plan.updated_at = utc_now_naive()
+    write_audit(
+        db,
+        current_user,
+        'study_plan_resubmitted',
+        'study_plan',
+        plan.id,
+        {'status': previous_status, 'course_codes': [item.get('code') for item in json.loads(plan.courses_json)]},
+        {'status': 'pending'},
+    )
     db.commit()
     db.refresh(plan)
     return _serialize_study_plan(plan)
@@ -865,6 +949,15 @@ def delete_my_study_plan(
             status_code=409,
             detail='Rencana studi yang sudah memiliki catatan revisi Dosen PA tidak dapat dihapus agar riwayat evaluasi tetap tersimpan. Perbarui mata kuliah lalu ajukan kembali.',
         )
+    write_audit(
+        db,
+        current_user,
+        'study_plan_deleted',
+        'study_plan',
+        plan.id,
+        {'status': plan.status, 'semester': plan.semester, 'course_codes': [item.get('code') for item in json.loads(plan.courses_json)]},
+        None,
+    )
     db.query(KrsDocument).filter(KrsDocument.study_plan_id == plan.id).delete(synchronize_session=False)
     db.delete(plan)
     db.commit()
@@ -899,6 +992,22 @@ async def upload_krs_document(
         created_at=utc_now_naive(),
     )
     db.add(document)
+    db.flush()
+    write_audit(
+        db,
+        current_user,
+        'krs_document_uploaded',
+        'krs_document',
+        document.id,
+        None,
+        {
+            'filename': document.filename,
+            'sha256': document.sha256,
+            'size': document.size,
+            'content_type': document.content_type,
+            'study_plan_id': document.study_plan_id,
+        },
+    )
     db.commit()
     db.refresh(document)
     return {
@@ -945,6 +1054,20 @@ def delete_my_krs_document(
         plan = db.query(StudyPlan).filter(StudyPlan.id == document.study_plan_id).first()
         if plan and plan.status == 'approved':
             raise HTTPException(status_code=409, detail='Dokumen KRS yang sudah disetujui tidak dapat dihapus.')
+    write_audit(
+        db,
+        current_user,
+        'krs_document_deleted',
+        'krs_document',
+        document.id,
+        {
+            'filename': document.filename,
+            'sha256': document.sha256,
+            'size': document.size,
+            'study_plan_id': document.study_plan_id,
+        },
+        None,
+    )
     db.delete(document)
     db.commit()
 
@@ -1011,6 +1134,21 @@ def submit_study_plan(
     )
     db.add(plan)
     try:
+        db.flush()
+        write_audit(
+            db,
+            current_user,
+            'study_plan_submitted',
+            'study_plan',
+            plan.id,
+            None,
+            {
+                'status': 'pending',
+                'semester': plan.semester,
+                'course_codes': [item['code'] for item in courses],
+                'total_sks': sum(int(item.get('sks', 0) or 0) for item in courses),
+            },
+        )
         db.commit()
     except IntegrityError as exc:
         db.rollback()

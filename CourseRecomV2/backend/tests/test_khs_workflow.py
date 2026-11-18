@@ -209,6 +209,13 @@ def test_khs_preview_is_not_saved_until_confirmation_and_rules_filter_courses(mo
             assert confirmation.status_code == 200
             assert confirmation.json()['status'] == 'confirmed'
             db = SessionLocal()
+            khs_audit = db.query(AuditLog).filter(
+                AuditLog.actor_id == student_id,
+                AuditLog.action == 'khs_confirmed',
+                AuditLog.entity_id == str(preview_data['id']),
+            ).one()
+            assert 'confirmed' in khs_audit.new_value
+            assert 'course_count' in khs_audit.new_value
             saved_duplicate_records = (
                 db.query(StudentRecord)
                 .filter(
@@ -321,6 +328,14 @@ def test_khs_preview_is_not_saved_until_confirmation_and_rules_filter_courses(mo
             assert submitted_plan['semester'] == 3
             assert submitted_plan['status'] == 'pending'
             assert submitted_plan['courses'][0]['code'] == 'TST301'
+            db = SessionLocal()
+            plan_audit = db.query(AuditLog).filter(
+                AuditLog.actor_id == student_id,
+                AuditLog.action == 'study_plan_submitted',
+                AuditLog.entity_id == str(submitted_plan['id']),
+            ).one()
+            assert 'TST301' in plan_audit.new_value
+            db.close()
             own_plans = client.get('/api/mahasiswa/rencana-studi', headers=headers)
             assert own_plans.status_code == 200
             assert own_plans.json()[0]['id'] == submitted_plan['id']
@@ -428,6 +443,28 @@ def test_multiple_khs_images_create_a_reviewable_preview(monkeypatch):
                 assert preview['filename'] == 'halaman-1.jpg, halaman-2.jpg'
                 db = SessionLocal()
                 assert db.query(StudentRecord).filter(StudentRecord.student_id == student_id).count() == 0
+                preview_audit = db.query(AuditLog).filter(
+                    AuditLog.actor_id == student_id,
+                    AuditLog.action == 'khs_preview_uploaded',
+                    AuditLog.entity_id == str(preview['id']),
+                ).one()
+                assert 'sha256' in preview_audit.new_value
+                assert 'file_count' in preview_audit.new_value
+                db.close()
+
+                discarded = client.delete(
+                    f"/api/mahasiswa/khs/{preview['id']}",
+                    headers=headers,
+                )
+                assert discarded.status_code == 200
+                assert discarded.json()['status'] == 'discarded'
+                db = SessionLocal()
+                discard_audit = db.query(AuditLog).filter(
+                    AuditLog.actor_id == student_id,
+                    AuditLog.action == 'khs_preview_discarded',
+                    AuditLog.entity_id == str(preview['id']),
+                ).one()
+                assert 'pending' in discard_audit.old_value
                 db.close()
     finally:
             db = SessionLocal()

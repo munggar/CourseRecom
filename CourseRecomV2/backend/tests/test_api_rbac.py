@@ -91,6 +91,8 @@ def test_krs_documents_and_plans_enforce_student_ownership():
     db.commit()
     db.refresh(student_a)
     db.refresh(student_b)
+    student_a_id = student_a.id
+    student_b_id = student_b.id
     plan_b = StudyPlan(
         student_id=student_b.id,
         semester=1,
@@ -149,6 +151,42 @@ def test_krs_documents_and_plans_enforce_student_ownership():
             f'/api/mahasiswa/krs/dokumen/{document_b_id}',
             headers=headers_a,
         ).status_code == 404
+
+        own_delete = client.delete(
+            f'/api/mahasiswa/krs/dokumen/{document_a_id}',
+            headers=headers_a,
+        )
+        assert own_delete.status_code == 204
+
+        db = SessionLocal()
+        upload_events = db.query(AuditLog).filter(
+            AuditLog.actor_id.in_([student_a_id, student_b_id]),
+            AuditLog.action == 'krs_document_uploaded',
+        ).all()
+        delete_events = db.query(AuditLog).filter(
+            AuditLog.actor_id == student_a_id,
+            AuditLog.action == 'krs_document_deleted',
+            AuditLog.entity_id == str(document_a_id),
+        ).all()
+        assert len(upload_events) == 2
+        assert len(delete_events) == 1
+
+        db.close()
+        own_plan_delete = client.delete(
+            f'/api/mahasiswa/rencana-studi/{plan_b_id}',
+            headers={
+                'Authorization': 'Bearer ' + create_access_token(student_b_nim, 'mahasiswa'),
+            },
+        )
+        assert own_plan_delete.status_code == 204
+        db = SessionLocal()
+        plan_delete_audit = db.query(AuditLog).filter(
+            AuditLog.actor_id == student_b_id,
+            AuditLog.action == 'study_plan_deleted',
+            AuditLog.entity_id == str(plan_b_id),
+        ).one()
+        assert 'draft' in plan_delete_audit.old_value
+        db.close()
     finally:
         db = SessionLocal()
         student_ids = [
@@ -157,6 +195,9 @@ def test_krs_documents_and_plans_enforce_student_ownership():
             ).all()
         ]
         db.query(KrsDocument).filter(KrsDocument.student_id.in_(student_ids)).delete(
+            synchronize_session=False,
+        )
+        db.query(AuditLog).filter(AuditLog.actor_id.in_(student_ids)).delete(
             synchronize_session=False,
         )
         db.query(StudyPlan).filter(StudyPlan.student_id.in_(
@@ -714,6 +755,16 @@ def test_teacher_reviews_submitted_study_plan_with_guidance_note():
         )
         assert resubmitted.status_code == 200, resubmitted.text
         assert resubmitted.json()['status'] == 'pending'
+
+        db = SessionLocal()
+        plan_audit_actions = {
+            item.action for item in db.query(AuditLog).filter(
+                AuditLog.entity_type == 'study_plan',
+                AuditLog.entity_id == str(plan_id),
+            ).all()
+        }
+        assert {'study_plan_updated', 'study_plan_resubmitted', 'study_plan_review'} <= plan_audit_actions
+        db.close()
 
         approved = client.patch(
             f'/api/dosen/rencana-studi/{plan_id}',
