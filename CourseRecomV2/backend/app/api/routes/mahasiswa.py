@@ -468,7 +468,7 @@ def get_profile(
     return {
         'nim': current_user.nim,
         'full_name': current_user.full_name,
-        'program_study': metadata.get('program_study', ''),
+        'program_study': metadata.get('program_study') or current_user.program_study or '',
         'semester': metadata.get('current_semester'),
         'ipk': metadata.get('ipk') if metadata.get('ipk') is not None else current_user.ipk,
         'sks_lulus': total_sks,
@@ -815,6 +815,13 @@ def delete_my_study_plan(
     plan = _owned_study_plan(db, plan_id, current_user.id)
     if plan.status not in {'draft', 'revision_requested'}:
         raise HTTPException(status_code=409, detail='KRS draft atau hasil revisi saja yang dapat dihapus.')
+    if db.query(AdvisorCourseFeedback.id).filter(
+        AdvisorCourseFeedback.study_plan_id == plan.id,
+    ).first():
+        raise HTTPException(
+            status_code=409,
+            detail='Rencana studi yang sudah memiliki catatan revisi Dosen PA tidak dapat dihapus agar riwayat evaluasi tetap tersimpan. Perbarui mata kuliah lalu ajukan kembali.',
+        )
     db.query(KrsDocument).filter(KrsDocument.study_plan_id == plan.id).delete(synchronize_session=False)
     db.delete(plan)
     db.commit()
