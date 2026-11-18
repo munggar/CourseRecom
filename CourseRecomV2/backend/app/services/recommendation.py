@@ -13,6 +13,16 @@ from app.services.validation import get_sks_quota
 
 
 PASSING_GRADES = settings.get_passing_grades()
+
+def is_mandatory_course(course: Course) -> bool:
+    category = str(course.category or '')
+    description = str(course.description or '')
+    return bool(
+        re.search(r'\bwajib\b', category, flags=re.IGNORECASE)
+        or re.search(r'\bwajib(?:\s+semester\s+\d+)?\b', description, flags=re.IGNORECASE)
+    )
+
+
 INTEREST_ALIASES = {
     'manajemen sistem informasi': {
         'manajemen sistem informasi',
@@ -388,7 +398,7 @@ def build_recommendation_result(db: Session, student: User) -> dict:
             'code': course.code,
             'name': course.name,
             'sks': course.sks,
-            'mandatory': 'wajib' in (course.category or '').casefold(),
+            'mandatory': is_mandatory_course(course),
             'score': score,
             'valid': not blocks,
             'reasons': reasons,
