@@ -1825,3 +1825,10 @@ textarea {
   .class-table-card { padding: 14px; }
   .class-row-actions { min-width: 112px; }
 }
+
+.kprs-submit-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
