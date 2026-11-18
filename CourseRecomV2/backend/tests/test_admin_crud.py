@@ -283,6 +283,11 @@ def test_admin_delete_lecturer_preserves_review_history_and_nulls_foreign_keys()
         db.query(StudyPlan).filter(StudyPlan.id == plan_id).delete(synchronize_session=False)
         db.query(CourseClass).filter(CourseClass.id == class_id).delete(synchronize_session=False)
         db.query(AuditLog).filter(AuditLog.id == audit_id).delete(synchronize_session=False)
+        db.query(AuditLog).filter(
+            AuditLog.entity_type == 'user',
+            AuditLog.entity_id == str(lecturer_id),
+            AuditLog.action == 'lecturer_deleted',
+        ).delete(synchronize_session=False)
         db.query(User).filter(User.id.in_([student_id, lecturer_id])).delete(synchronize_session=False)
         db.commit()
         db.close()
