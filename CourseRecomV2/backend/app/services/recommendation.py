@@ -58,7 +58,7 @@ INTEREST_ALIASES = {
 
 INTEREST_TOPIC_MAP = {
     'manajemen sistem informasi': {
-        'information_systems', 'application_development', 'database_management',
+        'information_systems', 'application_development', 'programming', 'database_management',
         'it_infrastructure', 'enterprise_systems', 'it_governance', 'business_process',
     },
     'kecerdasan bisnis': {
