@@ -73,6 +73,20 @@ const INTEREST_OPTIONS = [
   'Manajemen Sistem Informasi',
   'Kecerdasan Bisnis',
 ];
+const RECOMMENDATION_FACTOR_LABELS = {
+  similar_students: 'Similar Students',
+  academic_history: 'Academic History',
+  interest: 'Interest',
+  curriculum: 'Curriculum',
+  course_pattern: 'Course Pattern',
+};
+const RECOMMENDATION_FACTOR_HINTS = {
+  similar_students: 'Kecocokan riwayat mata kuliah dan nilai dengan mahasiswa lain yang memiliki histori paling mirip.',
+  academic_history: 'Menggunakan nilai mata kuliah prasyarat yang sudah lulus, atau IPK pada KHS terbaru jika tidak ada prasyarat terukur.',
+  interest: 'Mencocokkan topik dari nama, kategori, deskripsi, dan prasyarat mata kuliah dengan peminatan yang dipilih.',
+  curriculum: 'Memastikan mata kuliah memang ditawarkan pada semester target menurut katalog kurikulum.',
+  course_pattern: 'Proporsi mahasiswa pembanding yang mengambil mata kuliah tersebut pada semester target.',
+};
 const LEGACY_INTERESTS = {
   'manajemen sistem informasi': 'Manajemen Sistem Informasi',
   'manajemen & sistem informasi': 'Manajemen Sistem Informasi',
@@ -2273,11 +2287,21 @@ function App() {
                   )}
                   <div className="factor-grid">
                     {Object.entries(item.factors || {}).map(([factor, score]) => (
-                      <div className="factor" key={factor}>
-                        <span>{factor.replaceAll('_', ' ')}</span><strong>{score}%</strong>
+                      <div className="factor" key={factor} title={item.factor_details?.[factor] || RECOMMENDATION_FACTOR_HINTS[factor] || ''}>
+                        <span>{RECOMMENDATION_FACTOR_LABELS[factor] || factor.replaceAll('_', ' ')}</span>
+                        <strong>{score == null ? 'Belum cukup data' : `${score}%`}</strong>
+                        <small>{item.factor_details?.[factor] || RECOMMENDATION_FACTOR_HINTS[factor] || ''}</small>
+                        {Number(item.factor_weights?.[factor]) > 0 && (
+                          <em>Bobot efektif {item.factor_weights[factor]}%</em>
+                        )}
                       </div>
                     ))}
                   </div>
+                  <p className="score-coverage-note">
+                    Skor akhir memakai {item.available_factor_count ?? 5} dari 5 aspek terukur
+                    (cakupan bobot data {item.score_coverage ?? 100}%).
+                    Aspek yang belum memiliki data tidak dianggap bernilai 0; bobot aspek lain disesuaikan secara proporsional.
+                  </p>
                   <ul className="reason-list">{item.reasons.map((reason) => <li key={reason}>{reason}</li>)}</ul>
                   <button
                     className="btn primary"
