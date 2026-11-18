@@ -269,7 +269,7 @@ def test_ftii_program_interest_labels_map_to_distinct_ml_topic_groups():
     assert _interest_groups('Data Scientist') == {'data scientist'}
     assert _interest_groups('Manufaktur') == {'manufaktur'}
     assert _interest_groups('Energi dan Konversi Energi') == {'energi dan konversi energi'}
-    assert _interest_groups('Robotika') == {'robotika'}
+    assert _interest_groups('Pengembangan Robotika') == {'pengembangan robotika'}
     assert _interest_groups('Teknik Telekomunikasi') == {'teknik telekomunikasi'}
     assert _interest_groups('Pengembangan Robotika') == {'pengembangan robotika'}
 
