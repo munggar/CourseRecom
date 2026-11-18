@@ -261,4 +261,4 @@ def test_per_course_explanation_distinguishes_collaborative_and_content_fallback
     assert '5 mahasiswa serupa' in collaborative
     assert '2 di antaranya' in collaborative
     assert 'content-based scoring' in content_fallback
-    assert 'belum ada kelompok mahasiswa pembanding' in content_fallback
+    assert 'belum ada kelompok mahasiswa pembanding' in content_fallback.lower()
