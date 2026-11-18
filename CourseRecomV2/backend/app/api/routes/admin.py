@@ -913,7 +913,8 @@ def create_class(payload: CourseClassMutation, db: Session = Depends(get_db), cu
             raise HTTPException(status_code=409, detail='Dosen pengampu berbenturan pada jadwal tersebut (lintas semester juga diperiksa).')
     item = CourseClass(**payload.model_dump(), course_code=payload.course_code.upper(), class_name=payload.class_name.strip(), day=payload.day.strip(), room=payload.room.strip())
     db.add(item)
-    write_audit(db, current_user, 'class_created', 'course_class', payload.course_code.upper(), None, payload.model_dump())
+    db.flush()
+    write_audit(db, current_user, 'class_created', 'course_class', item.id, None, payload.model_dump())
     db.commit()
     db.refresh(item)
     return {'id': item.id, 'course_code': item.course_code, 'class_name': item.class_name, 'is_open': item.is_open}
