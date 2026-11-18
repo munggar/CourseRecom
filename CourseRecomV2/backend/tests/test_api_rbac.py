@@ -10,6 +10,7 @@ from app.database import SessionLocal, ensure_schema
 from app.deps import create_access_token, get_password_hash
 from app.main import app
 from app.models import (
+    AdvisorCourseFeedback,
     AuditLog,
     Course,
     KhsDocument,
@@ -665,6 +666,15 @@ def test_teacher_reviews_submitted_study_plan_with_guidance_note():
         assert revision.status_code == 200
         assert revision.json()['status'] == 'revision_requested'
         assert revision.json()['advisor_note'] == 'Tinjau kembali beban SKS.'
+        feedback_rows = db.query(AdvisorCourseFeedback).filter(
+            AdvisorCourseFeedback.study_plan_id == plan_id,
+        ).all()
+        assert len(feedback_rows) == 1
+        assert feedback_rows[0].course_code == 'TST401'
+        assert feedback_rows[0].reason == 'Tinjau kembali beban SKS.'
+        student_plans = client.get('/api/mahasiswa/rencana-studi', headers=student_headers)
+        assert student_plans.status_code == 200
+        assert student_plans.json()[0]['advisor_feedback'][0]['course_code'] == 'TST401'
 
         resubmitted = client.post(
             f'/api/mahasiswa/rencana-studi/{plan_id}/submit',
@@ -689,6 +699,7 @@ def test_teacher_reviews_submitted_study_plan_with_guidance_note():
     finally:
         db = SessionLocal()
         try:
+            db.query(AdvisorCourseFeedback).filter(AdvisorCourseFeedback.study_plan_id == plan_id).delete()
             db.query(StudyPlan).filter(StudyPlan.id == plan_id).delete()
             db.query(KhsDocument).filter(KhsDocument.student_id == student_id).delete()
             db.query(StudentRecord).filter(StudentRecord.student_id == student_id).delete()
