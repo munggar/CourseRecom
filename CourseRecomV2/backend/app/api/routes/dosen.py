@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.deps import get_db, require_roles
-from app.models import AdvisorCourseFeedback, KhsDocument, KrsDocument, KprsRequest, StudyPlan, User
+from app.models import AdvisorCourseFeedback, Course, KhsDocument, KrsDocument, KprsRequest, StudyPlan, User
 from fastapi.responses import Response
 from app.schemas import KprsReview, StudyPlanReview
 from app.services.academic import validate_course_selection
@@ -116,8 +116,15 @@ def review_study_plan(
         if unknown_codes:
             raise HTTPException(status_code=422, detail=f'Mata kuliah tidak ditemukan pada KRS: {", ".join(sorted(unknown_codes))}.')
         for code in payload.rejected_course_codes:
-            course = stored_by_code[code]
-            if course.get('mandatory') or 'wajib' in str(course.get('category', '')).lower() or 'wajib' in str(course.get('description', '')).lower():
+            course = db.query(Course).filter(Course.code == code).first()
+            course_data = stored_by_code[code]
+            if (
+                course_data.get('mandatory')
+                or (course and (
+                    'wajib' in str(course.category or '').lower()
+                    or 'wajib' in str(course.description or '').lower()
+                ))
+            ):
                 raise HTTPException(status_code=422, detail=f'Mata kuliah wajib {code} tidak boleh ditolak secara manual.')
     if payload.status == 'approved':
         try:
