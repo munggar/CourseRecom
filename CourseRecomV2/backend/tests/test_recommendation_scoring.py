@@ -317,8 +317,22 @@ def test_peer_course_scores_downweight_courses_rejected_by_similar_peers():
     ]
     feedback = [SimpleNamespace(student_id=2, semester=2, course_code='X501')]
 
+    class FakeQuery:
+        def __init__(self, rows):
+            self.rows = rows
+
+        def filter(self, *_args, **_kwargs):
+            return self
+
+        def all(self):
+            return self.rows
+
+    class FakeDB:
+        def query(self, model):
+            return FakeQuery(feedback if model is AdvisorCourseFeedback else peer_rows)
+
     similarities, counts, peer_count = _peer_course_scores(
-        FakeDB(peer_rows, feedback), student, 2, student_history, catalog
+        FakeDB(), student, 2, student_history, catalog
     )
 
     assert peer_count == 2
