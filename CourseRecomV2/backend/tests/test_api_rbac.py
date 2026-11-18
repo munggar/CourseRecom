@@ -599,7 +599,7 @@ def test_teacher_reviews_submitted_study_plan_with_guidance_note():
         sks=3,
         semester=4,
         available_semesters='4',
-        category='Wajib',
+        category='Pilihan',
         prerequisite_codes='TST301',
         is_active=True,
     ))
