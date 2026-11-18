@@ -503,18 +503,6 @@ def _active_advisor_feedback(
     student_id: int,
     target_semester: int,
 ) -> tuple[list[AdvisorFeedback], dict[str, list[AdvisorFeedback]]]:
-    latest_plan = (
-        db.query(StudyPlan)
-        .filter(
-            StudyPlan.student_id == student_id,
-            StudyPlan.semester == target_semester,
-        )
-        .order_by(StudyPlan.updated_at.desc(), StudyPlan.id.desc())
-        .first()
-    )
-    if latest_plan and latest_plan.status == 'approved':
-        return [], {}
-
     feedback_rows = (
         db.query(AdvisorFeedback)
         .filter(
