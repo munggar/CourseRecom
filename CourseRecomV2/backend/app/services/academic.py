@@ -7,6 +7,22 @@ from app.services.recommendation import build_recommendation_result
 from app.services.validation import has_schedule_conflict
 
 
+def class_selection_map(entries: Sequence[Mapping[str, object]]) -> dict[str, int]:
+    """Extract saved class choices from modern KRS course objects."""
+    selections: dict[str, int] = {}
+    for entry in entries:
+        if not isinstance(entry, Mapping):
+            continue
+        code = str(entry.get('code') or '').strip().upper()
+        class_id = entry.get('class_id')
+        if code and class_id is not None:
+            try:
+                selections[code] = int(class_id)
+            except (TypeError, ValueError) as exc:
+                raise ValueError(f'Pilihan kelas tersimpan untuk {code} tidak valid.') from exc
+    return selections
+
+
 def validate_course_selection(
     db: Session,
     student: User,
