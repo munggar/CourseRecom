@@ -6,7 +6,7 @@ from collections import defaultdict
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.models import Course, KhsDocument, RecommendationModelVersion, StudentRecord, User
+from app.models import AdvisorCourseFeedback, Course, KhsDocument, RecommendationModelVersion, StudentRecord, User
 from app.services.time_utils import utc_now_naive
 from app.services.khs_parser import GRADE_POINTS
 from app.services.validation import get_sks_quota
@@ -560,6 +560,19 @@ def build_recommendation_result(db: Session, student: User) -> dict:
     similarities, cohort_counts, peer_count = _peer_course_scores(
         db, student, target_semester, records, catalog_courses
     )
+    advisor_feedback_rows = (
+        db.query(AdvisorCourseFeedback)
+        .filter(
+            AdvisorCourseFeedback.student_id == student.id,
+            AdvisorCourseFeedback.semester == target_semester,
+        )
+        .order_by(AdvisorCourseFeedback.created_at.desc(), AdvisorCourseFeedback.id.desc())
+        .all()
+    )
+    advisor_feedback_by_code = {}
+    for feedback in advisor_feedback_rows:
+        advisor_feedback_by_code.setdefault(feedback.course_code.upper(), feedback)
+
     target_courses = [
         course for course in catalog_courses
         if target_semester in {
@@ -739,6 +752,23 @@ def build_recommendation_result(db: Session, student: User) -> dict:
         else:
             recommendations.append(item)
 
+    advisor_rejected = []
+    for item in recommendations:
+        feedback = advisor_feedback_by_code.get(item['code'].upper())
+        if feedback:
+            item['advisor_feedback'] = {
+                'reason': feedback.reason,
+                'reviewed_at': feedback.created_at.isoformat(),
+            }
+            item['valid'] = False
+            item['reason_block'] = f"Ditolak Dosen PA sebelumnya: {feedback.reason}"
+            item['reasons'].append('Dikeluarkan dari rekomendasi karena umpan balik negatif Dosen PA')
+            advisor_rejected.append(item)
+    if advisor_rejected:
+        rejected.extend(advisor_rejected)
+        rejected_codes = {item['code'] for item in advisor_rejected}
+        recommendations = [item for item in recommendations if item['code'] not in rejected_codes]
+
     recommendations.sort(key=lambda item: item['score'], reverse=True)
     mandatory_courses.sort(key=lambda item: item['code'])
     rejected.sort(key=lambda item: item['score'], reverse=True)
@@ -790,6 +820,7 @@ def build_recommendation_result(db: Session, student: User) -> dict:
         'taken_course_codes': sorted(all_codes),
         'not_taken_course_codes': sorted(catalog_codes - all_codes),
         'interests': student.interests or '',
+        'advisor_feedback_samples': len(advisor_feedback_rows),
     }
     return {
         'status': 'ready',
@@ -813,6 +844,11 @@ def train_similarity_model(db: Session) -> RecommendationModelVersion:
     for record in records:
         if _passed(record):
             by_student_semester[(record.student_id, record.semester)].add(record.course_code)
+
+    negative_feedback = db.query(AdvisorCourseFeedback).all()
+    negative_by_student_semester: dict[tuple[int, int], set[str]] = defaultdict(set)
+    for feedback in negative_feedback:
+        negative_by_student_semester[(feedback.student_id, feedback.semester)].add(feedback.course_code)
 
     episodes = []
     for student_id in students_with_history:
@@ -842,6 +878,8 @@ def train_similarity_model(db: Session) -> RecommendationModelVersion:
             if similarity:
                 for code in peer_courses:
                     votes[code] += similarity
+                for code in negative_by_student_semester.get((peer_id, semester), set()):
+                    votes[code] -= similarity * 0.75
         ranked = [code for code, _ in sorted(votes.items(), key=lambda item: item[1], reverse=True)[:5]]
         if not ranked:
             continue
@@ -857,6 +895,7 @@ def train_similarity_model(db: Session) -> RecommendationModelVersion:
         'precision_at_5': round(sum(precisions) / len(precisions), 4) if precisions else None,
         'recall_at_5': round(sum(recalls) / len(recalls), 4) if recalls else None,
         'evaluation_samples': len(precisions),
+        'advisor_negative_feedback_samples': len(negative_feedback),
         'evaluation_status': 'evaluated' if precisions else 'insufficient_history',
     }
     version_number = db.query(RecommendationModelVersion).count() + 1
