@@ -18,6 +18,7 @@ def _new_student(db, prefix: str) -> User:
         full_name='Mahasiswa Uji Profil',
         role='mahasiswa',
         password_hash=get_password_hash('test-password'),
+        program_study='Sistem dan Teknologi Informasi',
         interests='Kecerdasan Bisnis',
     )
     db.add(student)
@@ -97,14 +98,20 @@ def test_profile_update_rejects_empty_and_overlong_interests():
             )
             assert response.status_code == 422
 
-        valid_value = 'x' * 255
         response = client.put(
             '/api/mahasiswa/profil',
             headers=headers,
-            json={'interests': valid_value},
+            json={'interests': 'Data Scientist'},
         )
-        assert response.status_code == 200
-        assert response.json()['interests'] == valid_value
+        assert response.status_code == 422, response.text
+
+        response = client.put(
+            '/api/mahasiswa/profil',
+            headers=headers,
+            json={'interests': 'Manajemen Sistem Informasi'},
+        )
+        assert response.status_code == 200, response.text
+        assert response.json()['interests'] == 'Manajemen Teknologi Informasi'
     finally:
         cleanup_db = SessionLocal()
         cleanup_db.query(User).filter(User.id == student_id).delete()
