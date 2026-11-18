@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.deps import get_db, require_roles
-from app.models import AdvisorCourseFeedback, Course, CourseClass, KhsDocument, KrsDocument, OfficialKrsDocument, StudentRecord, StudyPlan, User, KprsRequest, SystemSetting
+from app.models import AdvisorCourseFeedback, Course, CourseClass, KhsDocument, KrsDocument, OfficialKrsDocument, StudentRecord, StudyPlan, User, KprsRequest, SystemSetting, Room
 from app.schemas import KhsConfirm, KhsHistoryEdit, ProfileUpdate, RecommendationItem, StudyPlanSubmit, StudyPlanUpdate, KprsMutation
 from app.services.khs_parser import (
     GRADE_POINTS,
@@ -97,8 +97,10 @@ def list_parallel_classes(
     sections = (
         db.query(CourseClass, Course)
         .join(Course, Course.code == CourseClass.course_code)
+        .join(Room, Room.code == CourseClass.room)
         .filter(
             Course.is_active.is_(True),
+            Room.is_active.is_(True),
             CourseClass.semester == str(semester),
         )
         .order_by(CourseClass.course_code, CourseClass.class_name, CourseClass.id)

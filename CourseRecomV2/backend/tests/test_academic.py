@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 import pytest
 
 from app.database import Base
-from app.models import Course, CourseClass, KprsRequest, StudyPlan, User
+from app.models import Course, CourseClass, KprsRequest, StudyPlan, User, Room
 from app.services.academic import earned_credits, latest_attempt_gpa
 from app.services.capacity import (
     assert_course_capacity,
@@ -274,20 +274,31 @@ def test_parallel_sections_validate_schedule_selection_and_capacity(monkeypatch)
                 code='PAR102', name='Jaringan Lanjut', sks=3,
                 semester=3, category='Pilihan', capacity=40, is_active=True,
             )
-            db.add_all([student, first_course, second_course])
+            rooms = [
+                Room(code='FT291', floor=2, room_number='91', capacity=20, room_type='Laboratorium',
+                     is_active=True, source_status='test', notes='Fixture active room',
+                     created_at=datetime.now()),
+                Room(code='FT292', floor=2, room_number='92', capacity=20, room_type='Laboratorium',
+                     is_active=True, source_status='test', notes='Fixture active room',
+                     created_at=datetime.now()),
+                Room(code='FT293', floor=2, room_number='93', capacity=20, room_type='Ruang kuliah',
+                     is_active=True, source_status='test', notes='Fixture active room',
+                     created_at=datetime.now()),
+            ]
+            db.add_all([student, first_course, second_course, *rooms])
             db.flush()
             section_a = CourseClass(
-                course_code='PAR101', class_name='A', room='Lab 1',
+                course_code='PAR101', class_name='A', room='FT291',
                 day='Selasa', start_time='08:00', end_time='10:00',
                 capacity=1, semester='3', is_open=True,
             )
             section_b = CourseClass(
-                course_code='PAR101', class_name='B', room='Lab 2',
+                course_code='PAR101', class_name='B', room='FT292',
                 day='Rabu', start_time='08:00', end_time='10:00',
                 capacity=1, semester='3', is_open=True,
             )
             second_section = CourseClass(
-                course_code='PAR102', class_name='A', room='Ruang 1',
+                course_code='PAR102', class_name='A', room='FT293',
                 day='Selasa', start_time='09:00', end_time='11:00',
                 capacity=5, semester='3', is_open=True,
             )

@@ -2584,3 +2584,134 @@ footer {
   .krs-preview-footer > div { width: 100%; }
   .krs-preview-footer .btn { flex: 1; }
 }
+
+
+/* FTII room inventory, schedule availability, and separate exports */
+.export-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.admin-reference-exports {
+  justify-content: flex-start;
+  margin: 18px 0 24px;
+}
+.lecturer-directory-section {
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border);
+}
+.lecturer-directory-section .table {
+  min-width: 980px;
+}
+.room-inventory-section {
+  margin-top: 22px;
+}
+.room-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  padding: 16px;
+  margin: 14px 0 18px;
+  background: #f8fbfc;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+.room-form-grid label {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  color: #2d4656;
+  font-weight: 600;
+}
+.room-form-grid .class-open-toggle {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+.room-form-grid .class-open-toggle input {
+  width: 18px;
+  min-height: 18px;
+  flex: 0 0 auto;
+}
+.room-notes-field {
+  grid-column: 1 / -1;
+}
+.room-form-grid .class-form-actions {
+  display: flex;
+  align-items: end;
+  justify-content: flex-start;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.schedule-duration-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  grid-column: 1 / -1;
+  padding: 11px 13px;
+  border: 1px solid #cbdde4;
+  border-radius: 10px;
+  background: #f1f7fa;
+  color: #345565;
+  font-size: .9rem;
+}
+.schedule-duration-note svg {
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+.class-form-grid select:disabled {
+  cursor: wait;
+  background: #f1f4f5;
+}
+.room-inventory-section .table {
+  min-width: 760px;
+}
+@media (max-width: 700px) {
+  .export-actions,
+  .admin-reference-exports {
+    justify-content: stretch;
+    width: 100%;
+  }
+  .export-actions .btn {
+    flex: 1 1 170px;
+  }
+  .room-form-grid {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 12px;
+  }
+  .room-notes-field,
+  .schedule-duration-note {
+    grid-column: auto;
+  }
+  .room-form-grid .class-form-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .room-form-grid .class-form-actions .btn {
+    width: 100%;
+  }
+}
+
+
+.directory-link-controls {
+  display: grid;
+  grid-template-columns: minmax(150px, 1fr) auto;
+  align-items: center;
+  gap: 7px;
+  min-width: 270px;
+}
+.directory-link-controls .btn {
+  white-space: nowrap;
+}
+@media (max-width: 700px) {
+  .directory-link-controls {
+    grid-template-columns: minmax(0, 1fr);
+    min-width: 190px;
+  }
+  .directory-link-controls .btn {
+    width: 100%;
+  }
+}
