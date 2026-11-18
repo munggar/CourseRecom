@@ -480,6 +480,7 @@ function App() {
   const [approvedPlans, setApprovedPlans] = useState([]);
   const [overrideReason, setOverrideReason] = useState({});
   const [overrideCourses, setOverrideCourses] = useState({});
+  const [overrideClassSelections, setOverrideClassSelections] = useState({});
   const [settingDraft, setSettingDraft] = useState({
     active_academic_year: DEFAULT_ACADEMIC_YEAR,
     krs_period_start: '',
@@ -1170,15 +1171,22 @@ function App() {
       setActionMessage('Alasan override minimal 10 karakter.');
       return;
     }
+    const originalPlan = approvedPlans.find((item) => item.id === planId);
+    const courseCodes = courseCodesText.trim()
+      ? courseCodesText.split(',').map((code) => code.trim().toUpperCase()).filter(Boolean)
+      : (originalPlan?.courses || []).map((item) => typeof item === 'string' ? item : item.code);
+    const selections = Object.fromEntries((originalPlan?.courses || []).filter((item) => typeof item === 'object' && item.class_id).map((item) => [item.code, Number(item.class_id)]));
+    Object.entries(overrideClassSelections[planId] || {}).forEach(([code, classId]) => {
+      if (classId) selections[code] = Number(classId);
+    });
     try {
       await apiRequest(`/admin/study-plans/${planId}/override`, {
         method: 'PATCH',
         body: JSON.stringify({
           status,
           reason: reason.trim(),
-          course_codes: courseCodesText.trim()
-            ? courseCodesText.split(',').map((code) => code.trim().toUpperCase()).filter(Boolean)
-            : null,
+          course_codes: courseCodesText.trim() ? courseCodes : null,
+          class_selections: Object.fromEntries(courseCodes.filter((code) => selections[code]).map((code) => [code, selections[code]])),
         }),
       });
       setApprovedPlans((previous) => status === 'approved' ? previous : previous.filter((plan) => plan.id !== planId));
@@ -3422,9 +3430,30 @@ function App() {
                           style={{ marginTop: 6 }}
                           value={overrideCourses[plan.id] || ''}
                           onChange={(event) => setOverrideCourses((previous) => ({ ...previous, [plan.id]: event.target.value }))}
-                          placeholder="Kode MK baru (opsional)"
+                          placeholder="Kode MK baru (pisahkan koma, opsional)"
                           aria-label={`Mata kuliah override ${plan.student_name || plan.student_id}`}
                         />
+                        {(overrideCourses[plan.id]?.trim()
+                          ? overrideCourses[plan.id].split(',').map((code) => code.trim().toUpperCase()).filter(Boolean)
+                          : (plan.courses || []).map((course) => typeof course === 'string' ? course : course.code)
+                        ).map((code) => {
+                          const options = classList.filter((section) => section.course_code === code && String(section.semester) === String(plan.semester));
+                          if (!options.length) return null;
+                          const original = (plan.courses || []).find((course) => typeof course === 'object' && course.code === code);
+                          const selected = overrideClassSelections[plan.id]?.[code] ?? original?.class_id ?? '';
+                          return (
+                            <label key={code} className="course-edit-field" style={{ marginTop: 7 }}>
+                              <span className="muted">Kelas {code}</span>
+                              <select value={selected} onChange={(event) => setOverrideClassSelections((previous) => ({
+                                ...previous,
+                                [plan.id]: { ...(previous[plan.id] || {}), [code]: event.target.value },
+                              }))}>
+                                <option value="">Pilih kelas</option>
+                                {options.map((section) => <option key={section.id} value={section.id} disabled={!section.is_open || (section.remaining_seats <= 0 && Number(selected) !== Number(section.id))}>{section.class_name} · {section.day} {section.start_time}-{section.end_time} · {section.remaining_seats} kursi</option>)}
+                              </select>
+                            </label>
+                          );
+                        })}
                       </td>
                       <td>
                         <button className="btn outline" type="button" onClick={() => overrideStudyPlan(plan.id, 'revision_requested', overrideReason[plan.id], overrideCourses[plan.id])}>Buka/Revisi</button>
