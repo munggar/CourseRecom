@@ -99,7 +99,6 @@ def list_parallel_classes(
         .filter(
             Course.is_active.is_(True),
             CourseClass.semester == str(semester),
-            CourseClass.is_open.is_(True),
         )
         .order_by(CourseClass.course_code, CourseClass.class_name, CourseClass.id)
         .all()
@@ -124,6 +123,7 @@ def list_parallel_classes(
             'occupied': occupied,
             'remaining_seats': max(0, section.capacity - occupied),
             'is_full': occupied >= section.capacity,
+            'is_open': section.is_open,
             'semester': section.semester,
         })
     return results
