@@ -152,6 +152,12 @@ def _interest_topic_score(course: Course, interests: str) -> tuple[float | None,
     if not selected_groups:
         return None, 'Peminatan mahasiswa belum dipilih atau belum dikenali.'
 
+    category_groups = _interest_groups(course.category or '')
+    if category_groups:
+        if selected_groups.intersection(category_groups):
+            return 1.0, 'Kategori katalog secara eksplisit sesuai dengan peminatan yang dipilih.'
+        return 0.0, 'Kategori katalog mengarah ke peminatan yang berbeda dari pilihan mahasiswa.'
+
     selected_topics = set().union(
         *(INTEREST_TOPIC_MAP[group] for group in selected_groups)
     )
@@ -249,7 +255,9 @@ def _record_identity(
         normalized_name = _normalize_text(record.course_name or '')
         if catalog_name_to_code and normalized_name in catalog_name_to_code:
             return _course_identity(catalog_name_to_code[normalized_name])
-        return _course_identity(code) if code else _course_identity('', record.course_name)
+        if normalized_name:
+            return _course_identity('', record.course_name)
+        return _course_identity(code)
     return _course_identity(code, record.course_name)
 
 
