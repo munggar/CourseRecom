@@ -65,6 +65,7 @@ const EMPTY_RECOMMENDATIONS = {
   status: 'khs_required',
   profile: null,
   recommendations: [],
+  mandatory_courses: [],
   rejected: [],
   semester_antara: [],
 };
