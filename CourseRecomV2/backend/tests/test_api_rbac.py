@@ -91,6 +91,8 @@ def test_krs_documents_and_plans_enforce_student_ownership():
     db.commit()
     db.refresh(student_a)
     db.refresh(student_b)
+    student_a_id = student_a.id
+    student_b_id = student_b.id
     plan_b = StudyPlan(
         student_id=student_b.id,
         semester=1,
@@ -149,6 +151,26 @@ def test_krs_documents_and_plans_enforce_student_ownership():
             f'/api/mahasiswa/krs/dokumen/{document_b_id}',
             headers=headers_a,
         ).status_code == 404
+
+        own_delete = client.delete(
+            f'/api/mahasiswa/krs/dokumen/{document_a_id}',
+            headers=headers_a,
+        )
+        assert own_delete.status_code == 204
+
+        db = SessionLocal()
+        upload_events = db.query(AuditLog).filter(
+            AuditLog.actor_id.in_([student_a_id, student_b_id]),
+            AuditLog.action == 'krs_document_uploaded',
+        ).all()
+        delete_events = db.query(AuditLog).filter(
+            AuditLog.actor_id == student_a_id,
+            AuditLog.action == 'krs_document_deleted',
+            AuditLog.entity_id == str(document_a_id),
+        ).all()
+        assert len(upload_events) == 2
+        assert len(delete_events) == 1
+        db.close()
     finally:
         db = SessionLocal()
         student_ids = [
@@ -157,6 +179,9 @@ def test_krs_documents_and_plans_enforce_student_ownership():
             ).all()
         ]
         db.query(KrsDocument).filter(KrsDocument.student_id.in_(student_ids)).delete(
+            synchronize_session=False,
+        )
+        db.query(AuditLog).filter(AuditLog.actor_id.in_(student_ids)).delete(
             synchronize_session=False,
         )
         db.query(StudyPlan).filter(StudyPlan.student_id.in_(
