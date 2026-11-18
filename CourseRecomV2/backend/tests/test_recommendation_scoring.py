@@ -186,8 +186,8 @@ def test_similar_students_zero_vote_is_distinct_from_missing_peer_data():
 
 def test_interest_respects_explicit_course_catalog_specialization_tags():
     data_course = SimpleNamespace(
-        name='Kursus Analitik',
-        category='Data',
+        name='Analisis Data dan Dashboard',
+        category='Data Analytics',
         description='',
         prerequisite_text='',
     )
