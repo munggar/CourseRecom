@@ -343,6 +343,8 @@ def test_student_registration_creates_student_only_account():
         })
         assert response.status_code == 201, response.text
         assert response.json()['role'] == 'mahasiswa'
+        assert response.json()['program_study'] == 'Sistem dan Teknologi Informasi'
+        assert response.json()['interests'] == 'Manajemen Teknologi Informasi'
 
         duplicate = client.post('/api/auth/register', json={
             'nim': nim,
@@ -696,6 +698,10 @@ def test_teacher_reviews_submitted_study_plan_with_guidance_note():
             json={'course_codes': ['TST402']},
         )
         assert replacement.status_code == 200, replacement.text
+        alternatives = client.get('/api/rekomendasi', headers=student_headers)
+        assert alternatives.status_code == 200, alternatives.text
+        assert all(item['code'] != 'TST401' for item in alternatives.json())
+
         resubmitted = client.post(
             f'/api/mahasiswa/rencana-studi/{plan_id}/submit',
             headers=student_headers,
