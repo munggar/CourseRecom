@@ -412,7 +412,7 @@ class CourseClassMutation(BaseModel):
     class_name: str = Field(min_length=1, max_length=40)
     lecturer_id: int | None = None
     room: str = Field(min_length=5, max_length=10, pattern=r'^FT[234]\d{2}$')
-    day: Literal['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu']
+    day: Literal['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu']
     start_time: str = Field(pattern=r'^([01]\d|2[0-3]):[0-5]\d$')
     end_time: str | None = Field(default=None, pattern=r'^([01]\d|2[0-3]):[0-5]\d$')
     capacity: int = Field(ge=1, le=10000)
