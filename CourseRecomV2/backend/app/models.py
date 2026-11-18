@@ -113,9 +113,9 @@ class AdvisorFeedback(Base):
         Index('ix_advisor_feedback_study_plan', 'study_plan_id'),
     )
     id = Column(Integer, primary_key=True, index=True)
-    student_id = Column(Integer, ForeignKey('users.id'), nullable=False, index=True)
-    study_plan_id = Column(Integer, ForeignKey('study_plans.id'), nullable=False)
-    reviewer_id = Column(Integer, ForeignKey('users.id'), nullable=False)
+    student_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False, index=True)
+    study_plan_id = Column(Integer, ForeignKey('study_plans.id', ondelete='CASCADE'), nullable=False)
+    reviewer_id = Column(Integer, ForeignKey('users.id', ondelete='SET NULL'), nullable=True)
     semester = Column(Integer, nullable=False)
     affected_course_codes_json = Column(Text, nullable=False, default='[]')
     reason_category = Column(String(40), nullable=False, default='general')
