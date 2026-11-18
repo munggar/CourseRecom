@@ -288,13 +288,16 @@ def build_official_krs_pdf(
         pdf_canvas.saveState()
         pdf_canvas.setStrokeColor(colors.HexColor('#c9d2d8'))
         pdf_canvas.setLineWidth(0.45)
-        pdf_canvas.line(left_margin, 17 * mm, page_width - right_margin, 17 * mm)
-        pdf_canvas.setFont('Helvetica', 6.4)
+        pdf_canvas.line(left_margin, 31 * mm, page_width - right_margin, 31 * mm)
+        pdf_canvas.setFont('Helvetica', 6.6)
         pdf_canvas.setFillColor(colors.HexColor('#53616a'))
-        pdf_canvas.drawString(left_margin, 12.5 * mm, f'CourseRecom | Ref. KRS #{plan_id}')
-        pdf_canvas.drawString(left_margin, 8.8 * mm, 'Verifikasi dokumen melalui QR code atau tautan resmi pada area ini.')
-        pdf_canvas.drawRightString(page_width - right_margin, 8.8 * mm, f'Halaman {document.page}')
-        pdf_canvas.drawImage(qr_image, page_width - right_margin - 13 * mm, 2.5 * mm, width=11 * mm, height=11 * mm, preserveAspectRatio=True, mask='auto')
+        pdf_canvas.drawString(left_margin, 24 * mm, f'CourseRecom | Ref. KRS #{plan_id}')
+        pdf_canvas.drawString(left_margin, 19 * mm, 'Pindai QR code untuk memverifikasi keaslian dokumen.')
+        pdf_canvas.drawRightString(page_width - right_margin - 27 * mm, 10 * mm, f'Halaman {document.page}')
+        qr_x = page_width - right_margin - 25 * mm
+        qr_y = 3 * mm
+        pdf_canvas.drawImage(qr_image, qr_x, qr_y, width=23 * mm, height=23 * mm, preserveAspectRatio=True, mask='auto')
+        pdf_canvas.linkURL(verification_url, (qr_x, qr_y, qr_x + 23 * mm, qr_y + 23 * mm), relative=0, thickness=0)
         pdf_canvas.restoreState()
 
     document = SimpleDocTemplate(
@@ -303,7 +306,7 @@ def build_official_krs_pdf(
         rightMargin=right_margin,
         leftMargin=left_margin,
         topMargin=15 * mm,
-        bottomMargin=23 * mm,
+        bottomMargin=34 * mm,
         title=f'KRS Resmi {student_nim}',
         author='CourseRecom - Universitas Muhammadiyah Prof. Dr. Hamka',
         subject=f'KRS semester {semester} mahasiswa {student_nim}',
