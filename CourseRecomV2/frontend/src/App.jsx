@@ -1506,8 +1506,10 @@ function App() {
   const saveHistoryEdit = async (document) => {
     if (!historyEditDraft) return;
     const invalidCourse = historyEditDraft.courses.find((course) => (
-      course.numeric_grade === '' || !Number.isFinite(Number(course.numeric_grade))
-      || Number(course.numeric_grade) < 0 || Number(course.numeric_grade) > 100
+      course.numeric_grade !== '' && (
+        !Number.isFinite(Number(course.numeric_grade))
+        || Number(course.numeric_grade) < 0 || Number(course.numeric_grade) > 100
+      )
     ));
     if (invalidCourse) {
       pushToast(`Nilai angka ${invalidCourse.code} harus diisi antara 0 sampai 100.`, 'error');
@@ -1528,9 +1530,11 @@ function App() {
         method: 'PATCH',
         body: JSON.stringify({
           ipk: historyEditDraft.ipk === '' ? null : Number(historyEditDraft.ipk),
-          courses: historyEditDraft.courses.map((course) => ({
-            semester: Number(course.semester), code: course.code, numeric_grade: Number(course.numeric_grade),
-          })),
+          courses: historyEditDraft.courses
+            .filter((course) => course.numeric_grade !== '' && course.numeric_grade !== null && course.numeric_grade !== undefined)
+            .map((course) => ({
+              semester: Number(course.semester), code: course.code, numeric_grade: Number(course.numeric_grade),
+            })),
           ip_semesters: submittedIps,
         }),
       });
@@ -2603,7 +2607,7 @@ function App() {
                     <p className="muted">Nilai angka yang ditandai perkiraan bukan nilai asli pada KHS. Silakan edit jika memiliki nilai resmi.</p>
                   </div>
                   {!editing && <button className="btn outline" type="button" onClick={() => beginHistoryEdit(doc)}>Edit nilai & IPK</button>}</div>
-                  <label>IPK {editing ? <input type="number" min="0" max="4" step="0.01" value={historyEditDraft.ipk} readOnly={doc.semesters.length > 0 && doc.semesters.every((semester) => historyEditDraft.ip_semesters[String(semester.semester)] !== '' && Number.isFinite(Number(historyEditDraft.ip_semesters[String(semester.semester)])))} title="IPK dihitung otomatis dari rata-rata IPS seluruh semester." onChange={(event) => setHistoryEditDraft((draft) => ({ ...draft, ipk: event.target.value }))} /> : <strong>{doc.metadata?.ipk ?? '—'}</strong>}</label>
+                  <label>IPK {editing ? <input type="number" min="0" max="4" step="0.01" value={historyEditDraft.ipk} readOnly={doc.semesters.length > 0 && doc.semesters.every((semester) => historyEditDraft.ip_semesters[String(semester.semester)] !== '' && Number.isFinite(Number(historyEditDraft.ip_semesters[String(semester.semester)])) && Number(historyEditDraft.ip_semesters[String(semester.semester)]) >= 0 && Number(historyEditDraft.ip_semesters[String(semester.semester)]) <= 4)} title="IPK dihitung otomatis dari rata-rata IPS seluruh semester." onChange={(event) => setHistoryEditDraft((draft) => ({ ...draft, ipk: event.target.value }))} /> : <strong>{doc.metadata?.ipk ?? '—'}</strong>}</label>
                   {editing && <small className="muted">IPK dihitung otomatis dari rata-rata IPS. Perbarui IPS semester untuk memperbarui IPK.</small>}
                   {doc.semesters.map((semester) => (
                     <div key={semester.semester} className="history-semester">
