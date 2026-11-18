@@ -15,6 +15,7 @@ import {
   Info,
   LogOut,
   Menu,
+  MapPin,
   PieChart,
   Search,
   Settings,
@@ -2624,9 +2625,36 @@ function App() {
             <section className="study-plan-summary">
               <h3>Pengajuan Perubahan KRS (KPRS)</h3>
               <div className="course-edit-grid kprs-edit-grid">
-                <label className="course-edit-field"><span className="muted">KRS approved</span><select value={kprsDraft.planId} onChange={(event) => setKprsDraft((previous) => ({ ...previous, planId: event.target.value }))}><option value="">Pilih</option><option value={approvedStudyPlan.id}>KRS semester {approvedStudyPlan.semester}</option></select></label>
+                <label className="course-edit-field"><span className="muted">KRS approved</span><select value={kprsDraft.planId} onChange={(event) => {
+                  const nextId = event.target.value;
+                  const selectedPlan = studyPlans.find((plan) => plan.id === Number(nextId));
+                  setKprsDraft((previous) => ({ ...previous, planId: nextId }));
+                  setKprsClassSelections(Object.fromEntries((selectedPlan?.courses || []).filter((course) => course.class_id).map((course) => [course.code, Number(course.class_id)])));
+                }}><option value="">Pilih</option><option value={approvedStudyPlan.id}>KRS semester {approvedStudyPlan.semester}</option></select></label>
                 <label className="course-edit-field"><span className="muted">Kode mata kuliah baru (pisahkan koma)</span><input value={kprsDraft.courses} onChange={(event) => setKprsDraft((previous) => ({ ...previous, courses: event.target.value }))} /></label>
                 <label className="course-edit-field"><span className="muted">Alasan perubahan</span><textarea rows={3} value={kprsDraft.reason} onChange={(event) => setKprsDraft((previous) => ({ ...previous, reason: event.target.value }))} /></label>
+              </div>
+              <div className="kprs-class-options">
+                {kprsDraft.courses.split(',').map((rawCode) => rawCode.trim().toUpperCase()).filter(Boolean).map((code) => {
+                  const options = studentClasses.filter((section) => section.course_code === code);
+                  if (!options.length) return null;
+                  const currentPlan = studyPlans.find((plan) => plan.id === Number(kprsDraft.planId));
+                  const previousClassId = currentPlan?.courses?.find((course) => course.code === code)?.class_id;
+                  const selectedClassId = kprsClassSelections[code] ?? previousClassId ?? '';
+                  return (
+                    <label className="course-edit-field" key={code}>
+                      <span className="muted">Kelas paralel {code}</span>
+                      <select value={selectedClassId} onChange={(event) => setKprsClassSelections((previous) => ({ ...previous, [code]: event.target.value }))}>
+                        <option value="">Pilih kelas untuk {code}</option>
+                        {options.map((section) => (
+                          <option key={section.class_id} value={section.class_id} disabled={!section.is_open || (section.remaining_seats <= 0 && Number(selectedClassId) !== Number(section.class_id))}>
+                            {section.class_name} · {section.day} {section.start_time}-{section.end_time} · {section.room} · {section.remaining_seats} kursi tersisa
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  );
+                })}
               </div>
               <button className="btn primary" type="button" onClick={submitKprs}>Ajukan KPRS</button>
               {kprsRequests.map((request) => (
@@ -2853,10 +2881,37 @@ function App() {
                   const mandatory = isMandatoryCourse(course);
                   return (
                     <li key={course.code} className={mandatory ? 'draft-course-item draft-course-item-mandatory' : 'draft-course-item'}>
-                      <span>{course.code} — {course.name} ({course.sks} SKS)</span>
-                      {mandatory
-                        ? <span className="mandatory-status">WAJIB · OTOMATIS</span>
-                        : <button type="button" className="btn outline" style={{ marginLeft: 8 }} disabled={Boolean(approvedStudyPlan)} onClick={() => removeFromDraft(course.code)}>Hapus</button>}
+                      <div className="draft-course-main">
+                        <strong>{course.code} — {course.name} ({course.sks} SKS)</strong>
+                        {mandatory && <span className="mandatory-status">WAJIB · OTOMATIS</span>}
+                        {(() => {
+                          const sections = studentClasses.filter((section) => section.course_code === course.code);
+                          if (!sections.length) {
+                            return <small className="muted">Kelas paralel belum dipublikasikan; jadwal mengikuti katalog prodi.</small>;
+                          }
+                          return (
+                            <label className="draft-class-select">
+                              <span><CalendarDays size={15} /> Pilih kelas paralel</span>
+                              <select value={course.class_id ?? ''} disabled={Boolean(approvedStudyPlan) || !studentClassesLoaded} onChange={(event) => updateDraftClass(course.code, event.target.value)}>
+                                <option value="">Pilih kelas yang tersedia</option>
+                                {sections.map((section) => (
+                                  <option key={section.class_id} value={section.class_id} disabled={!section.is_open || section.remaining_seats <= 0}>
+                                    {section.class_name} · {section.lecturer_name} · {section.day} {section.start_time}-{section.end_time} · {section.room} · {section.remaining_seats} kursi
+                                  </option>
+                                ))}
+                              </select>
+                              {course.class_id && (
+                                <small className="draft-class-meta">
+                                  <span><Clock3 size={13} /> {course.day} {course.start_time}-{course.end_time}</span>
+                                  <span><MapPin size={13} /> {course.room}</span>
+                                  <span><Users size={13} /> {course.lecturer_name}</span>
+                                </small>
+                              )}
+                            </label>
+                          );
+                        })()}
+                      </div>
+                      {!mandatory && <button type="button" className="btn outline" disabled={Boolean(approvedStudyPlan)} onClick={() => removeFromDraft(course.code)}>Hapus</button>}
                     </li>
                   );
                 })}
@@ -3175,6 +3230,63 @@ function App() {
               </tbody>
             </table>
           </div>
+        </div>
+      );
+    }
+
+
+    if (view === 'kelas' && user.role === 'admin') {
+      const totalSections = classList.length;
+      const openSections = classList.filter((section) => section.is_open).length;
+      const totalSeats = classList.filter((section) => section.is_open).reduce((sum, section) => sum + Number(section.capacity || 0), 0);
+      const usedSeats = classList.filter((section) => section.is_open).reduce((sum, section) => sum + Number(section.occupied || 0), 0);
+      return (
+        <div className="class-management-page">
+          <section className="class-management-hero">
+            <div><span className="guide-eyebrow"><CalendarDays size={15} /> MANAJEMEN PERKULIAHAN</span><h2>Kelas Paralel & Jadwal</h2><p>Publikasikan beberapa kelas untuk satu mata kuliah, atur dosen/ruang/waktu dan pantau kapasitas sebelum mahasiswa menyusun KRS.</p></div>
+            <div className="class-management-icon"><CalendarDays size={54} /></div>
+          </section>
+          <div className="stat-grid class-management-stats">
+            <div className="stat"><small>Total kelas</small><strong>{totalSections}</strong></div>
+            <div className="stat"><small>Kelas dibuka</small><strong>{openSections}</strong></div>
+            <div className="stat"><small>Kapasitas aktif</small><strong>{totalSeats} kursi</strong></div>
+            <div className="stat"><small>Terpakai</small><strong>{usedSeats} kursi</strong></div>
+          </div>
+          <section className="class-form-card">
+            <div className="class-section-heading"><div><span className="guide-role-tag admin">{editingClassId ? 'EDIT KELAS' : 'KELAS BARU'}</span><h3>{editingClassId ? 'Perbarui kelas paralel' : 'Buat kelas paralel'}</h3><p className="muted">Kelas yang dibuka akan muncul pada proses pemilihan kelas mahasiswa.</p></div>
+              {editingClassId && <button className="btn outline" type="button" onClick={() => { setEditingClassId(null); setClassForm({ course_code: '', class_name: '', lecturer_id: '', room: '', day: 'Senin', start_time: '08:00', end_time: '09:40', capacity: 40, semester: '1', is_open: true }); }}>Batal edit</button>}
+            </div>
+            <form className="class-form-grid" onSubmit={saveParallelClass}>
+              <label><span>Mata kuliah aktif</span><select required value={classForm.course_code} onChange={(event) => setClassForm((previous) => ({ ...previous, course_code: event.target.value }))}><option value="">Pilih mata kuliah</option>{courseList.map((course) => <option key={course.code} value={course.code}>{course.code} · {course.name}</option>)}</select></label>
+              <label><span>Nama kelas</span><input required maxLength="40" placeholder="A / B / Reguler 1" value={classForm.class_name} onChange={(event) => setClassForm((previous) => ({ ...previous, class_name: event.target.value }))} /></label>
+              <label><span>Dosen pengampu</span><select value={classForm.lecturer_id} onChange={(event) => setClassForm((previous) => ({ ...previous, lecturer_id: event.target.value }))}><option value="">Belum ditentukan</option>{adminAdvisors.map((lecturer) => <option key={lecturer.id} value={lecturer.id}>{lecturer.full_name} · {lecturer.nim}</option>)}</select></label>
+              <label><span>Ruang</span><input required maxLength="40" placeholder="Lab 2 / R. 301" value={classForm.room} onChange={(event) => setClassForm((previous) => ({ ...previous, room: event.target.value }))} /></label>
+              <label><span>Hari</span><select required value={classForm.day} onChange={(event) => setClassForm((previous) => ({ ...previous, day: event.target.value }))}>{['Senin','Selasa','Rabu','Kamis','Jumat','Sabtu','Minggu'].map((day) => <option key={day} value={day}>{day}</option>)}</select></label>
+              <label><span>Semester</span><input required type="number" min="1" max="14" step="1" value={classForm.semester} onChange={(event) => setClassForm((previous) => ({ ...previous, semester: event.target.value }))} /></label>
+              <label><span>Jam mulai</span><input required type="time" value={classForm.start_time} onChange={(event) => setClassForm((previous) => ({ ...previous, start_time: event.target.value }))} /></label>
+              <label><span>Jam selesai</span><input required type="time" value={classForm.end_time} onChange={(event) => setClassForm((previous) => ({ ...previous, end_time: event.target.value }))} /></label>
+              <label><span>Kapasitas kursi</span><input required type="number" min="0" max="10000" step="1" value={classForm.capacity} onChange={(event) => setClassForm((previous) => ({ ...previous, capacity: event.target.value }))} /></label>
+              <label className="class-open-toggle"><input type="checkbox" checked={classForm.is_open} onChange={(event) => setClassForm((previous) => ({ ...previous, is_open: event.target.checked }))} /> Buka kelas untuk dipilih mahasiswa</label>
+              <div className="class-form-actions"><button className="btn primary" type="submit" disabled={classBusy || !courseList.length}>{classBusy ? 'Menyimpan...' : editingClassId ? 'Simpan perubahan' : 'Tambah kelas paralel'}</button></div>
+            </form>
+            <div className="class-validation-note"><ShieldCheck size={17} /><span>Validasi otomatis: jam harus berurutan, ruang dan dosen tidak boleh bentrok dalam interval waktu yang sama, serta kapasitas tidak boleh di bawah jumlah kursi yang telah terpakai.</span></div>
+          </section>
+          <section className="class-table-card">
+            <div className="class-section-heading"><div><h3>Daftar kelas terdaftar</h3><p className="muted">Sisa kursi dan status kelas akan dipakai sebagai informasi saat mahasiswa memilih kelas di Draft KRS.</p></div><button className="btn outline" type="button" onClick={() => refreshClassList().catch((error) => setActionMessage(error.message))}>Perbarui data</button></div>
+            <div className="table-wrap"><table className="table class-table">
+              <thead><tr><th>Mata kuliah</th><th>Kelas / dosen</th><th>Jadwal / ruang</th><th>Kapasitas</th><th>Status</th><th>Aksi</th></tr></thead>
+              <tbody>{classList.map((section) => (
+                <tr key={section.id}>
+                  <td><strong>{section.course_code}</strong><br />{section.course_name}</td>
+                  <td>{section.class_name}<br /><span className="muted">{section.lecturer_name || 'Dosen belum ditentukan'}</span></td>
+                  <td>{section.day}, {section.start_time}-{section.end_time}<br /><span className="muted">{section.room}</span></td>
+                  <td><strong>{section.occupied}/{section.capacity}</strong><div className="class-seat-meter"><span style={{ width: `${section.capacity ? Math.min(100, (section.occupied / section.capacity) * 100) : 100}%` }} /></div><small>{section.remaining_seats} kursi tersisa</small></td>
+                  <td><span className={section.is_open ? 'class-status-open' : 'class-status-closed'}>{section.is_open ? 'Dibuka' : 'Ditutup'}</span></td>
+                  <td><div className="class-row-actions"><button className="btn outline" type="button" disabled={classBusy} onClick={() => editParallelClass(section)}>Edit</button><button className="btn outline danger" type="button" disabled={classBusy || !section.is_open || section.occupied > 0} onClick={() => closeParallelClass(section)}>Tutup</button></div></td>
+                </tr>
+              ))}{classList.length === 0 && <tr><td colSpan="6" className="muted">Belum ada kelas paralel. Buat kelas pertama menggunakan formulir di atas.</td></tr>}</tbody>
+            </table></div>
+          </section>
         </div>
       );
     }
