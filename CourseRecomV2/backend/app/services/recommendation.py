@@ -229,6 +229,7 @@ def build_recommendation_result(db: Session, student: User) -> dict:
             'target_semester': None,
             'model': None,
             'recommendations': [],
+            'mandatory_courses': [],
             'rejected': [],
             'semester_antara': [],
         }
@@ -282,6 +283,7 @@ def build_recommendation_result(db: Session, student: User) -> dict:
     ]
 
     recommendations = []
+    mandatory_courses = []
     rejected = []
     grades_by_code = {}
     latest_attempts = {}
@@ -401,10 +403,13 @@ def build_recommendation_result(db: Session, student: User) -> dict:
         }
         if blocks:
             rejected.append(item)
+        elif item['mandatory']:
+            mandatory_courses.append(item)
         else:
             recommendations.append(item)
 
     recommendations.sort(key=lambda item: item['score'], reverse=True)
+    mandatory_courses.sort(key=lambda item: item['code'])
     rejected.sort(key=lambda item: item['score'], reverse=True)
     latest_model = (
         db.query(RecommendationModelVersion)
@@ -451,6 +456,7 @@ def build_recommendation_result(db: Session, student: User) -> dict:
         'target_semester': target_semester,
         'model': model_info,
         'recommendations': recommendations,
+        'mandatory_courses': mandatory_courses,
         'rejected': rejected,
         'semester_antara': semester_antara,
     }

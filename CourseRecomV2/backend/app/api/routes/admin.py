@@ -276,6 +276,23 @@ def admin_dashboard(
         .order_by(User.nim)
         .all()
     )
+
+    # Count active catalog courses in every semester where they are offered.
+    semester_course_counts = {semester: 0 for semester in range(1, 9)}
+    active_courses = db.query(Course).filter(Course.is_active.is_(True)).all()
+    for course in active_courses:
+        raw_semesters = course.available_semesters or str(course.semester)
+        parsed_semesters = {
+            int(value.strip())
+            for value in raw_semesters.replace(';', ',').split(',')
+            if value.strip().isdigit() and 1 <= int(value.strip()) <= 14
+        }
+        offered_semesters = {semester for semester in parsed_semesters if semester <= 8}
+        if not parsed_semesters and 1 <= course.semester <= 8:
+            offered_semesters.add(course.semester)
+        for semester in offered_semesters:
+            semester_course_counts[semester] += 1
+
     return {
         'students': [
             {
@@ -293,8 +310,18 @@ def admin_dashboard(
             {'nim': advisor.nim, 'full_name': advisor.full_name}
             for advisor in advisors
         ],
+        'analytics': {
+            'total_students': len(students),
+            'confirmed_khs_students': len(confirmed_student_ids),
+            'total_advisors': len(advisors),
+            'total_active_courses': len(active_courses),
+            'courses_by_semester': [
+                {'semester': semester, 'count': semester_course_counts[semester]}
+                for semester in range(1, 9)
+            ],
+            'updated_at': utc_now_naive().isoformat(),
+        },
     }
-
 
 @router.delete('/admin/students/{student_nim}', status_code=204)
 def delete_student(

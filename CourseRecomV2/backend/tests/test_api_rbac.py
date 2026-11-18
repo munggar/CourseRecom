@@ -697,3 +697,137 @@ def test_teacher_reviews_submitted_study_plan_with_guidance_note():
             db.commit()
         finally:
             db.close()
+
+
+
+def test_admin_dashboard_returns_live_totals_and_course_counts_for_semesters_one_to_eight():
+    ensure_schema()
+    suffix = uuid4().hex[:10].upper()
+    student_nim = f'AN{suffix}'
+    advisor_nim = f'AD{suffix}'
+    course_code = f'CH{suffix}'
+    db = SessionLocal()
+    student = User(
+        nim=student_nim,
+        full_name='Mahasiswa Analitik',
+        role='mahasiswa',
+        password_hash=get_password_hash('password-mhs'),
+    )
+    advisor = User(
+        nim=advisor_nim,
+        full_name='Dosen Analitik',
+        role='dosen',
+        password_hash=get_password_hash('password-dosen'),
+    )
+    course = Course(
+        code=course_code,
+        name='Mata Kuliah Analitik',
+        sks=3,
+        semester=1,
+        available_semesters='1,8,9',
+        category='Pilihan',
+        is_active=True,
+    )
+    db.add_all([student, advisor, course])
+    db.commit()
+    db.refresh(student)
+    db.add(KhsDocument(
+        student_id=student.id,
+        filename='analitik.pdf',
+        sha256='d' * 64,
+        status='confirmed',
+        parsed_data='{}',
+        created_at=datetime.now(timezone.utc).replace(tzinfo=None),
+    ))
+    db.commit()
+    db.close()
+
+    try:
+        token = create_access_token('admin', 'admin')
+        response = client.get('/api/admin/dashboard', headers={'Authorization': 'Bearer ' + token})
+        assert response.status_code == 200
+        analytics = response.json()['analytics']
+        assert analytics['total_students'] >= 1
+        assert analytics['confirmed_khs_students'] >= 1
+        assert analytics['total_advisors'] >= 1
+        assert len(analytics['courses_by_semester']) == 8
+        semester_counts = {item['semester']: item['count'] for item in analytics['courses_by_semester']}
+        assert semester_counts[1] >= 1
+        assert semester_counts[8] >= 1
+        assert 9 not in semester_counts
+        assert analytics['total_active_courses'] >= 1
+    finally:
+        db = SessionLocal()
+        db.query(KhsDocument).filter(KhsDocument.filename == 'analitik.pdf').delete(synchronize_session=False)
+        db.query(Course).filter(Course.code == course_code).delete(synchronize_session=False)
+        db.query(User).filter(User.nim.in_([student_nim, advisor_nim])).delete(synchronize_session=False)
+        db.commit()
+        db.close()
+
+
+def test_student_recommendations_separate_mandatory_courses_from_optional_recommendations():
+    ensure_schema()
+    suffix = uuid4().hex[:10].upper()
+    student_nim = f'RC{suffix}'
+    mandatory_code = f'WM{suffix[:6]}'
+    optional_code = f'PL{suffix[:6]}'
+    db = SessionLocal()
+    student = User(
+        nim=student_nim,
+        full_name='Mahasiswa Rekomendasi',
+        role='mahasiswa',
+        password_hash=get_password_hash('password-mhs'),
+        semester=1,
+        ipk=3.5,
+        interests='Kecerdasan Bisnis',
+    )
+    mandatory_course = Course(
+        code=mandatory_code,
+        name='Mata Kuliah Wajib Uji',
+        sks=3,
+        semester=2,
+        available_semesters='2',
+        category='Wajib',
+        is_active=True,
+    )
+    optional_course = Course(
+        code=optional_code,
+        name='Mata Kuliah Pilihan Uji',
+        sks=3,
+        semester=2,
+        available_semesters='2',
+        category='Pilihan',
+        is_active=True,
+    )
+    db.add_all([student, mandatory_course, optional_course])
+    db.commit()
+    db.refresh(student)
+    db.add(KhsDocument(
+        student_id=student.id,
+        filename='rekomendasi-uji.json',
+        sha256='e' * 64,
+        status='confirmed',
+        parsed_data='{"metadata":{"current_semester":1,"ipk":3.5,"full_name":"Mahasiswa Rekomendasi"}}',
+        created_at=datetime.now(timezone.utc).replace(tzinfo=None),
+    ))
+    db.commit()
+    db.close()
+
+    try:
+        token = create_access_token(student_nim, 'mahasiswa')
+        response = client.get(
+            '/api/mahasiswa/rekomendasi',
+            headers={'Authorization': 'Bearer ' + token},
+        )
+        assert response.status_code == 200
+        result = response.json()
+        assert all(item['mandatory'] is False for item in result['recommendations'])
+        assert [item['code'] for item in result['mandatory_courses']] == [mandatory_code]
+        assert [item['code'] for item in result['recommendations']] == [optional_code]
+    finally:
+        db = SessionLocal()
+        db.query(KhsDocument).filter(KhsDocument.filename == 'rekomendasi-uji.json').delete(synchronize_session=False)
+        db.query(Course).filter(Course.code.in_([mandatory_code, optional_code])).delete(synchronize_session=False)
+        db.query(User).filter(User.nim == student_nim).delete(synchronize_session=False)
+        db.commit()
+        db.close()
