@@ -300,7 +300,7 @@ def _similarity(
 
     union = student_codes | peer_codes
     jaccard = len(student_codes & peer_codes) / len(union)
-    common = student_codes.keys() & peer_codes.keys()
+    common = student_codes & peer_codes
     grade_similarity = (
         sum(student_grades[code] == peer_grades[code] for code in common) / len(common)
         if common else 0.0
