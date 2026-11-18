@@ -335,6 +335,8 @@ def test_student_registration_creates_student_only_account():
         response = client.post('/api/auth/register', json={
             'nim': nim,
             'full_name': 'Mahasiswa Baru',
+            'program_study': 'Sistem dan Teknologi Informasi',
+            'interests': 'Manajemen Sistem Informasi',
             'password': 'password-baru-123',
             'role': 'admin',
         })
@@ -344,6 +346,8 @@ def test_student_registration_creates_student_only_account():
         duplicate = client.post('/api/auth/register', json={
             'nim': nim,
             'full_name': 'Nama Lain',
+            'program_study': 'Sistem dan Teknologi Informasi',
+            'interests': 'Manajemen Sistem Informasi',
             'password': 'password-baru-123',
         })
         assert duplicate.status_code == 409
