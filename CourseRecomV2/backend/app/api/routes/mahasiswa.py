@@ -2,7 +2,7 @@ import hashlib
 import json
 from pathlib import PurePath
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status, Body
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.responses import Response
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.deps import get_db, require_roles
 from app.models import AdvisorCourseFeedback, Course, KhsDocument, KrsDocument, OfficialKrsDocument, StudentRecord, StudyPlan, User, KprsRequest
-from app.schemas import KhsConfirm, ProfileUpdate, RecommendationItem, StudyPlanSubmit, StudyPlanUpdate, KprsMutation
+from app.schemas import KhsConfirm, KhsHistoryEdit, ProfileUpdate, RecommendationItem, StudyPlanSubmit, StudyPlanUpdate, KprsMutation
 from app.services.khs_parser import (
     GRADE_POINTS,
     estimate_numeric_grade,
@@ -382,7 +382,7 @@ def confirm_khs(
 @router.patch('/mahasiswa/khs/{document_id}/edit')
 def edit_confirmed_khs(
     document_id: int,
-    payload: dict = Body(...),
+    payload: KhsHistoryEdit,
     current_user: User = Depends(require_roles('mahasiswa')),
     db: Session = Depends(get_db),
 ):
@@ -393,45 +393,88 @@ def edit_confirmed_khs(
     ).first()
     if not document:
         raise HTTPException(status_code=404, detail='Riwayat KHS tidak ditemukan.')
+
     parsed = normalize_historical_khs_data(json.loads(document.parsed_data))
     courses = parsed.get('courses', [])
-    edits = payload.get('courses', [])
-    by_key = {(str(item.get('code', '')).upper(), int(item.get('semester', 0))): item for item in edits}
-    for course in courses:
-        key = (str(course.get('code', '')).upper(), int(course.get('semester', 0)))
-        if key in by_key:
-            score = float(by_key[key].get('numeric_grade', course.get('numeric_grade', 0)))
-            if not 0 <= score <= 100:
-                raise HTTPException(status_code=422, detail='Nilai angka harus berada pada rentang 0 sampai 100.')
-            course['numeric_grade'] = score
-            course['numeric_grade_estimated'] = False
-    ipk = payload.get('ipk', parsed.get('metadata', {}).get('ipk'))
-    if ipk is not None:
-        ipk = float(ipk)
-        if not 0 <= ipk <= 4:
-            raise HTTPException(status_code=422, detail='IPK harus berada pada rentang 0,00 sampai 4,00.')
-        parsed.setdefault('metadata', {})['ipk'] = ipk
-        current_user.ipk = ipk
-        current_user.kuota_sks = get_sks_quota(ipk, db)
-    ips_values = payload.get('ip_semesters', {})
-    for semester in parsed.get('semesters', []):
-        key = str(semester.get('semester'))
-        if key in ips_values or semester.get('semester') in ips_values:
-            value = float(ips_values.get(key, ips_values.get(semester.get('semester'))))
-            if not 0 <= value <= 4:
-                raise HTTPException(status_code=422, detail='IPS harus berada pada rentang 0,00 sampai 4,00.')
-            semester['ip_semester'] = value
+    course_by_key = {
+        (str(item.get('code', '')).strip().upper(), int(item.get('semester', 0))): item
+        for item in courses
+    }
+    requested_keys = {
+        (item.code, item.semester) for item in payload.courses
+    }
+    unknown_keys = requested_keys - set(course_by_key)
+    if unknown_keys:
+        labels = ', '.join(f'{code}/S{semester}' for code, semester in sorted(unknown_keys))
+        raise HTTPException(status_code=422, detail=f'Mata kuliah tidak ditemukan pada KHS: {labels}.')
+
+    for edit in payload.courses:
+        course = course_by_key[(edit.code, edit.semester)]
+        course['numeric_grade'] = edit.numeric_grade
+        course['numeric_grade_estimated'] = False
+
+    semesters = parsed.get('semesters', [])
+    semester_by_number = {
+        int(item.get('semester', 0) or 0): item for item in semesters
+    }
+    unknown_semesters = set(payload.ip_semesters) - set(semester_by_number)
+    if unknown_semesters:
+        labels = ', '.join(str(item) for item in sorted(unknown_semesters))
+        raise HTTPException(status_code=422, detail=f'IPS tidak ditemukan pada riwayat KHS untuk semester: {labels}.')
+    for semester_number, value in payload.ip_semesters.items():
+        semester_by_number[semester_number]['ip_semester'] = value
+
+    current_semester = int(parsed.get('metadata', {}).get('current_semester', 0) or 0)
+    required_ips = [
+        semester_by_number.get(number, {}).get('ip_semester')
+        for number in range(1, current_semester + 1)
+    ]
+    if current_semester > 0 and all(value is not None for value in required_ips):
+        calculated_ipk = round(sum(float(value) for value in required_ips) / current_semester, 2)
+        if payload.ipk is not None and abs(payload.ipk - calculated_ipk) > 0.01:
+            raise HTTPException(
+                status_code=422,
+                detail=f'IPK harus sama dengan rata-rata IPS ({calculated_ipk:.2f}). Perbaiki nilai IPS untuk mengubah IPK.',
+            )
+        ipk = calculated_ipk
+    else:
+        ipk = payload.ipk
+        if ipk is None:
+            ipk = parsed.get('metadata', {}).get('ipk')
+
     parsed['courses'] = courses
-    for semester in parsed.get('semesters', []):
+    for semester in semesters:
         semester_number = int(semester.get('semester', 0) or 0)
-        semester['courses'] = [item for item in courses if int(item.get('semester', 0) or 0) == semester_number]
+        semester['courses'] = [
+            item for item in courses
+            if int(item.get('semester', 0) or 0) == semester_number
+        ]
+    if ipk is not None:
+        parsed.setdefault('metadata', {})['ipk'] = round(float(ipk), 2)
+        current_user.ipk = round(float(ipk), 2)
+        current_user.kuota_sks = get_sks_quota(current_user.ipk, db)
+
     document.parsed_data = json.dumps(parsed, ensure_ascii=False)
     document.updated_at = utc_now_naive()
     for record in db.query(StudentRecord).filter(StudentRecord.student_id == current_user.id).all():
-        match = next((item for item in courses if item['code'] == record.course_code and item['semester'] == record.semester), None)
+        match = course_by_key.get((record.course_code.strip().upper(), int(record.semester or 0)))
         if match:
             record.numeric_grade = match.get('numeric_grade')
+    write_audit(
+        db,
+        current_user,
+        'khs_history_edited',
+        'khs_document',
+        document.id,
+        None,
+        {
+            'edited_course_grades': len(payload.courses),
+            'edited_semesters': sorted(payload.ip_semesters),
+            'ipk': parsed.get('metadata', {}).get('ipk'),
+        },
+    )
     db.commit()
+    db.refresh(document)
     return {'status': 'updated', 'document': _serialize_document(document)}
 
 
