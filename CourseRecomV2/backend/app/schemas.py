@@ -305,13 +305,9 @@ class StudyPlanReview(BaseModel):
     @model_validator(mode='after')
     def require_note_for_revision(self):
         self.advisor_note = self.advisor_note.strip()
-        if self.status == 'revision_requested' and len(self.advisor_note) < 10:
-            raise ValueError('Alasan revisi dosen PA wajib diisi minimal 10 karakter.')
         self.rejected_course_codes = [code.strip().upper() for code in self.rejected_course_codes]
         if len(set(self.rejected_course_codes)) != len(self.rejected_course_codes):
             raise ValueError('Mata kuliah yang ditandai ditolak tidak boleh duplikat.')
-        if self.status == 'revision_requested' and not self.rejected_course_codes:
-            raise ValueError('Pilih minimal satu mata kuliah yang perlu direvisi.')
         return self
 
 
