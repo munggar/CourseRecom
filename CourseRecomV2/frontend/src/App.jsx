@@ -427,6 +427,25 @@ const GUIDE_SECTIONS = [
   }
 ];
 
+
+function parallelScheduleConflict(courseEntries) {
+  const schedules = [];
+  for (const course of courseEntries) {
+    if (!course.day || !course.start_time || !course.end_time) continue;
+    const start = Number(course.start_time.slice(0, 2)) * 60 + Number(course.start_time.slice(3, 5));
+    const end = Number(course.end_time.slice(0, 2)) * 60 + Number(course.end_time.slice(3, 5));
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) continue;
+    for (const previous of schedules) {
+      if (previous.day.trim().toLocaleLowerCase('id-ID') === course.day.trim().toLocaleLowerCase('id-ID')
+        && start < previous.end && previous.start < end) {
+        return { current: course.code, previous: previous.code };
+      }
+    }
+    schedules.push({ code: course.code, day: course.day, start, end });
+  }
+  return null;
+}
+
 function GuideStep({ index, children }) {
   return (
     <li className="guide-step">
@@ -1505,7 +1524,7 @@ function App() {
 
   const updateDraftClass = (courseCode, classId) => {
     const section = studentClasses.find((item) => Number(item.class_id) === Number(classId));
-    setDraftCourses((previous) => previous.map((course) => {
+    const nextDraft = draftCourses.map((course) => {
       if (course.code !== courseCode) return course;
       if (!section) return {
         ...course, class_id: null, class_name: null, lecturer_id: null,
@@ -1517,7 +1536,13 @@ function App() {
         room: section.room, day: section.day, start_time: section.start_time,
         end_time: section.end_time, schedule: `${section.day}, ${section.start_time}-${section.end_time}`,
       };
-    }));
+    });
+    const conflict = parallelScheduleConflict(nextDraft);
+    if (conflict) {
+      pushToast(`Jadwal kelas ${conflict.current} berbenturan dengan ${conflict.previous}. Pilih kelas dengan waktu berbeda.`, 'warning');
+      return;
+    }
+    setDraftCourses(nextDraft);
   };
 
   const deleteStudentAccount = async (student) => {
