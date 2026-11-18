@@ -1,8 +1,11 @@
 import json
 import re
-from datetime import timezone
+from datetime import datetime, timezone
+from io import BytesIO
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from fastapi.responses import Response
+from openpyxl import Workbook as ExcelWorkbook
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -22,8 +25,10 @@ from app.models import (
     KrsDocument,
     OfficialKrsDocument,
     KprsRequest,
+    Room,
+    LecturerDirectory,
 )
-from app.schemas import CourseMutation, AdvisorMapping, SystemSettingUpdate, StudyPlanOverride, CourseClassMutation, LecturerRegistration, LecturerUpdate
+from app.schemas import CourseMutation, AdvisorMapping, SystemSettingUpdate, StudyPlanOverride, CourseClassMutation, LecturerRegistration, LecturerUpdate, RoomMutation
 from app.services.academic import class_selection_map, validate_course_selection
 from app.services.course_catalog import parse_course_catalog
 from app.services.capacity import (
@@ -36,6 +41,7 @@ from app.services.capacity import (
 )
 from app.services.recommendation import train_similarity_model
 from app.services.audit import write_audit
+from app.services.scheduling import ALLOWED_DAYS, build_available_start_times, validate_class_schedule, validate_room_code
 from app.services.time_utils import utc_now_naive
 from app.services.validation import assert_krs_period_open
 from app.deps import get_password_hash
@@ -69,6 +75,9 @@ def register_lecturer(
         password_hash=get_password_hash(payload.password),
     )
     db.add(lecturer)
+    directory_entry = db.query(LecturerDirectory).filter(LecturerDirectory.nidn == nip).first()
+    if directory_entry:
+        directory_entry.linked_user_id = lecturer.id
     try:
         db.commit()
     except IntegrityError as exc:
@@ -104,6 +113,94 @@ def list_lecturers(
         }
         for lecturer in lecturers
     ]
+
+
+@router.get('/admin/lecturer-directory')
+def lecturer_directory(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles('admin')),
+):
+    entries = db.query(LecturerDirectory).order_by(
+        LecturerDirectory.program_study,
+        LecturerDirectory.full_name,
+    ).all()
+    result = []
+    for entry in entries:
+        linked = None
+        if entry.linked_user_id:
+            linked = db.query(User).filter(User.id == entry.linked_user_id, User.role == 'dosen').first()
+        if not linked and entry.nidn:
+            linked = db.query(User).filter(User.nim == entry.nidn, User.role == 'dosen').first()
+        result.append({
+            'id': entry.id,
+            'nidn': entry.nidn,
+            'full_name': entry.full_name,
+            'program_study': entry.program_study,
+            'email': entry.email,
+            'education': entry.education,
+            'expertise': entry.expertise,
+            'source_type': entry.source_type,
+            'profile_url': entry.profile_url,
+            'notes': entry.notes,
+            'linked_user_id': linked.id if linked else None,
+            'account_nip': linked.nim if linked else None,
+            'account_name': linked.full_name if linked else None,
+            'account_status': 'akun_terhubung' if linked else 'belum_ada_akun',
+        })
+    return result
+
+
+def _excel_response(workbook: ExcelWorkbook, filename: str) -> Response:
+    buffer = BytesIO()
+    workbook.save(buffer)
+    buffer.seek(0)
+    return Response(
+        content=buffer.getvalue(),
+        media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        headers={'Content-Disposition': f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get('/admin/lecturers/export')
+def export_lecturers(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles('admin')),
+):
+    workbook = ExcelWorkbook()
+    directory_sheet = workbook.active
+    directory_sheet.title = 'Direktori Dosen'
+    directory_sheet.append(['NIDN', 'Nama Dosen', 'Program Studi', 'Email', 'Pendidikan Terakhir', 'Bidang Keahlian', 'Status Akun', 'NIP Akun', 'Sumber'])
+    for entry in db.query(LecturerDirectory).order_by(LecturerDirectory.program_study, LecturerDirectory.full_name).all():
+        linked = db.query(User).filter(
+            User.id == entry.linked_user_id,
+            User.role == 'dosen',
+        ).first() if entry.linked_user_id else None
+        if not linked and entry.nidn:
+            linked = db.query(User).filter(User.nim == entry.nidn, User.role == 'dosen').first()
+        directory_sheet.append([
+            entry.nidn or '', entry.full_name, entry.program_study, entry.email or '',
+            entry.education or '', entry.expertise or '',
+            'Akun terhubung' if linked else 'Belum ada akun',
+            linked.nim if linked else '', entry.profile_url,
+        ])
+    account_sheet = workbook.create_sheet('Akun Dosen')
+    account_sheet.append(['NIP / ID', 'Nama Akun', 'Username', 'Email', 'Status Akun', 'Mahasiswa Bimbingan'])
+    for lecturer in db.query(User).filter(User.role == 'dosen').order_by(User.nim).all():
+        account_sheet.append([
+            lecturer.nim, lecturer.full_name, lecturer.username or lecturer.nim,
+            lecturer.email or '', 'Aktif' if lecturer.is_active else 'Nonaktif',
+            db.query(User).filter(User.role == 'mahasiswa', User.advisor_id == lecturer.id).count(),
+        ])
+    for sheet in workbook.worksheets:
+        sheet.freeze_panes = 'A2'
+        sheet.auto_filter.ref = sheet.dimensions
+        for cell in sheet[1]:
+            cell.font = __import__('openpyxl').styles.Font(bold=True, color='FFFFFF')
+            cell.fill = __import__('openpyxl').styles.PatternFill('solid', fgColor='075E59')
+        for column_cells in sheet.columns:
+            letter = column_cells[0].column_letter
+            sheet.column_dimensions[letter].width = min(42, max(14, max(len(str(cell.value or '')) for cell in column_cells) + 2))
+    return _excel_response(workbook, 'Data_Dosen_CourseRecom.xlsx')
 
 
 @router.put('/admin/lecturers/{lecturer_nip}')
@@ -861,6 +958,180 @@ def course_participants(db: Session = Depends(get_db), current_user: User = Depe
         {'code': code, 'participants': sorted(rows, key=lambda item: item['nim'])}
         for code, rows in sorted(participants.items())
     ]
+
+
+@router.get('/admin/rooms')
+def list_rooms(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles('admin')),
+):
+    sections = db.query(CourseClass).all()
+    section_counts = {}
+    for section in sections:
+        section_counts[section.room.strip().upper()] = section_counts.get(section.room.strip().upper(), 0) + 1
+    return [{
+        'code': room.code,
+        'floor': room.floor,
+        'room_number': room.room_number,
+        'capacity': room.capacity,
+        'room_type': room.room_type,
+        'is_active': room.is_active,
+        'source_status': room.source_status,
+        'source_url': room.source_url,
+        'notes': room.notes,
+        'verified_at': room.verified_at.isoformat() if room.verified_at else None,
+        'class_count': section_counts.get(room.code, 0),
+    } for room in db.query(Room).order_by(Room.floor, Room.room_number).all()]
+
+
+@router.post('/admin/rooms', status_code=201)
+def create_room(
+    payload: RoomMutation,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles('admin')),
+):
+    code = validate_room_code(payload.code)
+    if db.query(Room).filter(Room.code == code).first():
+        raise HTTPException(status_code=409, detail=f'Ruang {code} sudah terdaftar.')
+    if payload.is_active and payload.capacity is None:
+        raise HTTPException(status_code=422, detail='Isi kapasitas ruang sebelum mengaktifkan ruang.')
+    room = Room(
+        code=code,
+        floor=int(code[2]),
+        room_number=code[3:],
+        capacity=payload.capacity,
+        room_type=payload.room_type.strip(),
+        is_active=payload.is_active,
+        source_status='admin_verified' if payload.is_active else 'needs_verification',
+        source_url=None,
+        notes=payload.notes.strip() or None,
+        verified_at=utc_now_naive() if payload.is_active else None,
+        created_at=utc_now_naive(),
+    )
+    db.add(room)
+    write_audit(db, current_user, 'room_created', 'room', code, None, payload.model_dump())
+    db.commit()
+    return {'code': room.code, 'is_active': room.is_active, 'capacity': room.capacity}
+
+
+@router.patch('/admin/rooms/{room_code}')
+def update_room(
+    room_code: str,
+    payload: RoomMutation,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles('admin')),
+):
+    code = validate_room_code(room_code)
+    if payload.code != code:
+        raise HTTPException(status_code=422, detail='Kode ruang bersifat tetap. Tambahkan kode ruang baru untuk ruang berbeda.')
+    room = db.query(Room).filter(Room.code == code).first()
+    if not room:
+        raise HTTPException(status_code=404, detail='Ruang tidak ditemukan.')
+    if payload.is_active and payload.capacity is None:
+        raise HTTPException(status_code=422, detail='Isi kapasitas ruang sebelum mengaktifkan ruang.')
+    if not payload.is_active:
+        open_classes = db.query(CourseClass).filter(
+            CourseClass.room == code,
+            CourseClass.is_open.is_(True),
+        ).count()
+        if open_classes:
+            raise HTTPException(
+                status_code=409,
+                detail=f'Ruang masih dipakai {open_classes} kelas terbuka. Tutup kelas atau pindahkan jadwal sebelum menonaktifkan ruang.',
+            )
+    old = {
+        'capacity': room.capacity,
+        'room_type': room.room_type,
+        'is_active': room.is_active,
+        'notes': room.notes,
+    }
+    room.capacity = payload.capacity
+    room.room_type = payload.room_type.strip()
+    room.is_active = payload.is_active
+    room.notes = payload.notes.strip() or None
+    room.source_status = 'admin_verified' if payload.is_active else 'needs_verification'
+    room.verified_at = utc_now_naive() if payload.is_active else None
+    write_audit(db, current_user, 'room_updated', 'room', code, old, {
+        'capacity': room.capacity, 'room_type': room.room_type,
+        'is_active': room.is_active, 'notes': room.notes,
+    })
+    db.commit()
+    return {'code': room.code, 'is_active': room.is_active, 'capacity': room.capacity}
+
+
+@router.get('/admin/rooms/export')
+def export_rooms(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles('admin')),
+):
+    workbook = ExcelWorkbook()
+    inventory = workbook.active
+    inventory.title = 'Inventaris Ruangan'
+    inventory.append(['Kode Ruang', 'Lantai', 'Nomor Ruang', 'Kapasitas Ruang', 'Tipe', 'Status Aktif', 'Status Sumber', 'Jumlah Kelas', 'Sumber', 'Catatan'])
+    classes_by_room = {}
+    for section in db.query(CourseClass).all():
+        classes_by_room[section.room.strip().upper()] = classes_by_room.get(section.room.strip().upper(), 0) + 1
+    for room in db.query(Room).order_by(Room.floor, Room.room_number).all():
+        inventory.append([
+            room.code, room.floor, room.room_number, room.capacity or '',
+            room.room_type, 'Aktif' if room.is_active else 'Perlu verifikasi / nonaktif',
+            room.source_status, classes_by_room.get(room.code, 0),
+            room.source_url or '', room.notes or '',
+        ])
+    schedule = workbook.create_sheet('Jadwal Kelas')
+    schedule.append(['Kode Ruang', 'Mata Kuliah', 'Nama Kelas', 'Semester', 'Hari', 'Jam Mulai', 'Jam Selesai', 'SKS', 'Dosen', 'Status'])
+    for section in db.query(CourseClass).order_by(CourseClass.room, CourseClass.day, CourseClass.start_time).all():
+        course = db.query(Course).filter(Course.code == section.course_code).first()
+        lecturer = db.query(User).filter(User.id == section.lecturer_id, User.role == 'dosen').first() if section.lecturer_id else None
+        schedule.append([
+            section.room, f'{section.course_code} - {course.name if course else ""}',
+            section.class_name, section.semester, section.day, section.start_time,
+            section.end_time, course.sks if course else '', lecturer.full_name if lecturer else '',
+            'Dibuka' if section.is_open else 'Ditutup',
+        ])
+    for sheet in workbook.worksheets:
+        sheet.freeze_panes = 'A2'
+        sheet.auto_filter.ref = sheet.dimensions
+        for cell in sheet[1]:
+            cell.font = __import__('openpyxl').styles.Font(bold=True, color='FFFFFF')
+            cell.fill = __import__('openpyxl').styles.PatternFill('solid', fgColor='075E59')
+        for column_cells in sheet.columns:
+            letter = column_cells[0].column_letter
+            sheet.column_dimensions[letter].width = min(44, max(14, max(len(str(cell.value or '')) for cell in column_cells) + 2))
+    return _excel_response(workbook, 'Data_Ruangan_CourseRecom.xlsx')
+
+
+@router.get('/admin/schedule-options')
+def schedule_options(
+    course_code: str = Query(..., min_length=2, max_length=20),
+    room_code: str = Query(..., min_length=5, max_length=10),
+    day: str = Query(...),
+    lecturer_id: int | None = Query(None),
+    exclude_class_id: int | None = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles('admin')),
+):
+    try:
+        course = db.query(Course).filter(Course.code == course_code.strip().upper(), Course.is_active.is_(True)).first()
+        if not course:
+            raise ValueError('Mata kuliah aktif tidak ditemukan.')
+        slots = build_available_start_times(
+            db,
+            course_code=course.code,
+            room_code=room_code,
+            day=day,
+            lecturer_id=lecturer_id,
+            exclude_class_id=exclude_class_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {
+        'course_code': course.code,
+        'sks': course.sks,
+        'duration_minutes': course.sks * 50,
+        'start_window': '07:00–18:00',
+        'slots': slots,
+    }
 
 
 @router.get('/admin/classes')
