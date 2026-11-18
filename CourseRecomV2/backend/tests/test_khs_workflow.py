@@ -9,10 +9,12 @@ from app.services.recommendation import _interest_matches, _similarity
 
 def test_two_student_interests_match_course_catalog_specializations():
     assert _interest_matches('Peminatan Manajemen SI', 'Manajemen Sistem Informasi')
-    assert _interest_matches('Kecerdasan Bisnis (KB)', 'Data')
+    assert _interest_matches('Kecerdasan Bisnis (KB)', 'Data Analytics')
+    assert not _interest_matches('Kecerdasan Bisnis (KB)', 'Data Scientist')
     assert _interest_matches('Manajemen & Sistem Informasi', 'Manajemen Sistem Informasi')
     assert _interest_matches('Peminatan Kecerdasan Bisnis', 'Kecerdasan Bisnis')
-    assert _interest_matches('Data', 'Kecerdasan Bisnis')
+    assert _interest_matches('Data Analytics', 'Kecerdasan Bisnis')
+    assert not _interest_matches('Data', 'Kecerdasan Bisnis')
     assert not _interest_matches('Peminatan Kecerdasan Bisnis', 'Manajemen Sistem Informasi')
     assert not _interest_matches('Peminatan Manajemen SI', 'Kecerdasan Bisnis')
 
