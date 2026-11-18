@@ -14,9 +14,18 @@ class StudentRegistration(BaseModel):
     nim: str = Field(min_length=2, max_length=20)
     full_name: str = Field(min_length=2, max_length=120)
     username: str | None = Field(default=None, min_length=2, max_length=120)
-    program_study: str = Field(default='', max_length=120)
+    program_study: str = Field(min_length=2, max_length=120)
+    interests: str = Field(min_length=1, max_length=120)
     angkatan: str = Field(default='', max_length=4)
     password: str = Field(min_length=8, max_length=72)
+
+    @field_validator('program_study', 'interests')
+    @classmethod
+    def strip_program_and_interest(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError('Program studi dan bidang minat wajib dipilih.')
+        return value
 
     @field_validator('angkatan')
     @classmethod
@@ -290,21 +299,36 @@ class StudyPlanSubmit(BaseModel):
 
 
 class StudyPlanReview(BaseModel):
-    status: str
+    status: Literal['approved', 'revision_requested']
     advisor_note: str = Field(default='', max_length=2000)
+    affected_course_codes: List[str] = Field(default_factory=list, max_length=30)
+    reason_category: Literal[
+        'general',
+        'academic_requirement',
+        'schedule_conflict',
+        'course_load',
+        'course_relevance',
+        'course_readiness',
+        'other',
+    ] = 'general'
 
-    @field_validator('status')
+    @field_validator('affected_course_codes')
     @classmethod
-    def validate_review_status(cls, value: str) -> str:
-        if value not in {'approved', 'revision_requested'}:
-            raise ValueError('Status review harus approved atau revision_requested.')
-        return value
+    def normalize_affected_courses(cls, value: List[str]) -> List[str]:
+        codes = [code.strip().upper() for code in value]
+        if any(not code for code in codes):
+            raise ValueError('Kode mata kuliah terkait tidak boleh kosong.')
+        if len(codes) != len(set(codes)):
+            raise ValueError('Mata kuliah terkait tidak boleh dipilih lebih dari sekali.')
+        return codes
 
     @model_validator(mode='after')
     def require_note_for_revision(self):
-        if self.status == 'revision_requested' and not self.advisor_note.strip():
-            raise ValueError('Catatan dosen wajib diisi saat meminta revisi.')
         self.advisor_note = self.advisor_note.strip()
+        if self.status == 'revision_requested' and len(self.advisor_note) < 10:
+            raise ValueError('Alasan revisi dosen wajib diisi minimal 10 karakter.')
+        if self.status == 'approved' and self.affected_course_codes:
+            raise ValueError('Mata kuliah yang perlu direvisi hanya dapat ditandai saat meminta revisi.')
         return self
 
 
@@ -353,4 +377,31 @@ class KprsMutation(BaseModel):
 
 class KprsReview(BaseModel):
     status: Literal['approved', 'revision_requested', 'rejected']
-    note: str = Field(min_length=3, max_length=2000)
+    note: str = Field(default='', max_length=2000)
+
+    @model_validator(mode='after')
+    def require_reason_for_negative_decision(self):
+        self.note = self.note.strip()
+        if self.status in {'revision_requested', 'rejected'} and len(self.note) < 10:
+            raise ValueError('Alasan revisi atau penolakan KPRS wajib diisi minimal 10 karakter.')
+        return self
+
+
+class KprsRevision(BaseModel):
+    course_codes: List[str] = Field(min_length=1, max_length=30)
+    reason: str = Field(min_length=10, max_length=2000)
+
+    @field_validator('course_codes')
+    @classmethod
+    def normalize_revision_codes(cls, value: List[str]) -> List[str]:
+        codes = [code.strip().upper() for code in value]
+        if any(not code for code in codes):
+            raise ValueError('Kode mata kuliah tidak boleh kosong.')
+        if len(codes) != len(set(codes)):
+            raise ValueError('Mata kuliah yang sama tidak boleh diajukan lebih dari sekali.')
+        return codes
+
+    @field_validator('reason')
+    @classmethod
+    def strip_revision_reason(cls, value: str) -> str:
+        return value.strip()
