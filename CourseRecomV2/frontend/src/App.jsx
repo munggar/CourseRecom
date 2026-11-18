@@ -3468,7 +3468,7 @@ function App() {
           <section style={{ marginTop: 20 }}>
             <h3>Override dan Pembukaan Kunci KRS</h3>
             <div className="table-scroll">
-              <table>
+              <table className="table">
                 <thead><tr><th>Mahasiswa</th><th>Semester</th><th>Mata Kuliah</th><th>Alasan</th><th>Tindakan</th></tr></thead>
                 <tbody>
                   {approvedPlans.map((plan) => (
