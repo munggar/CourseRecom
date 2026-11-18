@@ -175,3 +175,24 @@ def test_zero_is_a_real_score_and_is_not_treated_as_missing():
 def test_similar_students_zero_vote_is_distinct_from_missing_peer_data():
     assert _similar_students_factor({}, 'code:MK001', peer_count=5) == 0.0
     assert _similar_students_factor({}, 'code:MK001', peer_count=0) is None
+
+
+
+def test_interest_respects_explicit_course_catalog_specialization_tags():
+    data_course = SimpleNamespace(
+        name='Kursus Analitik',
+        category='Data',
+        description='',
+        prerequisite_text='',
+    )
+    msi_course = SimpleNamespace(
+        name='Sistem Informasi Manajemen',
+        category='Manajemen & Sistem Informasi',
+        description='',
+        prerequisite_text='',
+    )
+
+    assert _interest_topic_score(data_course, 'Kecerdasan Bisnis')[0] == 1.0
+    assert _interest_topic_score(data_course, 'Manajemen Sistem Informasi')[0] == 0.0
+    assert _interest_topic_score(msi_course, 'Manajemen Sistem Informasi')[0] == 1.0
+    assert _interest_topic_score(msi_course, 'Kecerdasan Bisnis')[0] == 0.0
