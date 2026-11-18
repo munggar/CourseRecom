@@ -191,6 +191,13 @@ def _interest_groups(interests: str) -> set[str]:
         normalized = _normalize_text(raw_interest)
         if not normalized:
             continue
+        exact_group = next(
+            (group for group in INTEREST_ALIASES if _normalize_text(group) == normalized),
+            None,
+        )
+        if exact_group:
+            selected.add(exact_group)
+            continue
         for group, aliases in INTEREST_ALIASES.items():
             normalized_aliases = {_normalize_text(alias) for alias in aliases | {group}}
             if any(
