@@ -2318,6 +2318,11 @@ footer {
     margin-top: 18px;
   }
 
+  .table-wrap .table {
+    width: max-content;
+    min-width: 100%;
+  }
+
   .table th,
   .table td,
   .table-scroll th,
