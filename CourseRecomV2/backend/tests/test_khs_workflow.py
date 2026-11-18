@@ -49,7 +49,7 @@ def test_khs_preview_is_not_saved_until_confirmation_and_rules_filter_courses(mo
         password_hash=get_password_hash('test-password'),
         ipk=3.4,
         kuota_sks=22,
-        interests='Data',
+        interests='Software Engineer',
     )
     advisor = db.query(User).filter(User.nim == 'pa001', User.role == 'dosen').first()
     if advisor:
