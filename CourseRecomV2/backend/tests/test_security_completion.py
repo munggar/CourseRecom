@@ -5,7 +5,7 @@ from sqlalchemy import text
 from app.database import SessionLocal, ensure_schema
 from app.deps import create_access_token, get_password_hash
 from app.main import app
-from app.models import User
+from app.models import AuditLog, User
 
 
 client = TestClient(app)
@@ -31,6 +31,8 @@ def cleanup_users():
     ensure_schema()
     db = SessionLocal()
     db.execute(text('PRAGMA foreign_keys=OFF'))
+    student_ids = db.query(User.id).filter(User.nim.like('SEC-%')).subquery()
+    db.query(AuditLog).filter(AuditLog.actor_id.in_(student_ids)).delete(synchronize_session=False)
     db.query(User).filter(User.nim.like('SEC-%')).delete(synchronize_session=False)
     db.commit()
     db.close()
