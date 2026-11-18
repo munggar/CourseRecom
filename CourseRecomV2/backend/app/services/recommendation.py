@@ -26,7 +26,8 @@ def is_mandatory_course(course: Course) -> bool:
 
 
 INTEREST_ALIASES = {
-    'manajemen sistem informasi': {
+    'manajemen teknologi informasi': {
+        'manajemen teknologi informasi',
         'manajemen sistem informasi',
         'manajemen & sistem informasi',
         'peminatan manajemen si',
@@ -34,6 +35,7 @@ INTEREST_ALIASES = {
         'sistem informasi',
         'information systems',
         'msi',
+        'mti',
     },
     'kecerdasan bisnis': {
         'kecerdasan bisnis', 'peminatan kecerdasan bisnis', 'kb', 'data',
@@ -57,7 +59,7 @@ INTEREST_ALIASES = {
 }
 
 INTEREST_TOPIC_MAP = {
-    'manajemen sistem informasi': {
+    'manajemen teknologi informasi': {
         'information_systems', 'application_development', 'programming', 'database_management',
         'it_infrastructure', 'enterprise_systems', 'it_governance', 'business_process',
     },
