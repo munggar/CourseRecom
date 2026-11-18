@@ -4,6 +4,9 @@ Only STI labels are retained as the user's requested legacy choices. Other
 programs are explicitly described as academic-interest areas unless a formal
 specialization is confirmed by the program's published curriculum.
 """
+import re
+
+
 PROGRAM_INTERESTS = {
     "Sistem dan Teknologi Informasi": {
         "kind": "Peminatan resmi program studi",
@@ -49,6 +52,8 @@ def get_program_interest_catalog():
 
 def normalize_program_name(value: str) -> str:
     normalized = " ".join((value or "").strip().lower().split())
+    normalized = re.sub(r"^(?:program studi|prodi)\s*[:\-]?\s*", "", normalized)
+    normalized = re.sub(r"\s*\((?:sti|ti|trm)\)\s*$", "", normalized)
     aliases = {
         "sti": "Sistem dan Teknologi Informasi",
         "sistem informasi": "Sistem dan Teknologi Informasi",
