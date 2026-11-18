@@ -2188,7 +2188,7 @@ function App() {
           {approvedStudyPlan && (
             <section className="study-plan-summary">
               <h3>Pengajuan Perubahan KRS (KPRS)</h3>
-              <div className="course-edit-grid">
+              <div className="course-edit-grid kprs-edit-grid">
                 <label className="course-edit-field"><span className="muted">KRS approved</span><select value={kprsDraft.planId} onChange={(event) => setKprsDraft((previous) => ({ ...previous, planId: event.target.value }))}><option value="">Pilih</option><option value={approvedStudyPlan.id}>KRS semester {approvedStudyPlan.semester}</option></select></label>
                 <label className="course-edit-field"><span className="muted">Kode mata kuliah baru (pisahkan koma)</span><input value={kprsDraft.courses} onChange={(event) => setKprsDraft((previous) => ({ ...previous, courses: event.target.value }))} /></label>
                 <label className="course-edit-field"><span className="muted">Alasan perubahan</span><textarea rows={3} value={kprsDraft.reason} onChange={(event) => setKprsDraft((previous) => ({ ...previous, reason: event.target.value }))} /></label>

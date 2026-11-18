@@ -688,3 +688,305 @@ footer { color: var(--muted); }
   font-size: .78rem;
   line-height: 1.5;
 }
+
+
+/* Responsive audit fixes — apply consistently across student, lecturer and admin pages */
+.app-shell,
+.authenticated-shell,
+.main-layout,
+.content,
+.card,
+.study-plan-summary,
+.preview-section,
+.history-document,
+.recommendation-card,
+.rejected-card,
+.admin-chart-card,
+.interest-chart-card {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.content {
+  width: 100%;
+}
+
+.course-edit-grid {
+  width: 100%;
+  min-width: 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.course-edit-field,
+.course-edit-field input,
+.course-edit-field select,
+.course-edit-field textarea {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.kprs-edit-grid .course-edit-field:nth-child(3) {
+  grid-column: 1 / -1;
+}
+
+.study-plan-summary > *,
+.preview-header > *,
+.recommendation-heading > *,
+.history-row > * {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.study-plan-summary .btn,
+.preview-actions .btn,
+.course-edit-grid .btn {
+  max-width: 100%;
+  white-space: normal;
+}
+
+.table-wrap {
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+}
+
+.table th,
+.table td {
+  overflow-wrap: anywhere;
+}
+
+input,
+select,
+textarea {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.btn {
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.preview-header,
+.recommendation-heading,
+.history-row,
+.interest-chart-heading {
+  flex-wrap: wrap;
+}
+
+.rec-item > * {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.interest-bar-label > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.semester-chart {
+  min-width: 0;
+}
+
+@media (min-width: 761px) and (max-width: 1000px) {
+  .main-layout {
+    display: grid;
+    grid-template-columns: minmax(170px, 210px) minmax(0, 1fr);
+    align-items: start;
+    gap: 14px;
+    padding: 16px;
+  }
+
+  .sidebar {
+    position: sticky;
+    top: 84px;
+    left: auto;
+    right: auto;
+    bottom: auto;
+    display: block;
+    width: auto;
+    max-height: calc(100vh - 100px);
+    margin: 0;
+    overflow-y: auto;
+  }
+
+  .sidebar button {
+    display: flex;
+    width: 100%;
+    min-width: 0;
+    flex: none;
+  }
+
+  .content {
+    width: 100%;
+    margin-left: 0;
+  }
+
+  .stat-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .grid-2 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 760px) {
+  .main-layout {
+    display: block;
+    width: 100%;
+    padding: 10px;
+  }
+
+  .content,
+  .card {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .card {
+    padding: 14px;
+  }
+
+  .course-edit-grid,
+  .kprs-edit-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+  }
+
+  .kprs-edit-grid .course-edit-field:nth-child(3) {
+    grid-column: auto;
+  }
+
+  .study-plan-summary {
+    align-items: stretch;
+    gap: 9px;
+  }
+
+  .study-plan-summary .btn {
+    width: 100%;
+  }
+
+  .preview-header,
+  .recommendation-heading {
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .preview-header .status-pill,
+  .recommendation-heading .status-pill {
+    max-width: 100%;
+  }
+
+  .semester-chart {
+    min-width: 540px;
+  }
+
+  .admin-chart-card {
+    overflow-x: auto;
+  }
+
+  .table-wrap {
+    max-width: 100%;
+  }
+
+  .table-wrap .table {
+    width: max-content;
+    min-width: 100%;
+  }
+
+  .table-wrap .curriculum-table,
+  .table-wrap .editable-table {
+    min-width: 770px;
+  }
+
+  .history-row > span:first-child {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .rec-item {
+    grid-template-columns: minmax(0, 1fr) minmax(44px, .7fr) auto;
+  }
+
+  .rec-item > strong:last-child {
+    white-space: nowrap;
+  }
+
+  .btn {
+    min-height: 42px;
+  }
+
+  .login-box {
+    width: calc(100% - 24px);
+    max-width: 440px;
+    margin: 16px auto;
+  }
+}
+
+@media (max-width: 420px) {
+  .topbar {
+    padding-inline: 10px;
+  }
+
+  .main-layout {
+    padding: 8px;
+  }
+
+  .card {
+    padding: 12px;
+    border-radius: 12px;
+  }
+
+  .stat-grid,
+  .interest-chart-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .stat {
+    padding: 11px;
+  }
+
+  .khs-process {
+    gap: 7px;
+  }
+
+  .khs-process li {
+    min-height: 0;
+    padding: 9px;
+  }
+
+  .semester-summary-item {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .factor-grid,
+  .recommendation-grid .factor-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .admin-donut-card {
+    grid-template-columns: 88px minmax(0, 1fr);
+    padding: 12px;
+    gap: 10px;
+  }
+
+  .admin-donut {
+    width: 88px;
+  }
+
+  .toast-viewport {
+    width: calc(100vw - 20px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+  }
+}
