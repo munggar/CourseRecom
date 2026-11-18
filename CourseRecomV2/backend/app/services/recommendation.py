@@ -1,12 +1,12 @@
 import json
 import math
 import re
-from collections import defaultdict
+from collections import Counter, defaultdict
 
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.models import Course, KhsDocument, RecommendationModelVersion, StudentRecord, User
+from app.models import AdvisorFeedback, Course, KhsDocument, RecommendationModelVersion, StudentRecord, StudyPlan, User
 from app.services.time_utils import utc_now_naive
 from app.services.khs_parser import GRADE_POINTS
 from app.services.validation import get_sks_quota
@@ -497,6 +497,63 @@ def _build_model_runtime_info(
     }
 
 
+
+def _active_advisor_feedback(
+    db: Session,
+    student_id: int,
+    target_semester: int,
+) -> tuple[list[AdvisorFeedback], dict[str, list[AdvisorFeedback]]]:
+    latest_plan = (
+        db.query(StudyPlan)
+        .filter(
+            StudyPlan.student_id == student_id,
+            StudyPlan.semester == target_semester,
+        )
+        .order_by(StudyPlan.updated_at.desc(), StudyPlan.id.desc())
+        .first()
+    )
+    if latest_plan and latest_plan.status == 'approved':
+        return [], {}
+
+    feedback_rows = (
+        db.query(AdvisorFeedback)
+        .filter(
+            AdvisorFeedback.student_id == student_id,
+            AdvisorFeedback.semester == target_semester,
+            AdvisorFeedback.feedback_type == 'revision_requested',
+        )
+        .order_by(AdvisorFeedback.created_at.asc(), AdvisorFeedback.id.asc())
+        .all()
+    )
+    by_course: dict[str, list[AdvisorFeedback]] = defaultdict(list)
+    for feedback in feedback_rows:
+        try:
+            codes = json.loads(feedback.affected_course_codes_json or '[]')
+        except (TypeError, ValueError, json.JSONDecodeError):
+            codes = []
+        for code in codes:
+            normalized = str(code).strip().upper()
+            if normalized:
+                by_course[normalized].append(feedback)
+    return feedback_rows, dict(by_course)
+
+
+def _serialize_advisor_feedback(feedback: AdvisorFeedback) -> dict:
+    try:
+        codes = json.loads(feedback.affected_course_codes_json or '[]')
+    except (TypeError, ValueError, json.JSONDecodeError):
+        codes = []
+    return {
+        'id': feedback.id,
+        'semester': feedback.semester,
+        'affected_course_codes': codes,
+        'reason_category': feedback.reason_category,
+        'note': feedback.note,
+        'feedback_type': feedback.feedback_type,
+        'created_at': feedback.created_at.isoformat(),
+    }
+
+
 def build_recommendation_result(db: Session, student: User) -> dict:
     latest_document = (
         db.query(KhsDocument)
@@ -515,6 +572,7 @@ def build_recommendation_result(db: Session, student: User) -> dict:
             'mandatory_courses': [],
             'rejected': [],
             'semester_antara': [],
+            'advisor_feedback': [],
         }
 
     document_data = json.loads(latest_document.parsed_data)
@@ -522,6 +580,12 @@ def build_recommendation_result(db: Session, student: User) -> dict:
     records = db.query(StudentRecord).filter(StudentRecord.student_id == student.id).all()
     current_semester = int(profile_data['current_semester'])
     target_semester = current_semester + 1
+    advisor_feedback_rows, advisor_feedback_by_course = _active_advisor_feedback(
+        db, student.id, target_semester
+    )
+    advisor_feedback_payload = [
+        _serialize_advisor_feedback(item) for item in advisor_feedback_rows
+    ]
     profile_ipk = profile_data.get('ipk')
     if profile_ipk is None:
         profile_ipk = student.ipk
@@ -609,6 +673,13 @@ def build_recommendation_result(db: Session, student: User) -> dict:
         already_passed = any(_passed(record) for record in course_attempts)
         reasons = []
         blocks = []
+        course_feedback = advisor_feedback_by_course.get(course.code, [])
+        if course_feedback:
+            latest_feedback = course_feedback[-1]
+            blocks.append(
+                f'Ditandai dosen PA untuk revisi: {latest_feedback.note}'
+            )
+            reasons.append('Sinyal feedback negatif personal dari dosen PA dipakai untuk mencari alternatif')
         if missing_prereqs:
             blocks.append(f"Prasyarat belum lulus: {', '.join(missing_prereqs)}")
         if already_passed:
@@ -731,6 +802,15 @@ def build_recommendation_result(db: Session, student: User) -> dict:
             'recommendation_explanation': _course_recommendation_explanation(
                 peer_count_for_course, peer_total
             ),
+            'rejection_source': 'advisor_feedback' if course_feedback else None,
+            'advisor_feedback': (
+                {
+                    'note': course_feedback[-1].note,
+                    'reason_category': course_feedback[-1].reason_category,
+                    'created_at': course_feedback[-1].created_at.isoformat(),
+                }
+                if course_feedback else None
+            ),
         }
         if blocks:
             rejected.append(item)
@@ -764,6 +844,19 @@ def build_recommendation_result(db: Session, student: User) -> dict:
         weights,
         available_history_records,
         available_history_students,
+    )
+    all_feedback_rows = db.query(AdvisorFeedback).filter(
+        AdvisorFeedback.feedback_type == 'revision_requested'
+    ).all()
+    model_info['advisor_feedback_events'] = len(all_feedback_rows)
+    model_info['advisor_negative_course_labels'] = sum(
+        len(json.loads(item.affected_course_codes_json or '[]'))
+        for item in all_feedback_rows
+    )
+    model_info['active_advisor_feedback_events'] = len(advisor_feedback_rows)
+    model_info['feedback_learning_method'] = (
+        'Student- and semester-specific weak negative labels from advisor-selected course codes; '
+        'free-text notes are retained for explanation and audit.'
     )
     all_codes = set(attempted)
     passed_count = len(passed_codes)
@@ -801,11 +894,32 @@ def build_recommendation_result(db: Session, student: User) -> dict:
         'mandatory_courses': mandatory_courses,
         'rejected': rejected,
         'semester_antara': semester_antara,
+        'advisor_feedback': advisor_feedback_payload,
     }
 
 
 def train_similarity_model(db: Session) -> RecommendationModelVersion:
     records = db.query(StudentRecord).filter(StudentRecord.semester.is_not(None)).all()
+    feedback_rows = db.query(AdvisorFeedback).filter(
+        AdvisorFeedback.feedback_type == 'revision_requested'
+    ).all()
+    negative_labels: dict[tuple[int, int], set[str]] = defaultdict(set)
+    feedback_reason_counts: Counter[str] = Counter()
+    feedback_note_terms: Counter[str] = Counter()
+    feedback_label_count = 0
+    for feedback in feedback_rows:
+        try:
+            codes = json.loads(feedback.affected_course_codes_json or '[]')
+        except (TypeError, ValueError, json.JSONDecodeError):
+            codes = []
+        normalized_codes = {str(code).strip().upper() for code in codes if str(code).strip()}
+        negative_labels[(feedback.student_id, feedback.semester)].update(normalized_codes)
+        feedback_label_count += len(normalized_codes)
+        feedback_reason_counts[feedback.reason_category or 'general'] += 1
+        feedback_note_terms.update(
+            token for token in re.findall(r'[a-z0-9]{3,}', (feedback.note or '').casefold())
+            if token not in {'yang', 'untuk', 'dengan', 'pada', 'karena', 'agar', 'atau'}
+        )
     students_with_history = {
         record.student_id for record in records
     }
@@ -842,7 +956,11 @@ def train_similarity_model(db: Session) -> RecommendationModelVersion:
             if similarity:
                 for code in peer_courses:
                     votes[code] += similarity
-        ranked = [code for code, _ in sorted(votes.items(), key=lambda item: item[1], reverse=True)[:5]]
+        excluded_by_advisor = negative_labels.get((student_id, semester), set())
+        ranked = [
+            code for code, _ in sorted(votes.items(), key=lambda item: item[1], reverse=True)
+            if code not in excluded_by_advisor
+        ][:5]
         if not ranked:
             continue
         hits = len(set(ranked) & target)
@@ -854,6 +972,14 @@ def train_similarity_model(db: Session) -> RecommendationModelVersion:
         'students_with_history': len(students_with_history),
         'semester_transitions': len(episodes),
         'course_coverage': course_coverage,
+        'advisor_feedback_events': len(feedback_rows),
+        'advisor_negative_course_labels': feedback_label_count,
+        'feedback_adjusted_samples': sum(
+            1 for student_id, semester, _history, _target in episodes
+            if negative_labels.get((student_id, semester))
+        ),
+        'feedback_reason_categories': dict(feedback_reason_counts),
+        'feedback_note_terms': dict(feedback_note_terms.most_common(20)),
         'precision_at_5': round(sum(precisions) / len(precisions), 4) if precisions else None,
         'recall_at_5': round(sum(recalls) / len(recalls), 4) if recalls else None,
         'evaluation_samples': len(precisions),
