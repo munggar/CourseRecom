@@ -437,12 +437,29 @@ def _peer_course_scores(
             weighted_scores[identity] += similarity
             counts[identity][0] += 1
 
+    feedback_by_peer: dict[int, set[str]] = defaultdict(set)
+    feedback_rows = (
+        db.query(AdvisorCourseFeedback)
+        .filter(AdvisorCourseFeedback.semester == target_semester)
+        .all()
+    )
+    for feedback in feedback_rows:
+        feedback_by_peer[feedback.student_id].add(str(feedback.course_code).strip().upper())
+
+    for similarity, next_semester_records in peers:
+        peer_id = next_semester_records[0].student_id if next_semester_records else None
+        if peer_id is None:
+            continue
+        for rejected_code in feedback_by_peer.get(peer_id, set()):
+            rejected_identity = _course_identity(rejected_code)
+            weighted_scores[rejected_identity] -= similarity * 0.75
+
     peer_total = len(peers)
     for count in counts.values():
         count[1] = peer_total
 
     normalized = {
-        identity: score / total_similarity
+        identity: max(0.0, score / total_similarity)
         for identity, score in weighted_scores.items()
     } if total_similarity else {}
     return normalized, {
