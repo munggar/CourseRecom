@@ -2694,3 +2694,24 @@ footer {
     width: 100%;
   }
 }
+
+
+.directory-link-controls {
+  display: grid;
+  grid-template-columns: minmax(150px, 1fr) auto;
+  align-items: center;
+  gap: 7px;
+  min-width: 270px;
+}
+.directory-link-controls .btn {
+  white-space: nowrap;
+}
+@media (max-width: 700px) {
+  .directory-link-controls {
+    grid-template-columns: minmax(0, 1fr);
+    min-width: 190px;
+  }
+  .directory-link-controls .btn {
+    width: 100%;
+  }
+}
