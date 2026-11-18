@@ -1,11 +1,9 @@
 import re
-from datetime import datetime
-
 from sqlalchemy.orm import Session
 
 from app.models import Course, CourseClass, Room
 
-ALLOWED_DAYS = ('Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu')
+ALLOWED_DAYS = ('Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu')
 DAY_START_MINUTES = 7 * 60
 DAY_END_MINUTES = 18 * 60
 SLOT_STEP_MINUTES = 10
