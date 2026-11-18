@@ -276,6 +276,34 @@ class KhsConfirm(BaseModel):
         return self
 
 
+class KhsHistoryCourseGradeEdit(BaseModel):
+    semester: int = Field(ge=1, le=14)
+    code: str = Field(min_length=2, max_length=20)
+    numeric_grade: float = Field(ge=0, le=100)
+
+    @field_validator('code')
+    @classmethod
+    def normalize_course_code(cls, value: str) -> str:
+        return value.strip().upper()
+
+
+class KhsHistoryEdit(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+    courses: List[KhsHistoryCourseGradeEdit] = Field(default_factory=list, max_length=300)
+    ipk: Optional[float] = Field(default=None, ge=0, le=4)
+    ip_semesters: dict[int, float] = Field(default_factory=dict)
+
+    @model_validator(mode='after')
+    def validate_history_edits(self):
+        keys = [(item.semester, item.code) for item in self.courses]
+        if len(keys) != len(set(keys)):
+            raise ValueError('Edit nilai angka duplikat untuk mata kuliah dan semester yang sama.')
+        if any(not 1 <= semester <= 14 or not 0 <= value <= 4 for semester, value in self.ip_semesters.items()):
+            raise ValueError('IPS harus berada pada rentang semester 1-14 dan nilai 0,00-4,00.')
+        return self
+
+
 class StudyPlanSubmit(BaseModel):
     course_codes: List[str] = Field(min_length=1, max_length=30)
 
