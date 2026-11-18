@@ -3527,7 +3527,7 @@ function App() {
                             onChange={(event) => setLecturerDirectoryDraft((previous) => ({ ...previous, [entry.id]: event.target.value }))}
                           >
                             <option value="">Belum ditautkan</option>
-                            {adminAdvisors.map((account) => (
+                            {adminAdvisors.filter((account) => account.is_active !== false).map((account) => (
                               <option key={account.id} value={account.id}>{account.full_name} · {account.nim}</option>
                             ))}
                           </select>
@@ -3607,7 +3607,7 @@ function App() {
             <form className="class-form-grid" onSubmit={saveParallelClass}>
               <label><span>Mata kuliah aktif</span><select required value={classForm.course_code} onChange={(event) => setClassForm((previous) => ({ ...previous, course_code: event.target.value }))}><option value="">Pilih mata kuliah</option>{courseList.map((course) => <option key={course.code} value={course.code}>{course.code} · {course.name}</option>)}</select></label>
               <label><span>Nama kelas</span><input required maxLength="40" placeholder="A / B / Reguler 1" value={classForm.class_name} onChange={(event) => setClassForm((previous) => ({ ...previous, class_name: event.target.value }))} /></label>
-              <label><span>Dosen pengampu</span><select value={classForm.lecturer_id} onChange={(event) => setClassForm((previous) => ({ ...previous, lecturer_id: event.target.value }))}><option value="">Belum ditentukan</option>{adminAdvisors.map((lecturer) => <option key={lecturer.id} value={lecturer.id}>{lecturer.full_name} · {lecturer.nim}</option>)}</select></label>
+              <label><span>Dosen pengampu</span><select value={classForm.lecturer_id} onChange={(event) => setClassForm((previous) => ({ ...previous, lecturer_id: event.target.value }))}><option value="">Belum ditentukan</option>{adminAdvisors.filter((lecturer) => lecturer.is_active !== false).map((lecturer) => <option key={lecturer.id} value={lecturer.id}>{lecturer.full_name} · {lecturer.nim}</option>)}</select></label>
               <label><span>Ruang aktif</span>
                 <select required value={classForm.room} onChange={(event) => setClassForm((previous) => ({ ...previous, room: event.target.value, start_time: '', end_time: '' }))}>
                   <option value="">Pilih ruang yang sudah diverifikasi</option>
