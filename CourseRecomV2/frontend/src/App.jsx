@@ -115,7 +115,6 @@ const PROGRAM_INTERESTS = {
     note: 'Mengikuti tiga profil lulusan resmi TRM, bukan peminatan formal.',
   },
 };
-const PROGRAM_STUDY_OPTIONS = Object.keys(PROGRAM_INTERESTS);
 const canonicalProgramName = (value) => {
   const normalized = String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
   const aliases = {
@@ -336,8 +335,9 @@ function App() {
   const [authMode, setAuthMode] = useState('login');
   const [selectedRole, setSelectedRole] = useState('mahasiswa');
   const [form, setForm] = useState({ username: '', password: '' });
-  const [registrationForm, setRegistrationForm] = useState({ nim: '', username: '', full_name: '', program_study: 'Sistem dan Teknologi Informasi', interests: 'Manajemen Sistem Informasi', angkatan: '', password: '', passwordConfirmation: '' });
+  const [registrationForm, setRegistrationForm] = useState({ nim: '', username: '', full_name: '', program_study: 'Sistem dan Teknologi Informasi', interests: 'Manajemen Teknologi Informasi', angkatan: '', password: '', passwordConfirmation: '' });
   const [profile, setProfile] = useState(null);
+  const [programInterestCatalog, setProgramInterestCatalog] = useState(PROGRAM_INTERESTS);
   const [recommendationResult, setRecommendationResult] = useState(EMPTY_RECOMMENDATIONS);
   const recommendations = useMemo(
     () => recommendationResult.recommendations || [],
@@ -461,6 +461,27 @@ function App() {
   }, []);
   const [toasts, setToasts] = useState([]);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  useEffect(() => {
+    let active = true;
+    apiRequest('/auth/program-interests', { suppressLoader: true })
+      .then((catalog) => {
+        if (!active || !catalog || typeof catalog !== 'object') return;
+        setProgramInterestCatalog(catalog);
+        setRegistrationForm((previous) => {
+          if (
+            previous.program_study === 'Sistem dan Teknologi Informasi'
+            && previous.interests === 'Manajemen Sistem Informasi'
+            && catalog['Sistem dan Teknologi Informasi']?.options?.includes('Manajemen Teknologi Informasi')
+          ) {
+            return { ...previous, interests: 'Manajemen Teknologi Informasi' };
+          }
+          return previous;
+        });
+      })
+      .catch(() => {});
+    return () => { active = false; };
+  }, []);
+
   useEffect(() => {
     const handleExpiredSession = () => {
       setUser(null);
@@ -2661,7 +2682,7 @@ function App() {
         <div className="card">
           <h3>Minat & Profil</h3>
           <p className="muted">Pilih satu bidang minat sesuai program studi. Pilihan ini memengaruhi skor kecocokan mata kuliah pada rekomendasi.</p>
-          <p className="muted">{PROGRAM_INTERESTS[canonicalProgramName(user?.program_study)]?.kind || 'Bidang minat'} · {PROGRAM_INTERESTS[canonicalProgramName(user?.program_study)]?.note || 'Pilihan bidang minat mahasiswa.'}</p>
+          <p className="muted">{programInterestCatalog[canonicalProgramName(user?.program_study)]?.kind || 'Bidang minat'} · {PROGRAM_INTERESTS[canonicalProgramName(user?.program_study)]?.note || 'Pilihan bidang minat mahasiswa.'}</p>
           <div className="interest-options">{(PROGRAM_INTERESTS[canonicalProgramName(user?.program_study)]?.options || INTEREST_OPTIONS).map((interest) => {
             const selected = canonicalizeInterests(profileDraft) === interest;
             return (
@@ -3101,16 +3122,16 @@ function App() {
                     value={registrationForm.program_study}
                     onChange={(event) => {
                       const program_study = event.target.value;
-                      const options = PROGRAM_INTERESTS[program_study]?.options || [];
+                      const options = programInterestCatalog[program_study]?.options || [];
                       setRegistrationForm({ ...registrationForm, program_study, interests: options[0] || '' });
                     }}
                   >
                     <option value="">Pilih program studi</option>
-                    {PROGRAM_STUDY_OPTIONS.map((program) => <option key={program} value={program}>{program}</option>)}
+                    {Object.keys(programInterestCatalog).map((program) => <option key={program} value={program}>{program}</option>)}
                   </select>
                 </label>
                 <label>
-                  <span className="muted">{PROGRAM_INTERESTS[registrationForm.program_study]?.kind || 'Bidang minat'}</span>
+                  <span className="muted">{programInterestCatalog[registrationForm.program_study]?.kind || 'Bidang minat'}</span>
                   <select required value={registrationForm.interests} onChange={(event) => setRegistrationForm({ ...registrationForm, interests: event.target.value })}>
                     {(PROGRAM_INTERESTS[registrationForm.program_study]?.options || []).map((interest) => <option key={interest} value={interest}>{interest}</option>)}
                   </select>
