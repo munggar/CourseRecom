@@ -660,7 +660,7 @@ def test_teacher_reviews_submitted_study_plan_with_guidance_note():
         revision = client.patch(
             f'/api/dosen/rencana-studi/{plan_id}',
             headers=teacher_headers,
-            json={'status': 'revision_requested', 'advisor_note': 'Tinjau kembali beban SKS.'},
+            json={'status': 'revision_requested', 'advisor_note': 'Tinjau kembali beban SKS.', 'rejected_course_codes': ['TST401']},
         )
         assert revision.status_code == 200
         assert revision.json()['status'] == 'revision_requested'
