@@ -18,8 +18,8 @@ def is_mandatory_course(course: Course) -> bool:
     category = str(course.category or '')
     description = str(course.description or '')
     return bool(
-        re.search(r'\\bwajib\\b', category, flags=re.IGNORECASE)
-        or re.search(r'\\bwajib(?:\\s+semester\\s+\\d+)?\\b', description, flags=re.IGNORECASE)
+        re.search(r'\bwajib\b', category, flags=re.IGNORECASE)
+        or re.search(r'\bwajib(?:\s+semester\s+\d+)?\b', description, flags=re.IGNORECASE)
     )
 
 
