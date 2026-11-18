@@ -875,3 +875,68 @@ def test_student_recommendations_separate_mandatory_courses_from_optional_recomm
         db.query(User).filter(User.nim == student_nim).delete(synchronize_session=False)
         db.commit()
         db.close()
+
+
+def test_khs_confirmation_rejects_program_study_mismatch_with_student_account():
+    ensure_schema()
+    suffix = uuid4().hex[:10]
+    nim = f'KHS{suffix}'
+    db = SessionLocal()
+    student = User(
+        nim=nim,
+        full_name='Mahasiswa KHS Program Test',
+        role='mahasiswa',
+        password_hash=get_password_hash('password-khs-test'),
+        program_study='Sistem dan Teknologi Informasi',
+        interests='Manajemen Teknologi Informasi',
+        semester=1,
+    )
+    db.add(student)
+    db.commit()
+    db.refresh(student)
+    document = KhsDocument(
+        student_id=student.id,
+        filename='khs-program-test.json',
+        sha256='e' * 64,
+        status='pending',
+        parsed_data='{"metadata":{"current_semester":1},"semesters":[{"semester":1,"courses":[]}],"courses":[]}',
+        created_at=datetime.now(timezone.utc).replace(tzinfo=None),
+        updated_at=datetime.now(timezone.utc).replace(tzinfo=None),
+    )
+    db.add(document)
+    db.commit()
+    db.refresh(document)
+    document_id = document.id
+    student_id = student.id
+    token = create_access_token(nim, 'mahasiswa')
+    db.close()
+
+    try:
+        response = client.post(
+            f'/api/mahasiswa/khs/{document_id}/confirm',
+            headers={'Authorization': f'Bearer {token}'},
+            json={
+                'nim': nim,
+                'full_name': 'Mahasiswa KHS Program Test',
+                'program_study': 'Teknik Informatika',
+                'current_semester': 1,
+                'ip_semesters': {'1': 3.25},
+                'courses': [
+                    {'semester': 1, 'code': 'KHS101', 'name': 'Pengantar Komputasi', 'sks': 3, 'grade': 'A', 'numeric_grade': 88},
+                ],
+            },
+        )
+        assert response.status_code == 422, response.text
+        db = SessionLocal()
+        stored_document = db.query(KhsDocument).filter(KhsDocument.id == document_id).one()
+        assert stored_document.status == 'pending'
+        assert db.query(StudentRecord).filter(StudentRecord.student_id == student_id).count() == 0
+        db.close()
+    finally:
+        db = SessionLocal()
+        db.query(KhsDocument).filter(KhsDocument.id == document_id).delete(synchronize_session=False)
+        db.query(StudentRecord).filter(StudentRecord.student_id == student_id).delete(synchronize_session=False)
+        db.query(AuditLog).filter(AuditLog.actor_id == student_id).delete(synchronize_session=False)
+        db.query(User).filter(User.id == student_id).delete(synchronize_session=False)
+        db.commit()
+        db.close()
