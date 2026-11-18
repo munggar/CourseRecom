@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 from app.database import SessionLocal
 from app.deps import create_access_token
 from app.main import app
-from app.models import AdvisorCourseFeedback, AuditLog, Course, CourseClass, KprsRequest, StudyPlan, User, Room
+from app.models import AdvisorCourseFeedback, AuditLog, Course, CourseClass, KprsRequest, StudyPlan, User, Room, LecturerDirectory
 
 
 client = TestClient(app)
@@ -602,5 +602,83 @@ def test_admin_room_schedule_rules_and_separate_exports():
         db.query(Room).filter(Room.code.in_(created_rooms)).delete(synchronize_session=False)
         db.query(Course).filter(Course.code.in_([code_a, code_b])).delete(synchronize_session=False)
         db.query(User).filter(User.id == lecturer_id).delete(synchronize_session=False)
+        db.commit()
+        db.close()
+
+
+
+def test_admin_can_manually_link_lecturer_directory_profile_to_account():
+    suffix = uuid4().hex[:8].upper()
+    first_nip = f'LINKA{suffix}'
+    second_nip = f'LINKB{suffix}'
+    first_profile_nidn = f'9900{suffix}'
+    second_profile_nidn = f'9910{suffix}'
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    db = SessionLocal()
+    first_account = User(
+        nim=first_nip, username=f'link-a-{suffix.lower()}',
+        full_name='Dosen A untuk tautan', role='dosen', password_hash='unused-hash',
+    )
+    second_account = User(
+        nim=second_nip, username=f'link-b-{suffix.lower()}',
+        full_name='Dosen B untuk tautan', role='dosen', password_hash='unused-hash',
+    )
+    first_profile = LecturerDirectory(
+        nidn=first_profile_nidn,
+        full_name='Profil Dosen A',
+        program_study='Sistem dan Teknologi Informasi',
+        source_type='official_program_profile',
+        profile_url='https://ft.uhamka.ac.id/dosen-sti/',
+        notes='Fixture uji mapping',
+    )
+    second_profile = LecturerDirectory(
+        nidn=second_profile_nidn,
+        full_name='Profil Dosen B',
+        program_study='Teknik Informatika',
+        source_type='official_program_profile',
+        profile_url='https://ft.uhamka.ac.id/dosen-ti/',
+        notes='Fixture uji mapping',
+    )
+    db.add_all([first_account, second_account, first_profile, second_profile])
+    db.commit()
+    first_account_id = first_account.id
+    first_profile_id = first_profile.id
+    second_profile_id = second_profile.id
+    db.close()
+
+    try:
+        linked = client.patch(
+            f'/api/admin/lecturer-directory/{first_profile_id}/link',
+            headers=ADMIN_HEADERS,
+            json={'user_id': first_account_id},
+        )
+        assert linked.status_code == 200, linked.text
+        assert linked.json()['status'] == 'akun_terhubung'
+        assert linked.json()['linked_user_id'] == first_account_id
+
+        duplicate = client.patch(
+            f'/api/admin/lecturer-directory/{second_profile_id}/link',
+            headers=ADMIN_HEADERS,
+            json={'user_id': first_account_id},
+        )
+        assert duplicate.status_code == 409, duplicate.text
+
+        unlinked = client.patch(
+            f'/api/admin/lecturer-directory/{first_profile_id}/link',
+            headers=ADMIN_HEADERS,
+            json={'user_id': None},
+        )
+        assert unlinked.status_code == 200, unlinked.text
+        assert unlinked.json()['status'] == 'belum_ada_akun'
+    finally:
+        db = SessionLocal()
+        db.query(AuditLog).filter(
+            AuditLog.entity_type == 'lecturer_directory',
+            AuditLog.entity_id.in_([str(first_profile_id), str(second_profile_id)]),
+        ).delete(synchronize_session=False)
+        db.query(LecturerDirectory).filter(
+            LecturerDirectory.id.in_([first_profile_id, second_profile_id])
+        ).delete(synchronize_session=False)
+        db.query(User).filter(User.id.in_([first_account_id, second_account_id])).delete(synchronize_session=False)
         db.commit()
         db.close()
