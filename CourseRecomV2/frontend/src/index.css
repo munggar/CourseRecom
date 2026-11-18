@@ -1832,3 +1832,654 @@ textarea {
   flex-wrap: wrap;
   gap: 10px;
 }
+
+
+/* =========================================================
+   Global UI consistency pass: spacing, responsive layouts,
+   form controls, data tables, and long-content protection.
+   ========================================================= */
+
+:root {
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 28px;
+  --space-8: 32px;
+}
+
+html {
+  scroll-padding-top: 84px;
+  text-size-adjust: 100%;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  font-size: 16px;
+  line-height: 1.55;
+  overflow-wrap: break-word;
+}
+
+img,
+svg,
+video,
+canvas {
+  max-width: 100%;
+}
+
+button,
+input,
+select,
+textarea {
+  min-width: 0;
+}
+
+.app-shell,
+.authenticated-shell,
+.main-layout,
+.content,
+.card,
+.guide-page,
+.class-management-page {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.main-layout {
+  gap: clamp(14px, 1.7vw, 22px);
+  padding: clamp(14px, 1.8vw, 24px);
+}
+
+.content {
+  width: 100%;
+  min-width: 0;
+}
+
+.card {
+  padding: clamp(16px, 1.7vw, 24px);
+  border-radius: 16px;
+}
+
+.card > h2:first-child,
+.card > h3:first-child,
+.card > h4:first-child {
+  margin-top: 0;
+}
+
+.card h2,
+.card h3,
+.card h4,
+.guide-section-card h3,
+.class-section-heading h3 {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.card h2 {
+  margin-bottom: 14px;
+  line-height: 1.25;
+}
+
+.card h3 {
+  line-height: 1.3;
+}
+
+.card p,
+.guide-section-intro,
+.guide-help-footer p {
+  overflow-wrap: anywhere;
+}
+
+.card p {
+  line-height: 1.6;
+}
+
+.card > section + section {
+  margin-top: 20px;
+}
+
+.card > section > h3:first-child,
+.card > section > h4:first-child {
+  margin-top: 0;
+}
+
+.stat-grid,
+.grid-2,
+.metadata-grid,
+.form-grid,
+.course-edit-grid,
+.class-form-grid,
+.kprs-class-options,
+.ml-process-grid,
+.recommendation-grid {
+  min-width: 0;
+  align-items: start;
+}
+
+.stat,
+.recommendation-card,
+.rejected-card,
+.interest-chart-card,
+.admin-donut-card,
+.class-form-card,
+.class-table-card,
+.guide-section-card {
+  min-width: 0;
+}
+
+.form-grid,
+.class-form-grid {
+  gap: 15px;
+}
+
+.form-grid label,
+.metadata-grid label,
+.semester-summary-item label,
+.upload-form label,
+.course-edit-field,
+.class-form-grid label {
+  min-width: 0;
+  line-height: 1.45;
+}
+
+.form-grid label > span,
+.course-edit-field > span,
+.class-form-grid label > span {
+  overflow-wrap: anywhere;
+}
+
+input,
+select,
+textarea {
+  min-height: 44px;
+  padding: 10px 12px;
+  line-height: 1.4;
+  border-radius: 9px;
+}
+
+textarea {
+  min-height: 104px;
+  resize: vertical;
+}
+
+input[type="checkbox"],
+input[type="radio"] {
+  width: 18px;
+  min-width: 18px;
+  min-height: 18px;
+  padding: 0;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 44px;
+  padding: 10px 15px;
+  line-height: 1.35;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.btn.outline.danger {
+  border-color: #dfb9b6;
+  background: #fff;
+  color: var(--danger);
+}
+
+.btn.outline.danger:hover:not(:disabled) {
+  border-color: #c77b75;
+  background: var(--danger-soft);
+  color: #7e1d1d;
+}
+
+.preview-actions,
+.class-form-actions,
+.class-row-actions,
+.filters,
+.admin-analytics-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.preview-actions .btn,
+.class-form-actions .btn,
+.class-row-actions .btn {
+  max-width: 100%;
+}
+
+.table-wrap,
+.table-scroll {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+  scrollbar-color: #b6c8ce #edf3f4;
+  border-radius: 9px;
+}
+
+.table-wrap .table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.table-scroll table {
+  width: 100%;
+  min-width: 760px;
+  border-collapse: collapse;
+  background: #fff;
+}
+
+.table-scroll th,
+.table-scroll td {
+  padding: 11px 12px;
+  border-bottom: 1px solid #d8e2e7;
+  text-align: left;
+  vertical-align: top;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.table-scroll th {
+  background: #f1f6f7;
+  color: #243d4d;
+  font-weight: 700;
+}
+
+.table th,
+.table td {
+  padding: 12px 11px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+
+.table th {
+  white-space: normal;
+}
+
+.table td {
+  min-width: 0;
+}
+
+.table-scroll tbody tr:hover,
+.table-wrap tbody tr:hover {
+  background: #f7fafb;
+}
+
+.history-semester,
+.curriculum-semester {
+  min-width: 0;
+  margin-top: 18px;
+  padding: 16px;
+  border: 1px solid #dce7eb;
+  border-radius: 13px;
+  background: #fff;
+}
+
+.history-semester h4,
+.curriculum-semester h3 {
+  margin: 0 0 12px;
+}
+
+.history-ips-result {
+  width: min(100%, 320px);
+  min-width: 0;
+  margin-top: 14px;
+}
+
+.mandatory-recommendations {
+  min-width: 0;
+  margin: 22px 0;
+  padding: clamp(14px, 1.8vw, 20px);
+  border: 1px solid #d7e3e7;
+  border-radius: 14px;
+  background: linear-gradient(145deg, #f8fbfc, #fff);
+}
+
+.mandatory-recommendations h3 {
+  margin-top: 0;
+}
+
+.mandatory-recommendations > p {
+  margin: 8px 0 14px;
+}
+
+.interest-bar-item {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+
+.interest-bar-label {
+  flex-wrap: wrap;
+}
+
+.interest-bar-label > span {
+  min-width: 0;
+  flex: 1 1 160px;
+}
+
+.guide-toolbar {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.guide-search {
+  width: 100%;
+  min-height: 44px;
+}
+
+.guide-search input {
+  min-height: 42px;
+}
+
+.guide-search button {
+  display: grid;
+  place-items: center;
+  flex: 0 0 36px;
+  min-width: 36px;
+  min-height: 36px;
+  border-radius: 8px;
+}
+
+.guide-search button:hover {
+  background: #edf4f5;
+}
+
+.guide-help-footer > div {
+  min-width: 0;
+  flex: 1 1 280px;
+}
+
+.guide-help-footer .btn {
+  flex: 0 0 auto;
+}
+
+.class-section-heading > div {
+  min-width: 0;
+  flex: 1 1 260px;
+}
+
+.class-section-heading > .btn {
+  flex: 0 0 auto;
+}
+
+.class-form-actions {
+  align-self: end;
+}
+
+.class-open-toggle {
+  min-height: 44px;
+}
+
+.draft-class-meta {
+  overflow-wrap: anywhere;
+}
+
+.draft-class-meta span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.kprs-submit-row > * {
+  min-width: 0;
+}
+
+footer {
+  padding: 18px 20px 26px;
+  text-align: center;
+  line-height: 1.5;
+}
+
+/* At tablet widths, use the compact navigation so the page content
+   does not have to share the screen with a fixed-width sidebar. */
+@media (min-width: 761px) and (max-width: 900px) {
+  .authenticated-shell {
+    padding-top: 64px;
+  }
+
+  .topbar {
+    height: 64px;
+    min-height: 64px;
+    padding: 8px 16px;
+  }
+
+  .topbar-label {
+    display: none;
+  }
+
+  .mobile-menu-toggle {
+    display: grid;
+    place-items: center;
+    width: 44px;
+    height: 44px;
+    margin-left: auto;
+    border: 1px solid rgb(255 255 255 / 32%);
+    border-radius: 11px;
+    color: #fff;
+    background: rgb(255 255 255 / 10%);
+    cursor: pointer;
+  }
+
+  .mobile-menu-backdrop {
+    display: block;
+    inset: 64px 0 0;
+  }
+
+  .main-layout {
+    display: block;
+    width: 100%;
+    padding: 14px;
+  }
+
+  .sidebar {
+    display: none;
+  }
+
+  .content {
+    width: 100%;
+    margin-left: 0;
+  }
+
+  .stat-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .grid-2 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .guide-hero {
+    grid-template-columns: minmax(0, 1fr) 180px;
+  }
+}
+
+@media (max-width: 760px) {
+  .main-layout {
+    padding: 10px;
+  }
+
+  .card {
+    padding: 15px;
+    border-radius: 14px;
+  }
+
+  .card > section + section {
+    margin-top: 18px;
+  }
+
+  .table-wrap .table {
+    width: max-content;
+    min-width: 100%;
+  }
+
+  .table th,
+  .table td,
+  .table-scroll th,
+  .table-scroll td {
+    padding: 10px 9px;
+  }
+
+  .history-semester,
+  .curriculum-semester {
+    padding: 13px;
+  }
+
+  .mandatory-recommendations {
+    margin: 18px 0;
+    padding: 14px;
+  }
+
+  .preview-actions,
+  .class-form-actions,
+  .class-row-actions {
+    gap: 8px;
+  }
+
+  .preview-actions .btn,
+  .class-form-actions .btn {
+    flex: 1 1 150px;
+  }
+
+  .guide-help-footer {
+    width: 100%;
+    gap: 12px;
+  }
+
+  .guide-help-footer .btn {
+    width: 100%;
+  }
+
+  .class-section-heading > .btn {
+    width: 100%;
+  }
+
+  .class-form-actions .btn {
+    width: 100%;
+  }
+
+  .topbar strong {
+    font-size: 1.02rem;
+  }
+
+  footer {
+    padding: 16px 12px 22px;
+  }
+}
+
+@media (max-width: 420px) {
+  .main-layout {
+    padding: 8px;
+  }
+
+  .card {
+    padding: 12px;
+    border-radius: 12px;
+  }
+
+  .card h2 {
+    font-size: 1.25rem;
+  }
+
+  .card h3 {
+    font-size: 1.05rem;
+  }
+
+  .stat-grid,
+  .interest-chart-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .stat {
+    padding: 10px;
+  }
+
+  .stat small {
+    font-size: .78rem;
+  }
+
+  .stat strong {
+    font-size: clamp(1.05rem, 5vw, 1.35rem);
+  }
+
+  .table-scroll table {
+    min-width: 700px;
+  }
+
+  .form-grid,
+  .class-form-grid {
+    gap: 12px;
+  }
+
+  .btn {
+    padding: 9px 11px;
+  }
+
+  .guide-hero {
+    padding: 18px;
+    border-radius: 14px;
+  }
+
+  .guide-section-card {
+    padding: 13px;
+  }
+
+  .guide-help-footer {
+    padding: 14px;
+  }
+
+  .class-form-card,
+  .class-table-card {
+    padding: 12px;
+  }
+}
+
+@media (max-width: 360px) {
+  .stat-grid,
+  .interest-chart-summary,
+  .khs-process {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .admin-donut-card {
+    grid-template-columns: minmax(0, 1fr);
+    justify-items: center;
+    text-align: center;
+  }
+
+  .admin-donut-caption {
+    text-align: center;
+  }
+
+  .rec-item {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .rec-item .bar {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+
+  .topbar {
+    padding-inline: 8px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .guide-section-card,
+  .guide-role-filters button,
+  .guide-details summary svg {
+    transition: none;
+  }
+}
