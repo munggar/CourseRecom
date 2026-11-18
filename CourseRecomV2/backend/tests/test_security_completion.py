@@ -182,3 +182,38 @@ def test_logout_invalidates_current_token():
     assert response.status_code == 204
     reused = client.get('/api/auth/me', headers={'Authorization': f'Bearer {token}'})
     assert reused.status_code == 401
+
+
+def test_student_account_profile_cannot_change_program_study_or_angkatan():
+    db = SessionLocal()
+    user = _create_user(db, 'ACADEMIC-LOCK')
+    user.program_study = 'Sistem dan Teknologi Informasi'
+    user.angkatan = '2025'
+    user.interests = 'Manajemen Teknologi Informasi'
+    db.commit()
+    token = create_access_token(user.nim, user.role, user.token_version)
+    nim = user.nim
+    db.close()
+    headers = {'Authorization': f'Bearer {token}'}
+
+    changed_program = client.put('/api/auth/profile', headers=headers, json={
+        'full_name': 'Security Test User',
+        'username': 'sec-academic-lock',
+        'program_study': 'Teknik Informatika',
+        'angkatan': '2025',
+    })
+    assert changed_program.status_code == 409
+
+    changed_cohort = client.put('/api/auth/profile', headers=headers, json={
+        'full_name': 'Security Test User',
+        'username': 'sec-academic-lock',
+        'program_study': 'Sistem dan Teknologi Informasi',
+        'angkatan': '2026',
+    })
+    assert changed_cohort.status_code == 409
+
+    db = SessionLocal()
+    stored = db.query(User).filter(User.nim == nim).one()
+    assert stored.program_study == 'Sistem dan Teknologi Informasi'
+    assert stored.angkatan == '2025'
+    db.close()
