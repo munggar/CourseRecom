@@ -42,6 +42,7 @@ def list_mentees(db: Session = Depends(get_db), current_user: User = Depends(req
         {
             'nim': student.nim,
             'full_name': student.full_name,
+            'program_study': student.program_study or '',
             'ipk': student.ipk,
             'interests': student.interests or '',
             'khs_confirmed': student.id in confirmed_student_ids,
@@ -71,6 +72,7 @@ def list_study_plans(
             'id': plan.id,
             'student_nim': student.nim,
             'student_name': student.full_name,
+            'student_program_study': student.program_study or '',
             'student_ipk': student.ipk,
             'student_interests': student.interests or '',
             'semester': plan.semester,
