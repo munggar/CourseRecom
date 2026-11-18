@@ -67,7 +67,16 @@ def validate_program_interest(program_study: str, interest: str) -> tuple[str, s
     program = normalize_program_name(program_study)
     if not program:
         raise ValueError("Pilih salah satu program studi FTII UHAMKA.")
-    option = (interest or "").strip()
-    if option not in PROGRAM_INTERESTS[program]["options"]:
+    option = " ".join((interest or "").strip().split())
+    if program == "Sistem dan Teknologi Informasi" and option.casefold() == "manajemen sistem informasi":
+        option = "Manajemen Teknologi Informasi"
+    canonical = next(
+        (
+            item for item in PROGRAM_INTERESTS[program]["options"]
+            if item.casefold() == option.casefold()
+        ),
+        None,
+    )
+    if canonical is None:
         raise ValueError("Bidang minat tidak sesuai dengan program studi yang dipilih.")
-    return program, option
+    return program, canonical
