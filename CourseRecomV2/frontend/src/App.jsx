@@ -571,34 +571,53 @@ function App() {
   const [khsError, setKhsError] = useState('');
   const [modelStatus, setModelStatus] = useState('');
   const [actionMessage, setActionMessage] = useState('');
-  const downloadOfficialKrs = useCallback(async (planId) => {
+  const [officialKrsPreviewUrl, setOfficialKrsPreviewUrl] = useState('');
+  const [officialKrsPreviewPlanId, setOfficialKrsPreviewPlanId] = useState(null);
+  const [officialKrsPreviewBusy, setOfficialKrsPreviewBusy] = useState(false);
+  const previewOfficialKrs = useCallback(async (planId) => {
     const token = localStorage.getItem('courseRecomToken');
+    setOfficialKrsPreviewBusy(true);
     window.dispatchEvent(new Event('courserecom:request-start'));
     try {
       const response = await fetch(`${API_BASE}/mahasiswa/rencana-studi/${planId}/pdf-resmi`, {
         headers: token ? { Authorization: 'Bearer ' + token } : {},
       });
       expireSessionOnUnauthorized(response, token);
-      if (!response.ok) throw new Error('PDF resmi belum tersedia.');
+      if (!response.ok) throw new Error('PDF resmi belum tersedia atau KRS belum disetujui.');
       const contentType = response.headers.get('content-type') || '';
       if (!contentType.includes('application/pdf')) {
         throw new Error('Respons server bukan dokumen PDF.');
       }
       const blob = await response.blob();
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `KRS-${planId}.pdf`;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      const previewUrl = URL.createObjectURL(new Blob([blob], { type: 'application/pdf' }));
+      setOfficialKrsPreviewPlanId(planId);
+      setOfficialKrsPreviewUrl(previewUrl);
     } finally {
+      setOfficialKrsPreviewBusy(false);
       window.dispatchEvent(new Event('courserecom:request-end'));
     }
   }, []);
   const [toasts, setToasts] = useState([]);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  useEffect(() => {
+    if (!officialKrsPreviewUrl) return undefined;
+    const closeOnEscape = (event) => {
+      if (event.key === 'Escape') {
+        setOfficialKrsPreviewUrl('');
+        setOfficialKrsPreviewPlanId(null);
+      }
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => {
+      window.removeEventListener('keydown', closeOnEscape);
+      URL.revokeObjectURL(officialKrsPreviewUrl);
+    };
+  }, [officialKrsPreviewUrl]);
+
+  const closeOfficialKrsPreview = () => {
+    setOfficialKrsPreviewUrl('');
+    setOfficialKrsPreviewPlanId(null);
+  };
   useEffect(() => {
     let active = true;
     apiRequest('/auth/program-interests', { suppressLoader: true })
@@ -2698,9 +2717,10 @@ function App() {
                 <button
                   type="button"
                   className="btn primary"
-                  onClick={() => downloadOfficialKrs(latestStudyPlan.id).catch((error) => pushToast(error.message, 'error'))}
+                  disabled={officialKrsPreviewBusy}
+                  onClick={() => previewOfficialKrs(latestStudyPlan.id).catch((error) => pushToast(error.message, 'error'))}
                 >
-                  Unduh PDF KRS Resmi
+                  {officialKrsPreviewBusy ? 'Menyiapkan preview...' : 'Preview KRS'}
                 </button>
               )}
             </div>
@@ -3826,6 +3846,53 @@ function App() {
               <LogOut size={19} aria-hidden="true" /><span>Keluar</span>
             </button>
           </nav>
+        </div>
+      )}
+      {officialKrsPreviewUrl && (
+        <div
+          className="krs-preview-overlay"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) closeOfficialKrsPreview();
+          }}
+        >
+          <section
+            className="krs-preview-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="krs-preview-title"
+          >
+            <header className="krs-preview-header">
+              <div>
+                <span className="guide-eyebrow">DOKUMEN AKADEMIK RESMI</span>
+                <h2 id="krs-preview-title">Preview KRS</h2>
+                <p className="muted">Periksa detail rencana studi sebelum mengunduh dokumen PDF.</p>
+              </div>
+              <button className="krs-preview-close" type="button" onClick={closeOfficialKrsPreview} aria-label="Tutup preview KRS">
+                <X size={22} />
+              </button>
+            </header>
+            <div className="krs-preview-frame-wrap">
+              <iframe
+                className="krs-preview-frame"
+                title={`Preview KRS resmi #${officialKrsPreviewPlanId || ''}`}
+                src={officialKrsPreviewUrl}
+              />
+            </div>
+            <footer className="krs-preview-footer">
+              <span className="muted">KRS hanya dapat diunduh setelah disetujui Dosen PA.</span>
+              <div>
+                <button className="btn outline" type="button" onClick={closeOfficialKrsPreview}>Tutup</button>
+                <a
+                  className="btn primary"
+                  href={officialKrsPreviewUrl}
+                  download={`KRS-${user?.nim || 'mahasiswa'}-${officialKrsPreviewPlanId || ''}.pdf`}
+                >
+                  Unduh KRS
+                </a>
+              </div>
+            </footer>
+          </section>
         </div>
       )}
       <div className="toast-viewport" aria-live="polite">
