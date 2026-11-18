@@ -647,3 +647,44 @@ footer { color: var(--muted); }
 @media (max-width: 900px) {
   .recommendation-grid { grid-template-columns: 1fr; }
 }
+
+
+/* Explainable recommendation evidence and dynamic score coverage */
+.recommendation-grid .factor {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 5px 10px;
+  min-width: 0;
+}
+.recommendation-grid .factor span {
+  min-width: 0;
+  font-weight: 600;
+}
+.recommendation-grid .factor strong {
+  text-align: right;
+  white-space: nowrap;
+}
+.recommendation-grid .factor small {
+  grid-column: 1 / -1;
+  color: #617481;
+  font-size: .76rem;
+  line-height: 1.4;
+}
+.recommendation-grid .factor em {
+  grid-column: 1 / -1;
+  color: var(--teal-dark);
+  font-size: .72rem;
+  font-style: normal;
+  font-weight: 700;
+}
+.score-coverage-note {
+  margin: 8px 0 14px;
+  padding: 9px 11px;
+  border-left: 3px solid #78939d;
+  border-radius: 6px;
+  background: #f4f7f8;
+  color: #586c77;
+  font-size: .78rem;
+  line-height: 1.5;
+}
