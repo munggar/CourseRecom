@@ -199,3 +199,34 @@ class KprsRequest(Base):
     reviewer_note = Column(Text, nullable=False, default='')
     created_at = Column(DateTime, nullable=False)
     updated_at = Column(DateTime, nullable=False)
+
+
+
+class Room(Base):
+    __tablename__ = 'rooms'
+    code = Column(String(10), primary_key=True)
+    floor = Column(Integer, nullable=False)
+    room_number = Column(String(3), nullable=False)
+    capacity = Column(Integer, nullable=True)
+    room_type = Column(String(40), nullable=False, default='Ruang kuliah')
+    is_active = Column(Boolean, nullable=False, default=False)
+    source_status = Column(String(60), nullable=False, default='needs_verification')
+    source_url = Column(String(500), nullable=True)
+    notes = Column(Text, nullable=True)
+    verified_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, nullable=False)
+
+
+class LecturerDirectory(Base):
+    __tablename__ = 'lecturer_directory'
+    id = Column(Integer, primary_key=True, index=True)
+    nidn = Column(String(30), unique=True, nullable=True, index=True)
+    full_name = Column(String(180), nullable=False)
+    program_study = Column(String(120), nullable=False)
+    email = Column(String(120), nullable=True)
+    education = Column(Text, nullable=True)
+    expertise = Column(Text, nullable=True)
+    source_type = Column(String(60), nullable=False, default='official_program_profile')
+    profile_url = Column(String(500), nullable=False)
+    notes = Column(Text, nullable=True)
+    linked_user_id = Column(Integer, ForeignKey('users.id', ondelete='SET NULL'), nullable=True, index=True)
