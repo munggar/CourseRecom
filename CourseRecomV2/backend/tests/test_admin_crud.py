@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
@@ -5,7 +6,7 @@ from fastapi.testclient import TestClient
 from app.database import SessionLocal
 from app.deps import create_access_token
 from app.main import app
-from app.models import AuditLog, Course, User
+from app.models import AdvisorCourseFeedback, AuditLog, Course, CourseClass, KprsRequest, StudyPlan, User
 
 
 client = TestClient(app)
@@ -169,3 +170,119 @@ def test_admin_course_crud_is_forbidden_to_student():
         'capacity': 40,
     })
     assert response.status_code == 403
+
+
+def test_admin_delete_lecturer_preserves_review_history_and_nulls_foreign_keys():
+    ensure = SessionLocal()
+    suffix = uuid4().hex[:10].upper()
+    lecturer_nim = f'DEL{suffix}'
+    student_nim = f'DELM{suffix}'
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    lecturer = User(
+        nim=lecturer_nim,
+        username=f'del-{suffix.lower()}',
+        full_name='Dosen yang Akan Dihapus',
+        role='dosen',
+        password_hash='unused-hash',
+    )
+    student = User(
+        nim=student_nim,
+        username=f'delm-{suffix.lower()}',
+        full_name='Mahasiswa Uji Penghapusan Dosen',
+        role='mahasiswa',
+        password_hash='unused-hash',
+    )
+    ensure.add_all([lecturer, student])
+    ensure.commit()
+    ensure.refresh(lecturer)
+    ensure.refresh(student)
+    student.advisor_id = lecturer.id
+    plan = StudyPlan(
+        student_id=student.id,
+        semester=2,
+        courses_json='[]',
+        status='approved',
+        advisor_note='Disetujui',
+        reviewer_id=lecturer.id,
+        created_at=now,
+        updated_at=now,
+    )
+    ensure.add(plan)
+    ensure.commit()
+    ensure.refresh(plan)
+    request = KprsRequest(
+        student_id=student.id,
+        study_plan_id=plan.id,
+        reviewer_id=lecturer.id,
+        before_json='[]',
+        after_json='[]',
+        reason='Perubahan jadwal kuliah',
+        status='approved',
+        reviewer_note='Disetujui dosen PA',
+        created_at=now,
+        updated_at=now,
+    )
+    feedback = AdvisorCourseFeedback(
+        student_id=student.id,
+        study_plan_id=plan.id,
+        reviewer_id=lecturer.id,
+        semester=2,
+        course_code='DEL101',
+        reason='Tinjau kembali mata kuliah pilihan ini.',
+        created_at=now,
+    )
+    course_class = CourseClass(
+        course_code='DEL101',
+        class_name='A',
+        lecturer_id=lecturer.id,
+        room='R.101',
+        day='Senin',
+        start_time='08:00',
+        end_time='10:00',
+        capacity=30,
+        semester='2026/2027 Genap',
+        is_open=True,
+    )
+    audit = AuditLog(
+        actor_id=lecturer.id,
+        actor_name=lecturer.full_name,
+        action='review_test',
+        entity_type='study_plan',
+        entity_id=str(plan.id),
+        old_value='{}',
+        new_value='{}',
+        created_at=now,
+    )
+    ensure.add_all([request, feedback, course_class, audit])
+    ensure.commit()
+    lecturer_id, student_id, plan_id, request_id = lecturer.id, student.id, plan.id, request.id
+    feedback_id, class_id, audit_id = feedback.id, course_class.id, audit.id
+    ensure.close()
+
+    try:
+        response = client.delete(
+            f'/api/admin/lecturers/{lecturer_nim}',
+            headers=ADMIN_HEADERS,
+        )
+        assert response.status_code == 204, response.text
+        db = SessionLocal()
+        assert db.query(User).filter(User.id == lecturer_id).first() is None
+        assert db.query(User).filter(User.id == student_id).one().advisor_id is None
+        assert db.query(StudyPlan).filter(StudyPlan.id == plan_id).one().reviewer_id is None
+        assert db.query(KprsRequest).filter(KprsRequest.id == request_id).one().reviewer_id is None
+        assert db.query(AdvisorCourseFeedback).filter(AdvisorCourseFeedback.id == feedback_id).one().reviewer_id is None
+        assert db.query(CourseClass).filter(CourseClass.id == class_id).one().lecturer_id is None
+        retained_audit = db.query(AuditLog).filter(AuditLog.id == audit_id).one()
+        assert retained_audit.actor_id is None
+        assert retained_audit.actor_name == 'Dosen yang Akan Dihapus'
+        db.close()
+    finally:
+        db = SessionLocal()
+        db.query(KprsRequest).filter(KprsRequest.student_id == student_id).delete(synchronize_session=False)
+        db.query(AdvisorCourseFeedback).filter(AdvisorCourseFeedback.student_id == student_id).delete(synchronize_session=False)
+        db.query(StudyPlan).filter(StudyPlan.id == plan_id).delete(synchronize_session=False)
+        db.query(CourseClass).filter(CourseClass.id == class_id).delete(synchronize_session=False)
+        db.query(AuditLog).filter(AuditLog.id == audit_id).delete(synchronize_session=False)
+        db.query(User).filter(User.id.in_([student_id, lecturer_id])).delete(synchronize_session=False)
+        db.commit()
+        db.close()
