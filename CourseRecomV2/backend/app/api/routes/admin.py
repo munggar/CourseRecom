@@ -6,6 +6,7 @@ from io import BytesIO
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import Response
 from openpyxl import Workbook as ExcelWorkbook
+from openpyxl.styles import Font, PatternFill
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -195,8 +196,8 @@ def export_lecturers(
         sheet.freeze_panes = 'A2'
         sheet.auto_filter.ref = sheet.dimensions
         for cell in sheet[1]:
-            cell.font = __import__('openpyxl').styles.Font(bold=True, color='FFFFFF')
-            cell.fill = __import__('openpyxl').styles.PatternFill('solid', fgColor='075E59')
+            cell.font = Font(bold=True, color='FFFFFF')
+            cell.fill = PatternFill('solid', fgColor='075E59')
         for column_cells in sheet.columns:
             letter = column_cells[0].column_letter
             sheet.column_dimensions[letter].width = min(42, max(14, max(len(str(cell.value or '')) for cell in column_cells) + 2))
@@ -1093,8 +1094,8 @@ def export_rooms(
         sheet.freeze_panes = 'A2'
         sheet.auto_filter.ref = sheet.dimensions
         for cell in sheet[1]:
-            cell.font = __import__('openpyxl').styles.Font(bold=True, color='FFFFFF')
-            cell.fill = __import__('openpyxl').styles.PatternFill('solid', fgColor='075E59')
+            cell.font = Font(bold=True, color='FFFFFF')
+            cell.fill = PatternFill('solid', fgColor='075E59')
         for column_cells in sheet.columns:
             letter = column_cells[0].column_letter
             sheet.column_dimensions[letter].width = min(44, max(14, max(len(str(cell.value or '')) for cell in column_cells) + 2))
@@ -1176,22 +1177,22 @@ def create_class(payload: CourseClassMutation, db: Session = Depends(get_db), cu
         CourseClass.semester == payload.semester,
     ).first():
         raise HTTPException(status_code=409, detail='Nama kelas paralel sudah digunakan untuk mata kuliah dan semester ini.')
-    if payload.lecturer_id is not None:
-        lecturer = db.query(User).filter(
-            User.id == payload.lecturer_id,
-            User.role == 'dosen',
-            User.is_active.is_(True),
-        ).with_for_update().first()
-        if not lecturer:
-            raise HTTPException(status_code=422, detail='Dosen pengampu tidak valid atau nonaktif.')
     try:
-        # Lock the room first and the lecturer row above to serialize concurrent
-        # schedule creation for the same physical resource or lecturer.
+        # Lock resources in the same order as the update route to serialize
+        # simultaneous bookings of a room or lecturer.
         room = db.query(Room).filter(Room.code == payload.room).with_for_update().first()
         if not room:
             raise ValueError(f'Ruang {payload.room} belum terdaftar.')
         if not room.is_active:
             raise ValueError(f'Ruang {payload.room} belum diaktifkan Admin setelah verifikasi fisik.')
+        if payload.lecturer_id is not None:
+            lecturer = db.query(User).filter(
+                User.id == payload.lecturer_id,
+                User.role == 'dosen',
+                User.is_active.is_(True),
+            ).with_for_update().first()
+            if not lecturer:
+                raise ValueError('Dosen pengampu tidak valid atau nonaktif.')
         end_time = validate_class_schedule(
             db,
             course_code=course.code,
