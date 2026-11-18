@@ -128,6 +128,14 @@ def test_kprs_revalidates_reserves_capacity_and_releases_cancelled_seats():
         )
         assert submitted.status_code == 201, submitted.text
         request_id = submitted.json()['id']
+        db = SessionLocal()
+        submitted_audit = db.query(AuditLog).filter(
+            AuditLog.actor_id == student_a_id,
+            AuditLog.action == 'kprs_submitted',
+            AuditLog.entity_id == str(request_id),
+        ).one()
+        assert replacement_code in submitted_audit.new_value
+        db.close()
 
         db = SessionLocal()
         replacement = db.query(Course).filter(Course.code == replacement_code).one()
@@ -158,6 +166,14 @@ def test_kprs_revalidates_reserves_capacity_and_releases_cancelled_seats():
             headers=student_a_headers,
         )
         assert cancelled.status_code == 204
+        db = SessionLocal()
+        cancelled_audit = db.query(AuditLog).filter(
+            AuditLog.actor_id == student_a_id,
+            AuditLog.action == 'kprs_cancelled',
+            AuditLog.entity_id == str(request_id),
+        ).one()
+        assert '"cancelled"' in cancelled_audit.new_value
+        db.close()
         student_b_plan = client.post(
             '/api/mahasiswa/rencana-studi',
             headers=student_b_headers,
@@ -197,6 +213,12 @@ def test_kprs_revalidates_reserves_capacity_and_releases_cancelled_seats():
         assert updated_plan.status == 'approved'
         assert json.loads(updated_plan.courses_json)[0]['code'] == replacement_code
         assert updated_request.status == 'approved'
+        review_audit = db.query(AuditLog).filter(
+            AuditLog.actor_id == advisor_id,
+            AuditLog.action == 'kprs_review',
+            AuditLog.entity_id == str(updated_request.id),
+        ).one()
+        assert '"approved"' in review_audit.new_value
         db.close()
     finally:
         db = SessionLocal()
