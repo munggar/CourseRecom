@@ -101,6 +101,11 @@ def review_study_plan(
         )
     if plan.status != 'pending':
         raise HTTPException(status_code=409, detail='Hanya KRS berstatus pending yang dapat direview.')
+    if payload.status == 'revision_requested':
+        if len(payload.advisor_note.strip()) < 10:
+            raise HTTPException(status_code=422, detail='Alasan revisi dosen PA wajib diisi minimal 10 karakter.')
+        if not payload.rejected_course_codes:
+            raise HTTPException(status_code=422, detail='Pilih minimal satu mata kuliah yang perlu direvisi.')
     student = db.query(User).filter(
         User.id == plan.student_id,
         User.role == 'mahasiswa',
