@@ -337,7 +337,7 @@ def test_student_registration_creates_student_only_account():
             'nim': nim,
             'full_name': 'Mahasiswa Baru',
             'program_study': 'Sistem dan Teknologi Informasi',
-            'interests': 'Manajemen Sistem Informasi',
+            'interests': 'Manajemen Teknologi Informasi',
             'password': 'password-baru-123',
             'role': 'admin',
         })
@@ -350,7 +350,7 @@ def test_student_registration_creates_student_only_account():
             'nim': nim,
             'full_name': 'Nama Lain',
             'program_study': 'Sistem dan Teknologi Informasi',
-            'interests': 'Manajemen Sistem Informasi',
+            'interests': 'Manajemen Teknologi Informasi',
             'password': 'password-baru-123',
         })
         assert duplicate.status_code == 409
@@ -395,7 +395,7 @@ def test_student_registration_enforces_numeric_angkatan_and_active_academic_year
         'nim': f'NEW{uuid4().hex[:12]}',
         'full_name': 'Mahasiswa Angkatan Tidak Valid',
         'program_study': 'Sistem dan Teknologi Informasi',
-        'interests': 'Manajemen Sistem Informasi',
+        'interests': 'Manajemen Teknologi Informasi',
         'angkatan': f'{max_year}A',
         'password': 'password-baru-123',
     })
@@ -405,7 +405,7 @@ def test_student_registration_enforces_numeric_angkatan_and_active_academic_year
         'nim': f'NEW{uuid4().hex[:12]}',
         'full_name': 'Mahasiswa Angkatan Masa Depan',
             'program_study': 'Sistem dan Teknologi Informasi',
-            'interests': 'Manajemen Sistem Informasi',
+            'interests': 'Manajemen Teknologi Informasi',
         'angkatan': str(max_year + 1),
         'password': 'password-baru-123',
     })
