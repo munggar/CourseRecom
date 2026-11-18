@@ -769,6 +769,7 @@ def cancel_kprs(
     ).with_for_update().first()
     if not request:
         raise HTTPException(status_code=404, detail='Pengajuan KPRS aktif tidak ditemukan.')
+    old_status = request.status
     request.status = 'cancelled'
     request.updated_at = utc_now_naive()
     write_audit(
@@ -777,7 +778,7 @@ def cancel_kprs(
         'kprs_cancelled',
         'kprs_request',
         request.id,
-        {'status': request.status},
+        {'status': old_status},
         {'status': 'cancelled'},
     )
     db.commit()
