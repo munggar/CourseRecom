@@ -286,7 +286,12 @@ def _similarity(
     common = student_codes.keys() & peer_codes.keys()
     grade_similarity = (
         sum(student_grades[code] == peer_grades[code] for code in common) / len(common)
-        if common elsdef _peer_course_scores(
+        if common else 0.0
+    )
+    return 0.8 * jaccard + 0.2 * grade_similarity
+
+
+def _peer_course_scores(
     db: Session,
     student: User,
     target_semester: int,
@@ -317,26 +322,26 @@ def _similarity(
         if record.semester is None or record.semester < target_semester
     ]
     peers: list[tuple[float, list[StudentRecord]]] = []
-    for records in peer_by_student.values():
-        history = [record for record in records if record.semester < target_semester]
-        next_semester = [record for record in records if record.semester == target_semester]
+    for peer_records in peer_by_student.values():
+        history = [record for record in peer_records if record.semester < target_semester]
+        next_semester = [record for record in peer_records if record.semester == target_semester]
         if not history or not next_semester:
             continue
-        score = _similarity(
+        similarity = _similarity(
             student_history, history, catalog_codes, catalog_name_to_code
         )
-        if score > 0:
-            peers.append((score, next_semester))
+        if similarity > 0:
+            peers.append((similarity, next_semester))
 
     peers.sort(key=lambda item: item[0], reverse=True)
     peers = peers[:20]
     total_similarity = sum(peer[0] for peer in peers)
     weighted_scores: dict[str, float] = defaultdict(float)
     counts: dict[str, list[int]] = defaultdict(lambda: [0, 0])
-    for similarity, courses in peers:
+    for similarity, next_semester_records in peers:
         unique_courses = {
             _record_identity(record, catalog_codes, catalog_name_to_code)
-            for record in courses
+            for record in next_semester_records
         }
         for identity in unique_courses:
             weighted_scores[identity] += similarity
@@ -347,13 +352,12 @@ def _similarity(
         count[1] = peer_total
 
     normalized = {
-        code: score / total_similarity
-        for code, score in weighted_scores.items()
+        identity: score / total_similarity
+        for identity, score in weighted_scores.items()
     } if total_similarity else {}
     return normalized, {
-        code: (count[0], count[1]) for code, count in counts.items()
+        identity: (count[0], count[1]) for identity, count in counts.items()
     }, peer_total
-
 
 
 def _additional_prerequisite_blocks(
