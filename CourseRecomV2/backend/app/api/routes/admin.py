@@ -29,7 +29,7 @@ from app.models import (
     Room,
     LecturerDirectory,
 )
-from app.schemas import CourseMutation, AdvisorMapping, SystemSettingUpdate, StudyPlanOverride, CourseClassMutation, LecturerRegistration, LecturerUpdate, RoomMutation
+from app.schemas import CourseMutation, AdvisorMapping, SystemSettingUpdate, StudyPlanOverride, CourseClassMutation, LecturerRegistration, LecturerUpdate, RoomMutation, LecturerDirectoryLink
 from app.services.academic import class_selection_map, validate_course_selection
 from app.services.course_catalog import parse_course_catalog
 from app.services.capacity import (
@@ -150,6 +150,58 @@ def lecturer_directory(
             'account_status': 'akun_terhubung' if linked else 'belum_ada_akun',
         })
     return result
+
+
+@router.patch('/admin/lecturer-directory/{entry_id}/link')
+def link_lecturer_directory_account(
+    entry_id: int,
+    payload: LecturerDirectoryLink,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles('admin')),
+):
+    entry = db.query(LecturerDirectory).filter(LecturerDirectory.id == entry_id).first()
+    if not entry:
+        raise HTTPException(status_code=404, detail='Profil dosen pada direktori tidak ditemukan.')
+    if payload.user_id is None:
+        previous = entry.linked_user_id
+        entry.linked_user_id = None
+        write_audit(
+            db, current_user, 'lecturer_directory_unlinked', 'lecturer_directory',
+            entry.id, {'linked_user_id': previous}, None,
+        )
+        db.commit()
+        return {'id': entry.id, 'linked_user_id': None, 'status': 'belum_ada_akun'}
+    lecturer = db.query(User).filter(
+        User.id == payload.user_id,
+        User.role == 'dosen',
+        User.is_active.is_(True),
+    ).first()
+    if not lecturer:
+        raise HTTPException(status_code=404, detail='Akun dosen aktif tidak ditemukan.')
+    duplicate_link = db.query(LecturerDirectory).filter(
+        LecturerDirectory.linked_user_id == lecturer.id,
+        LecturerDirectory.id != entry.id,
+    ).first()
+    if duplicate_link:
+        raise HTTPException(
+            status_code=409,
+            detail=f'Akun dosen sudah ditautkan ke profil {duplicate_link.full_name}.',
+        )
+    previous = entry.linked_user_id
+    entry.linked_user_id = lecturer.id
+    write_audit(
+        db, current_user, 'lecturer_directory_linked', 'lecturer_directory',
+        entry.id,
+        {'linked_user_id': previous},
+        {'linked_user_id': lecturer.id, 'account_nip': lecturer.nim},
+    )
+    db.commit()
+    return {
+        'id': entry.id,
+        'linked_user_id': lecturer.id,
+        'account_nip': lecturer.nim,
+        'status': 'akun_terhubung',
+    }
 
 
 def _excel_response(workbook: ExcelWorkbook, filename: str) -> Response:
