@@ -607,6 +607,16 @@ def test_teacher_reviews_submitted_study_plan_with_guidance_note():
         prerequisite_codes='TST301',
         is_active=True,
     ))
+    db.add(Course(
+        code='TST402',
+        name='Analisis Proses Bisnis',
+        sks=3,
+        semester=4,
+        available_semesters='4',
+        category='Pilihan',
+        prerequisite_codes='',
+        is_active=True,
+    ))
     db.add(StudentRecord(
         student_id=student.id,
         course_code='TST301',
@@ -680,11 +690,17 @@ def test_teacher_reviews_submitted_study_plan_with_guidance_note():
         assert student_plans.status_code == 200
         assert student_plans.json()[0]['advisor_feedback'][0]['course_code'] == 'TST401'
 
+        replacement = client.patch(
+            f'/api/mahasiswa/rencana-studi/{plan_id}',
+            headers=student_headers,
+            json={'course_codes': ['TST402']},
+        )
+        assert replacement.status_code == 200, replacement.text
         resubmitted = client.post(
             f'/api/mahasiswa/rencana-studi/{plan_id}/submit',
             headers=student_headers,
         )
-        assert resubmitted.status_code == 200
+        assert resubmitted.status_code == 200, resubmitted.text
         assert resubmitted.json()['status'] == 'pending'
 
         approved = client.patch(
@@ -707,7 +723,7 @@ def test_teacher_reviews_submitted_study_plan_with_guidance_note():
             db.query(StudyPlan).filter(StudyPlan.id == plan_id).delete()
             db.query(KhsDocument).filter(KhsDocument.student_id == student_id).delete()
             db.query(StudentRecord).filter(StudentRecord.student_id == student_id).delete()
-            db.query(Course).filter(Course.code == 'TST401').delete()
+            db.query(Course).filter(Course.code.in_(['TST401', 'TST402'])).delete()
             db.query(AuditLog).filter(
                 AuditLog.actor_id.in_([student_id, teacher_id]),
             ).delete(synchronize_session=False)
