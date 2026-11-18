@@ -2,6 +2,8 @@ from types import SimpleNamespace
 
 from app.models import StudentRecord
 from app.services.recommendation import (
+    _build_model_runtime_info,
+    _course_recommendation_explanation,
     _interest_topic_score,
     _peer_course_scores,
     _score_with_available_factors,
@@ -196,3 +198,67 @@ def test_interest_respects_explicit_course_catalog_specialization_tags():
     assert _interest_topic_score(data_course, 'Manajemen Sistem Informasi')[0] == 0.0
     assert _interest_topic_score(msi_course, 'Manajemen Sistem Informasi')[0] == 1.0
     assert _interest_topic_score(msi_course, 'Kecerdasan Bisnis')[0] == 0.0
+
+
+
+def test_runtime_model_metadata_reports_live_content_fallback_without_claiming_training():
+    info = _build_model_runtime_info(
+        latest_model=None,
+        peer_count=0,
+        weights=BASE_WEIGHTS,
+        available_history_records=12,
+        available_history_students=3,
+    )
+
+    assert info['name'] == 'CourseRecom Hybrid Course Recommender'
+    assert info['version'] is None
+    assert info['training_status'] == 'not_trained'
+    assert info['inference_mode'] == 'content_based_fallback'
+    assert info['available_history_records'] == 12
+    assert info['available_history_students'] == 3
+    assert info['metrics'] is None
+    assert 'content-based fallback' in info['method'].lower()
+
+
+def test_runtime_model_metadata_exposes_only_real_saved_evaluation_metrics():
+    from datetime import datetime
+    import json
+
+    saved_model = SimpleNamespace(
+        version='similarity-007',
+        method='Weighted nearest-neighbor collaborative filtering + content-based fallback',
+        dataset_size=36,
+        metrics=json.dumps({
+            'evaluation_status': 'evaluated',
+            'evaluation_samples': 8,
+            'precision_at_5': 0.625,
+            'recall_at_5': 0.75,
+        }),
+        trained_at=datetime(2026, 11, 18, 9, 0, 0),
+    )
+
+    info = _build_model_runtime_info(
+        latest_model=saved_model,
+        peer_count=4,
+        weights=BASE_WEIGHTS,
+        available_history_records=40,
+        available_history_students=5,
+    )
+
+    assert info['version'] == 'similarity-007'
+    assert info['training_status'] == 'evaluated'
+    assert info['inference_mode'] == 'collaborative_plus_content'
+    assert info['training_dataset_size'] == 36
+    assert info['metrics']['precision_at_5'] == 0.625
+    assert info['metrics']['recall_at_5'] == 0.75
+    assert info['trained_at'].startswith('2026-11-18T09:00:00')
+
+
+def test_per_course_explanation_distinguishes_collaborative_and_content_fallback_modes():
+    collaborative = _course_recommendation_explanation(peer_course_count=2, peer_total=5)
+    content_fallback = _course_recommendation_explanation(peer_course_count=0, peer_total=0)
+
+    assert '5 mahasiswa serupa' in collaborative
+    assert '2 di antaranya' in collaborative
+    assert 'content-based scoring' in content_fallback
+    assert 'belum ada kelompok mahasiswa pembanding' in content_fallback
