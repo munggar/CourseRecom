@@ -2,9 +2,25 @@ from collections.abc import Mapping, Sequence
 
 from sqlalchemy.orm import Session
 
-from app.models import Course, User
+from app.models import Course, CourseClass, User
 from app.services.recommendation import build_recommendation_result
 from app.services.validation import has_schedule_conflict
+
+
+def class_selection_map(entries: Sequence[Mapping[str, object]]) -> dict[str, int]:
+    """Extract saved class choices from modern KRS course objects."""
+    selections: dict[str, int] = {}
+    for entry in entries:
+        if not isinstance(entry, Mapping):
+            continue
+        code = str(entry.get('code') or '').strip().upper()
+        class_id = entry.get('class_id')
+        if code and class_id is not None:
+            try:
+                selections[code] = int(class_id)
+            except (TypeError, ValueError) as exc:
+                raise ValueError(f'Pilihan kelas tersimpan untuk {code} tidak valid.') from exc
+    return selections
 
 
 def validate_course_selection(
@@ -12,6 +28,7 @@ def validate_course_selection(
     student: User,
     course_codes: Sequence[str],
     semester: int,
+    class_selections: Mapping[str, int] | None = None,
 ) -> list[dict]:
     codes = [code.strip().upper() for code in course_codes]
     if not codes:
@@ -58,7 +75,7 @@ def validate_course_selection(
             + ', '.join(unavailable)
         )
 
-    selected = [recommendations[code] for code in codes]
+    selected = [dict(recommendations[code]) for code in codes]
     quota = result['profile']['kuota_sks']
     total_sks = sum(course['sks'] for course in selected)
     if total_sks > quota:
@@ -71,15 +88,54 @@ def validate_course_selection(
             Course.is_active.is_(True),
         ).all()
     }
+    selections = {str(code).strip().upper(): int(class_id) for code, class_id in (class_selections or {}).items()}
+    unknown_selections = sorted(set(selections) - set(codes))
+    if unknown_selections:
+        raise ValueError('Pilihan kelas mengacu pada mata kuliah yang tidak dipilih: ' + ', '.join(unknown_selections))
+
     schedules: list[tuple[str, str]] = []
-    for code in codes:
+    for item in selected:
+        code = item['code']
         course = catalog.get(code)
         if course is None:
             raise ValueError(f'Mata kuliah {code} tidak aktif.')
-        if course.day and course.time:
-            if has_schedule_conflict(course.day, course.time, schedules):
-                raise ValueError(f'Jadwal mata kuliah {code} berbenturan.')
-            schedules.append((course.day, course.time))
+
+        sections = db.query(CourseClass).filter(
+            CourseClass.course_code == code,
+            CourseClass.semester == str(semester),
+        ).order_by(CourseClass.class_name, CourseClass.id).all()
+        if sections:
+            class_id = selections.get(code)
+            if class_id is None:
+                raise ValueError(f'Pilih kelas paralel untuk mata kuliah {code}.')
+            section = next((candidate for candidate in sections if candidate.id == class_id), None)
+            if section is None or not section.is_open:
+                raise ValueError(f'Kelas paralel yang dipilih untuk {code} tidak tersedia atau sudah ditutup.')
+            lecturer = db.query(User).filter(User.id == section.lecturer_id, User.role == 'dosen').first() if section.lecturer_id else None
+            item.update({
+                'class_id': section.id,
+                'class_name': section.class_name,
+                'lecturer_id': section.lecturer_id,
+                'lecturer_name': lecturer.full_name if lecturer else '',
+                'room': section.room,
+                'day': section.day,
+                'start_time': section.start_time,
+                'end_time': section.end_time,
+                'schedule': f'{section.day}, {section.start_time}-{section.end_time}',
+            })
+            effective_day = section.day
+            effective_time = f'{section.start_time}-{section.end_time}'
+        else:
+            if code in selections:
+                raise ValueError(f'Kelas paralel untuk {code} tidak terdaftar pada semester {semester}.')
+            item.update({'class_id': None, 'class_name': None, 'room': '', 'schedule': f'{course.day} {course.time}'.strip()})
+            effective_day = course.day or ''
+            effective_time = course.time or ''
+
+        if effective_day and effective_time:
+            if has_schedule_conflict(effective_day, effective_time, schedules):
+                raise ValueError(f'Jadwal mata kuliah {code} berbenturan dengan mata kuliah lain pada KRS.')
+            schedules.append((effective_day, effective_time))
     return selected
 
 

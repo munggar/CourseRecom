@@ -306,6 +306,7 @@ class KhsHistoryEdit(BaseModel):
 
 class StudyPlanSubmit(BaseModel):
     course_codes: List[str] = Field(min_length=1, max_length=30)
+    class_selections: dict[str, int] = Field(default_factory=dict)
 
     @field_validator('course_codes')
     @classmethod
@@ -317,6 +318,13 @@ class StudyPlanSubmit(BaseModel):
             raise ValueError('Mata kuliah yang sama tidak boleh diajukan lebih dari sekali.')
         return codes
 
+    @field_validator('class_selections')
+    @classmethod
+    def normalize_class_selections(cls, value: dict[str, int]) -> dict[str, int]:
+        normalized = {str(code).strip().upper(): class_id for code, class_id in value.items()}
+        if any(not code or class_id < 1 for code, class_id in normalized.items()):
+            raise ValueError('Pilihan kelas paralel tidak valid.')
+        return normalized
 
 class StudyPlanReview(BaseModel):
     status: str
@@ -341,6 +349,7 @@ class StudyPlanReview(BaseModel):
 
 class StudyPlanUpdate(BaseModel):
     course_codes: List[str] = Field(min_length=1, max_length=30)
+    class_selections: dict[str, int] = Field(default_factory=dict)
 
     @field_validator('course_codes')
     @classmethod
@@ -352,6 +361,13 @@ class StudyPlanUpdate(BaseModel):
             raise ValueError('Mata kuliah yang sama tidak boleh dipilih lebih dari sekali.')
         return codes
 
+    @field_validator('class_selections')
+    @classmethod
+    def normalize_class_selections(cls, value: dict[str, int]) -> dict[str, int]:
+        normalized = {str(code).strip().upper(): class_id for code, class_id in value.items()}
+        if any(not code or class_id < 1 for code, class_id in normalized.items()):
+            raise ValueError('Pilihan kelas paralel tidak valid.')
+        return normalized
 
 class SystemSettingUpdate(BaseModel):
     key: str = Field(min_length=1, max_length=80)
@@ -362,6 +378,16 @@ class StudyPlanOverride(BaseModel):
     status: Literal['draft', 'revision_requested', 'pending', 'approved']
     reason: str = Field(min_length=10, max_length=2000)
     course_codes: List[str] | None = Field(default=None, max_length=30)
+    class_selections: dict[str, int] = Field(default_factory=dict)
+
+    @field_validator('class_selections')
+    @classmethod
+    def normalize_class_selections(cls, value: dict[str, int]) -> dict[str, int]:
+        normalized = {str(code).strip().upper(): class_id for code, class_id in value.items()}
+        if any(not code or class_id < 1 for code, class_id in normalized.items()):
+            raise ValueError('Pilihan kelas paralel tidak valid.')
+        return normalized
+
 
 
 class CourseClassMutation(BaseModel):
@@ -372,14 +398,32 @@ class CourseClassMutation(BaseModel):
     day: str = Field(min_length=1, max_length=20)
     start_time: str = Field(pattern=r'^([01]\d|2[0-3]):[0-5]\d$')
     end_time: str = Field(pattern=r'^([01]\d|2[0-3]):[0-5]\d$')
-    capacity: int = Field(ge=0, le=10000)
-    semester: str = Field(min_length=1, max_length=20)
+    capacity: int = Field(ge=1, le=10000)
+    semester: str = Field(min_length=1, max_length=2)
     is_open: bool = True
+
+    @field_validator('semester')
+    @classmethod
+    def validate_semester(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized.isdigit() or not 1 <= int(normalized) <= 14:
+            raise ValueError('Semester kelas harus berupa angka 1 sampai 14.')
+        return str(int(normalized))
 
 class KprsMutation(BaseModel):
     study_plan_id: int = Field(gt=0)
     course_codes: List[str] = Field(min_length=1, max_length=30)
+    class_selections: dict[str, int] = Field(default_factory=dict)
     reason: str = Field(min_length=10, max_length=2000)
+
+    @field_validator('class_selections')
+    @classmethod
+    def normalize_class_selections(cls, value: dict[str, int]) -> dict[str, int]:
+        normalized = {str(code).strip().upper(): class_id for code, class_id in value.items()}
+        if any(not code or class_id < 1 for code, class_id in normalized.items()):
+            raise ValueError('Pilihan kelas paralel tidak valid.')
+        return normalized
+
 
 
 class KprsReview(BaseModel):

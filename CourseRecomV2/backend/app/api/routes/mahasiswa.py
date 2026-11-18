@@ -2,14 +2,14 @@ import hashlib
 import json
 from pathlib import PurePath
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile, status
 from fastapi.responses import Response
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.deps import get_db, require_roles
-from app.models import AdvisorCourseFeedback, Course, KhsDocument, KrsDocument, OfficialKrsDocument, StudentRecord, StudyPlan, User, KprsRequest
+from app.models import AdvisorCourseFeedback, Course, CourseClass, KhsDocument, KrsDocument, OfficialKrsDocument, StudentRecord, StudyPlan, User, KprsRequest
 from app.schemas import KhsConfirm, KhsHistoryEdit, ProfileUpdate, RecommendationItem, StudyPlanSubmit, StudyPlanUpdate, KprsMutation
 from app.services.khs_parser import (
     GRADE_POINTS,
@@ -20,11 +20,12 @@ from app.services.khs_parser import (
     parse_khs_pdf,
 )
 from app.services.recommendation import PASSING_GRADES, _passed, build_recommendation_result
-from app.services.academic import earned_credits, latest_attempt_gpa, validate_course_selection
+from app.services.academic import class_selection_map, earned_credits, latest_attempt_gpa, validate_course_selection
 from app.services.capacity import (
     CapacityError,
     assert_course_capacity,
     begin_capacity_transaction,
+    class_occupancy,
     lock_capacity_courses,
 )
 from app.services.validation import assert_kprs_period_open, assert_krs_period_open, get_sks_quota
@@ -84,6 +85,48 @@ def get_curriculum(
             'time': course.time or '',
         })
     return curriculum
+
+
+@router.get('/mahasiswa/kelas')
+def list_parallel_classes(
+    semester: int = Query(..., ge=1, le=14),
+    current_user: User = Depends(require_roles('mahasiswa')),
+    db: Session = Depends(get_db),
+):
+    sections = (
+        db.query(CourseClass, Course)
+        .join(Course, Course.code == CourseClass.course_code)
+        .filter(
+            Course.is_active.is_(True),
+            CourseClass.semester == str(semester),
+        )
+        .order_by(CourseClass.course_code, CourseClass.class_name, CourseClass.id)
+        .all()
+    )
+    results = []
+    for section, course in sections:
+        lecturer = db.query(User).filter(User.id == section.lecturer_id, User.role == 'dosen').first() if section.lecturer_id else None
+        occupied = class_occupancy(db, section.id)
+        results.append({
+            'id': section.id,
+            'class_id': section.id,
+            'course_code': section.course_code,
+            'course_name': course.name,
+            'class_name': section.class_name,
+            'lecturer_id': section.lecturer_id,
+            'lecturer_name': lecturer.full_name if lecturer else 'Belum ditentukan',
+            'room': section.room,
+            'day': section.day,
+            'start_time': section.start_time,
+            'end_time': section.end_time,
+            'capacity': section.capacity,
+            'occupied': occupied,
+            'remaining_seats': max(0, section.capacity - occupied),
+            'is_full': occupied >= section.capacity,
+            'is_open': section.is_open,
+            'semester': section.semester,
+        })
+    return results
 
 
 def _serialize_document(document: KhsDocument) -> dict:
@@ -728,8 +771,12 @@ def update_my_study_plan(
         raise HTTPException(status_code=409, detail='KRS yang sedang menunggu persetujuan tidak dapat diubah.')
 
     try:
-        courses = validate_course_selection(db, current_user, payload.course_codes, plan.semester)
-        lock_capacity_courses(db, [course['code'] for course in courses])
+        saved_courses = json.loads(plan.courses_json)
+        saved_selections = class_selection_map(saved_courses)
+        saved_selections.update(payload.class_selections)
+        selected_selections = {code: saved_selections[code] for code in payload.course_codes if code in saved_selections}
+        courses = validate_course_selection(db, current_user, payload.course_codes, plan.semester, selected_selections)
+        lock_capacity_courses(db, [course['code'] for course in courses], [int(course['class_id']) for course in courses if course.get('class_id') is not None])
         assert_course_capacity(db, courses)
     except CapacityError as exc:
         db.rollback()
@@ -784,11 +831,16 @@ def submit_kprs(payload: KprsMutation, current_user: User = Depends(require_role
         raise HTTPException(status_code=409, detail='Masih ada pengajuan KPRS aktif.')
     before = json.loads(original.courses_json)
     codes = [code.strip().upper() for code in payload.course_codes]
-    if {item.get('code') for item in before} == set(codes):
+    requested_selections = class_selection_map(before)
+    requested_selections.update(payload.class_selections)
+    requested_selections = {code: requested_selections[code] for code in codes if code in requested_selections}
+    same_courses = {item.get('code') for item in before} == set(codes)
+    same_classes = class_selection_map(before) == requested_selections
+    if same_courses and same_classes:
         raise HTTPException(status_code=422, detail='Perubahan KPRS harus berbeda dari KRS sebelumnya.')
     try:
-        courses = validate_course_selection(db, current_user, codes, original.semester)
-        lock_capacity_courses(db, [course['code'] for course in courses])
+        courses = validate_course_selection(db, current_user, codes, original.semester, requested_selections)
+        lock_capacity_courses(db, [course['code'] for course in courses], [int(course['class_id']) for course in courses if course.get('class_id') is not None])
         assert_course_capacity(db, courses, exclude_plan_id=original.id)
     except CapacityError as exc:
         db.rollback()
@@ -901,13 +953,15 @@ def resubmit_my_study_plan(
     ).first():
         raise HTTPException(status_code=409, detail='Masih ada KRS menunggu persetujuan.')
     try:
+        saved_courses = json.loads(plan.courses_json)
         courses = validate_course_selection(
             db,
             current_user,
-            [item['code'] for item in json.loads(plan.courses_json)],
+            [item['code'] for item in saved_courses],
             plan.semester,
+            class_selection_map(saved_courses),
         )
-        lock_capacity_courses(db, [course['code'] for course in courses])
+        lock_capacity_courses(db, [course['code'] for course in courses], [int(course['class_id']) for course in courses if course.get('class_id') is not None])
         assert_course_capacity(db, courses)
     except CapacityError as exc:
         db.rollback()
@@ -1113,8 +1167,9 @@ def submit_study_plan(
             current_user,
             payload.course_codes,
             result['target_semester'],
+            payload.class_selections,
         )
-        lock_capacity_courses(db, [course['code'] for course in courses])
+        lock_capacity_courses(db, [course['code'] for course in courses], [int(course['class_id']) for course in courses if course.get('class_id') is not None])
         assert_course_capacity(db, courses)
     except CapacityError as exc:
         db.rollback()

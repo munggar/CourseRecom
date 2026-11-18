@@ -9,10 +9,11 @@ from sqlalchemy.orm import Session
 import pytest
 
 from app.database import Base
-from app.models import Course, KprsRequest, StudyPlan, User
+from app.models import Course, CourseClass, KprsRequest, StudyPlan, User
 from app.services.academic import earned_credits, latest_attempt_gpa
 from app.services.capacity import (
     assert_course_capacity,
+    class_occupancy,
     begin_capacity_transaction,
     lock_capacity_courses,
 )
@@ -231,5 +232,107 @@ def test_pending_kprs_reserves_added_seat_and_cancellation_releases_it(tmp_path)
                 db,
                 [{'code': 'CAP102', 'name': 'Replacement', 'sks': 3}],
             )
+    finally:
+        engine.dispose()
+
+
+
+def test_parallel_sections_validate_schedule_selection_and_capacity(monkeypatch):
+    from app.services import academic
+
+    engine = create_engine('sqlite:///:memory:')
+    Base.metadata.create_all(engine)
+    recommendations = [
+        {'code': 'PAR101', 'name': 'Pemrograman Paralel', 'sks': 3, 'category': 'Pilihan', 'mandatory': False},
+        {'code': 'PAR102', 'name': 'Jaringan Lanjut', 'sks': 3, 'category': 'Pilihan', 'mandatory': False},
+    ]
+    monkeypatch.setattr(
+        academic,
+        'build_recommendation_result',
+        lambda *_: {
+            'status': 'ready',
+            'target_semester': 3,
+            'recommendations': recommendations,
+            'rejected': [],
+            'profile': {'kuota_sks': 20},
+        },
+    )
+
+    try:
+        with Session(engine) as db:
+            student = User(
+                nim='PARALLEL-TEST',
+                full_name='Mahasiswa Paralel',
+                role='mahasiswa',
+                password_hash='test',
+            )
+            first_course = Course(
+                code='PAR101', name='Pemrograman Paralel', sks=3,
+                semester=3, category='Pilihan', capacity=40, is_active=True,
+            )
+            second_course = Course(
+                code='PAR102', name='Jaringan Lanjut', sks=3,
+                semester=3, category='Pilihan', capacity=40, is_active=True,
+            )
+            db.add_all([student, first_course, second_course])
+            db.flush()
+            section_a = CourseClass(
+                course_code='PAR101', class_name='A', room='Lab 1',
+                day='Selasa', start_time='08:00', end_time='10:00',
+                capacity=1, semester='3', is_open=True,
+            )
+            section_b = CourseClass(
+                course_code='PAR101', class_name='B', room='Lab 2',
+                day='Rabu', start_time='08:00', end_time='10:00',
+                capacity=1, semester='3', is_open=True,
+            )
+            second_section = CourseClass(
+                course_code='PAR102', class_name='A', room='Ruang 1',
+                day='Selasa', start_time='09:00', end_time='11:00',
+                capacity=5, semester='3', is_open=True,
+            )
+            db.add_all([section_a, section_b, second_section])
+            db.flush()
+
+            with pytest.raises(ValueError, match='Pilih kelas paralel'):
+                academic.validate_course_selection(db, student, ['PAR101'], 3)
+
+            with pytest.raises(ValueError, match='berbenturan'):
+                academic.validate_course_selection(
+                    db, student, ['PAR101', 'PAR102'], 3,
+                    {'PAR101': section_a.id, 'PAR102': second_section.id},
+                )
+
+            selected = academic.validate_course_selection(
+                db, student, ['PAR101', 'PAR102'], 3,
+                {'PAR101': section_b.id, 'PAR102': second_section.id},
+            )
+            assert selected[0]['class_id'] == section_b.id
+            assert selected[0]['schedule'] == 'Rabu, 08:00-10:00'
+            assert selected[1]['class_id'] == second_section.id
+
+            with pytest.raises(ValueError, match='tidak tersedia'):
+                academic.validate_course_selection(
+                    db, student, ['PAR101'], 3,
+                    {'PAR101': second_section.id},
+                )
+
+            now = datetime.now()
+            db.add(StudyPlan(
+                student_id=student.id,
+                semester=3,
+                courses_json=json.dumps([selected[0]]),
+                status='pending',
+                advisor_note='',
+                created_at=now,
+                updated_at=now,
+            ))
+            db.commit()
+
+            assert class_occupancy(db, section_b.id) == 1
+            assert class_occupancy(db, section_a.id) == 0
+            assert_course_capacity(db, [{'code': 'PAR101', 'class_id': section_a.id}])
+            with pytest.raises(ValueError, match='Kuota kelas B'):
+                assert_course_capacity(db, [{'code': 'PAR101', 'class_id': section_b.id}])
     finally:
         engine.dispose()

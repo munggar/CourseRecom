@@ -7,7 +7,7 @@ from app.deps import get_db, require_roles
 from app.models import AdvisorCourseFeedback, Course, KhsDocument, KrsDocument, KprsRequest, StudyPlan, User
 from fastapi.responses import Response
 from app.schemas import KprsReview, StudyPlanReview
-from app.services.academic import validate_course_selection
+from app.services.academic import class_selection_map, validate_course_selection
 from app.services.audit import write_audit
 from app.services.capacity import (
     assert_course_capacity,
@@ -140,8 +140,9 @@ def review_study_plan(
                 student,
                 [item['code'] for item in stored_courses],
                 plan.semester,
+                class_selection_map(stored_courses),
             )
-            lock_capacity_courses(db, [course['code'] for course in courses])
+            lock_capacity_courses(db, [course['code'] for course in courses], [int(course['class_id']) for course in courses if course.get('class_id') is not None])
             assert_course_capacity(db, courses, exclude_plan_id=plan.id)
         except (KeyError, TypeError, json.JSONDecodeError, ValueError) as exc:
             db.rollback()
@@ -265,13 +266,15 @@ def review_kprs(request_id: int, payload: KprsReview, current_user: User = Depen
             if before != current_courses:
                 raise ValueError('KRS asal berubah setelah pengajuan KPRS dibuat.')
             after = json.loads(request.after_json)
+            selections = class_selection_map(after)
             courses = validate_course_selection(
                 db,
                 student,
                 [item['code'] for item in after],
                 plan.semester,
+                selections,
             )
-            lock_capacity_courses(db, [course['code'] for course in courses])
+            lock_capacity_courses(db, [course['code'] for course in courses], [int(course['class_id']) for course in courses if course.get('class_id') is not None])
             assert_course_capacity(
                 db,
                 courses,

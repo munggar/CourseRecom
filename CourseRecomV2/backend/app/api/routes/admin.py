@@ -24,12 +24,13 @@ from app.models import (
     KprsRequest,
 )
 from app.schemas import CourseMutation, AdvisorMapping, SystemSettingUpdate, StudyPlanOverride, CourseClassMutation, LecturerRegistration, LecturerUpdate
-from app.services.academic import validate_course_selection
+from app.services.academic import class_selection_map, validate_course_selection
 from app.services.course_catalog import parse_course_catalog
 from app.services.capacity import (
     CapacityError,
     assert_course_capacity,
     begin_capacity_transaction,
+    class_occupancy,
     course_occupancy,
     lock_capacity_courses,
 )
@@ -769,8 +770,11 @@ def override_study_plan(
             db.rollback()
             raise HTTPException(status_code=409, detail=str(exc)) from exc
     try:
-        courses = validate_course_selection(db, student, codes, plan.semester)
-        lock_capacity_courses(db, [course['code'] for course in courses])
+        selections = class_selection_map(old_courses)
+        selections.update(payload.class_selections)
+        selections = {code: selections[code] for code in codes if code in selections}
+        courses = validate_course_selection(db, student, codes, plan.semester, selections)
+        lock_capacity_courses(db, [course['code'] for course in courses], [int(course['class_id']) for course in courses if course.get('class_id') is not None])
         assert_course_capacity(db, courses, exclude_plan_id=plan.id)
     except CapacityError as exc:
         db.rollback()
@@ -861,19 +865,29 @@ def course_participants(db: Session = Depends(get_db), current_user: User = Depe
 
 @router.get('/admin/classes')
 def list_classes(db: Session = Depends(get_db), current_user: User = Depends(require_roles('admin'))):
-    return [{
-        'id': item.id,
-        'course_code': item.course_code,
-        'class_name': item.class_name,
-        'lecturer_id': item.lecturer_id,
-        'room': item.room,
-        'day': item.day,
-        'start_time': item.start_time,
-        'end_time': item.end_time,
-        'capacity': item.capacity,
-        'semester': item.semester,
-        'is_open': item.is_open,
-    } for item in db.query(CourseClass).order_by(CourseClass.semester, CourseClass.course_code).all()]
+    results = []
+    for item in db.query(CourseClass).order_by(CourseClass.semester, CourseClass.course_code, CourseClass.class_name).all():
+        course = db.query(Course).filter(Course.code == item.course_code).first()
+        lecturer = db.query(User).filter(User.id == item.lecturer_id, User.role == 'dosen').first() if item.lecturer_id else None
+        occupied = class_occupancy(db, item.id)
+        results.append({
+            'id': item.id,
+            'course_code': item.course_code,
+            'course_name': course.name if course else '',
+            'class_name': item.class_name,
+            'lecturer_id': item.lecturer_id,
+            'lecturer_name': lecturer.full_name if lecturer else '',
+            'room': item.room,
+            'day': item.day,
+            'start_time': item.start_time,
+            'end_time': item.end_time,
+            'capacity': item.capacity,
+            'occupied': occupied,
+            'remaining_seats': max(0, item.capacity - occupied),
+            'semester': item.semester,
+            'is_open': item.is_open,
+        })
+    return results
 
 
 @router.post('/admin/classes', status_code=201)
@@ -883,19 +897,24 @@ def create_class(payload: CourseClassMutation, db: Session = Depends(get_db), cu
         raise HTTPException(status_code=422, detail='Mata kuliah tidak ditemukan atau tidak aktif.')
     if payload.start_time >= payload.end_time:
         raise HTTPException(status_code=422, detail='Jam selesai harus setelah jam mulai.')
+    if db.query(CourseClass.id).filter(
+        CourseClass.course_code == payload.course_code.upper(),
+        CourseClass.class_name.ilike(payload.class_name.strip()),
+        CourseClass.semester == payload.semester,
+    ).first():
+        raise HTTPException(status_code=409, detail='Nama kelas paralel sudah digunakan untuk mata kuliah dan semester ini.')
     if payload.lecturer_id is not None and not db.query(User).filter(User.id == payload.lecturer_id, User.role == 'dosen').first():
         raise HTTPException(status_code=422, detail='Dosen pengampu tidak valid.')
-    for other in db.query(CourseClass).filter(CourseClass.day == payload.day, CourseClass.is_open.is_(True)).all():
-        if other.semester != payload.semester:
-            continue
+    for other in db.query(CourseClass).filter(CourseClass.day.ilike(payload.day.strip()), CourseClass.is_open.is_(True)).all():
         overlaps = payload.start_time < other.end_time and payload.end_time > other.start_time
-        if overlaps and payload.room == other.room:
-            raise HTTPException(status_code=409, detail='Ruangan berbenturan pada jadwal tersebut.')
+        if overlaps and payload.room.strip().casefold() == other.room.strip().casefold():
+            raise HTTPException(status_code=409, detail='Ruangan berbenturan pada jadwal tersebut (lintas semester juga diperiksa).')
         if overlaps and payload.lecturer_id is not None and payload.lecturer_id == other.lecturer_id:
-            raise HTTPException(status_code=409, detail='Dosen pengampu berbenturan pada jadwal tersebut.')
-    item = CourseClass(**payload.model_dump(), course_code=payload.course_code.upper())
+            raise HTTPException(status_code=409, detail='Dosen pengampu berbenturan pada jadwal tersebut (lintas semester juga diperiksa).')
+    item = CourseClass(**payload.model_dump(), course_code=payload.course_code.upper(), class_name=payload.class_name.strip(), day=payload.day.strip(), room=payload.room.strip())
     db.add(item)
-    write_audit(db, current_user, 'class_created', 'course_class', payload.course_code.upper(), None, payload.model_dump())
+    db.flush()
+    write_audit(db, current_user, 'class_created', 'course_class', item.id, None, payload.model_dump())
     db.commit()
     db.refresh(item)
     return {'id': item.id, 'course_code': item.course_code, 'class_name': item.class_name, 'is_open': item.is_open}
@@ -911,16 +930,24 @@ def update_class(class_id: int, payload: CourseClassMutation, db: Session = Depe
     course = db.query(Course).filter(Course.code == payload.course_code.upper(), Course.is_active.is_(True)).first()
     if not course:
         raise HTTPException(status_code=422, detail='Mata kuliah tidak valid atau tidak aktif.')
+    if db.query(CourseClass.id).filter(
+        CourseClass.id != class_id,
+        CourseClass.course_code == payload.course_code.upper(),
+        CourseClass.class_name.ilike(payload.class_name.strip()),
+        CourseClass.semester == payload.semester,
+    ).first():
+        raise HTTPException(status_code=409, detail='Nama kelas paralel sudah digunakan untuk mata kuliah dan semester ini.')
     if payload.lecturer_id is not None and not db.query(User).filter(User.id == payload.lecturer_id, User.role == 'dosen').first():
         raise HTTPException(status_code=422, detail='Dosen pengampu tidak valid.')
-    for other in db.query(CourseClass).filter(CourseClass.id != class_id, CourseClass.day == payload.day, CourseClass.is_open.is_(True)).all():
-        if other.semester != payload.semester:
-            continue
+    occupied = class_occupancy(db, item.id)
+    if payload.capacity < occupied:
+        raise HTTPException(status_code=409, detail=f'Kapasitas kelas tidak dapat dikurangi di bawah {occupied} kursi yang sudah terpakai.')
+    for other in db.query(CourseClass).filter(CourseClass.id != class_id, CourseClass.day.ilike(payload.day.strip()), CourseClass.is_open.is_(True)).all():
         overlaps = payload.start_time < other.end_time and payload.end_time > other.start_time
-        if overlaps and payload.room == other.room:
-            raise HTTPException(status_code=409, detail='Ruangan berbenturan pada jadwal tersebut.')
+        if overlaps and payload.room.strip().casefold() == other.room.strip().casefold():
+            raise HTTPException(status_code=409, detail='Ruangan berbenturan pada jadwal tersebut (lintas semester juga diperiksa).')
         if overlaps and payload.lecturer_id is not None and payload.lecturer_id == other.lecturer_id:
-            raise HTTPException(status_code=409, detail='Dosen pengampu berbenturan pada jadwal tersebut.')
+            raise HTTPException(status_code=409, detail='Dosen pengampu berbenturan pada jadwal tersebut (lintas semester juga diperiksa).')
     old = {column: getattr(item, column) for column in ('course_code', 'class_name', 'lecturer_id', 'room', 'day', 'start_time', 'end_time', 'capacity', 'semester', 'is_open')}
     for key, value in payload.model_dump().items():
         setattr(item, key, value.upper() if key == 'course_code' else value)
@@ -928,3 +955,20 @@ def update_class(class_id: int, payload: CourseClassMutation, db: Session = Depe
     db.commit()
     db.refresh(item)
     return {'id': item.id, 'course_code': item.course_code, 'is_open': item.is_open}
+
+
+@router.delete('/admin/classes/{class_id}', status_code=204)
+def close_parallel_class(class_id: int, db: Session = Depends(get_db), current_user: User = Depends(require_roles('admin'))):
+    item = db.query(CourseClass).filter(CourseClass.id == class_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail='Kelas tidak ditemukan.')
+    if not item.is_open:
+        return None
+    occupied = class_occupancy(db, item.id)
+    if occupied:
+        raise HTTPException(status_code=409, detail=f'Kelas tidak dapat ditutup karena masih memiliki {occupied} peserta/ reservasi.')
+    old = {'is_open': item.is_open}
+    item.is_open = False
+    write_audit(db, current_user, 'class_closed', 'course_class', item.id, old, {'is_open': False})
+    db.commit()
+    return None

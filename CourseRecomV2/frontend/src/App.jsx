@@ -3,7 +3,10 @@ import {
   AlertCircle,
   BookOpenCheck,
   BrainCircuit,
+  CalendarDays,
   CheckCircle2,
+  ChevronDown,
+  Clock3,
   FileClock,
   FileUp,
   HelpCircle,
@@ -12,10 +15,14 @@ import {
   Info,
   LogOut,
   Menu,
+  MapPin,
   PieChart,
+  Search,
   Settings,
+  ShieldCheck,
   Sparkles,
   UserRound,
+  Users,
   UsersRound,
   X,
 } from 'lucide-react';
@@ -329,6 +336,125 @@ function SemesterCourseChart({ items = [] }) {
   );
 }
 
+
+const GUIDE_SECTIONS = [
+  {
+    role: 'Semua Akun',
+    title: 'Masuk, navigasi, dan keamanan akun',
+    intro: 'Mulai dari halaman login, gunakan peran yang sesuai dengan akun, lalu kenali menu yang tersedia sesuai kewenangan.',
+    steps: [
+      'Pilih Mahasiswa, Dosen PA, atau Admin Prodi pada halaman masuk. Gunakan username/NIM dan password akun yang diberikan atau didaftarkan.',
+      'Mahasiswa dapat membuat akun dari halaman Daftar dengan mengisi NIM, nama, program studi, bidang minat, angkatan, dan password. Tahun angkatan dibatasi oleh tahun ajaran aktif.',
+      'Menu Dashboard menampilkan ringkasan sesuai peran. Sidebar di desktop atau menu hamburger di ponsel berpindah halaman; menu Panduan selalu tersedia.',
+      'Buka Edit Profil untuk memperbarui nama, username, email, nomor telepon, dan password. Perubahan password meminta password saat ini.',
+      'Gunakan Keluar untuk mengakhiri sesi. Jangan membagikan password atau membiarkan akun tetap terbuka di perangkat umum.',
+      'Reset password mandiri tidak tersedia pada halaman login. Hubungi Admin Prodi/pengelola aplikasi melalui prosedur kampus bila tidak dapat mengakses akun.'
+    ]
+  },
+  {
+    role: 'Mahasiswa',
+    title: 'Persiapan data akademik dan profil minat',
+    intro: 'Pastikan identitas akademik dan KHS lengkap sebelum meminta rekomendasi semester berikutnya.',
+    steps: [
+      'Periksa Dashboard dan Edit Profil. Program studi serta angkatan berasal dari data akademik akun dan tidak dapat diubah bebas melalui profil.',
+      'Buka Minat & Profil, pilih bidang minat yang tersedia untuk program studi, kemudian Simpan Minat. Pilihan minat menjadi salah satu sinyal rekomendasi.',
+      'Buka Kurikulum untuk melihat daftar mata kuliah, SKS, semester yang ditawarkan, kategori, prasyarat, keterangan, dan jadwal umum.',
+      'Pada Upload KHS, unggah satu PDF lengkap atau maksimal 10 foto halaman KHS (JPG, PNG, WEBP, TIFF, atau BMP; total maksimal 20 MB).',
+      'Periksa pratinjau hasil pembacaan. Koreksi identitas, mata kuliah, SKS, grade dan nilai angka; pastikan setiap IPS semester wajib terisi. IPK dihitung otomatis dari rata-rata IPS.',
+      'Pilih Konfirmasi & Simpan hanya setelah data sesuai dokumen resmi. Dokumen yang belum dikonfirmasi masih dapat dilanjutkan atau dibuang dari halaman Upload KHS.',
+      'Buka Riwayat KHS untuk memeriksa dokumen terkonfirmasi. Nilai angka dan IPS yang keliru dapat dikoreksi; IPK mengikuti perhitungan rata-rata IPS.'
+    ]
+  },
+  {
+    role: 'Mahasiswa',
+    title: 'Rekomendasi, kelas paralel, dan pengajuan KRS',
+    intro: 'Gunakan rekomendasi sebagai bahan pertimbangan, lalu susun KRS sesuai aturan akademik, jadwal, dan kuota kelas.',
+    steps: [
+      'Setelah KHS dikonfirmasi, buka Rekomendasi MK. Sistem menggabungkan riwayat akademik, kemiripan mahasiswa, minat, prasyarat, dan katalog kurikulum. Jika data pembanding terbatas, sistem menggunakan content-based fallback.',
+      'Mata kuliah wajib ditambahkan otomatis ke Draft KRS dan tidak dapat dihapus. Tinjau rekomendasi pilihan, alasan, faktor skor, serta daftar mata kuliah yang tidak direkomendasikan.',
+      'Tambahkan mata kuliah pilihan ke draft. Periksa total SKS terhadap kuota berdasarkan IPK: 24 SKS untuk IPK ≥ 3,35; 22 SKS untuk IPK ≥ 3,00 dan di bawah 3,35; selain itu 20 SKS.',
+      'Untuk mata kuliah yang memiliki kelas paralel, pilih kelas yang dibuka prodi. Perhatikan nama kelas, dosen, hari, jam, ruang, serta sisa kursi. Kelas penuh tidak dapat dipilih.',
+      'Pastikan tidak ada bentrok waktu antar mata kuliah. Pemeriksaan dilakukan kembali oleh server saat KRS dikirim sehingga perubahan kuota atau jadwal tidak dapat dilewati hanya dengan mengubah tampilan.',
+      'Tekan Ajukan ke Dosen PA. Pengajuan hanya dapat dikirim saat periode KRS aktif, KHS sudah siap, Dosen PA telah ditetapkan, dan tidak ada pengajuan pending lain.',
+      'Pantau status KRS. Jika diminta revisi, baca catatan dosen dan mata kuliah yang ditandai; perbaiki draft lalu ajukan ulang. KRS yang disetujui akan terkunci.',
+      'Setelah disetujui, unduh PDF KRS Resmi dan gunakan QR code pada dokumen untuk memeriksa keaslian dokumen.',
+      'Untuk mengubah KRS yang telah disetujui, ajukan KPRS saat periode KPRS dibuka. Isi kode mata kuliah yang diinginkan dan alasan minimal 10 karakter; perubahan menunggu keputusan Dosen PA.'
+    ]
+  },
+  {
+    role: 'Dosen PA',
+    title: 'Bimbingan dan pemeriksaan KRS mahasiswa',
+    intro: 'Dosen PA memproses mahasiswa bimbingan yang ditetapkan Admin Prodi; data mahasiswa di luar daftar bimbingan tidak dapat diakses untuk review.',
+    steps: [
+      'Masuk dengan peran Dosen PA. Akun Dosen PA dibuat atau dikelola Admin Prodi; gunakan username/NIP dan password yang diberikan.',
+      'Buka Bimbingan Mahasiswa untuk melihat daftar mahasiswa bimbingan beserta ringkasan data akademik dan aktivitas pengajuan.',
+      'Buka pengajuan KRS berstatus menunggu. Periksa identitas, semester, daftar mata kuliah, SKS, kelas paralel, dosen pengampu, jadwal, dan informasi akademik yang tersedia.',
+      'Pilih Setujui bila rencana studi valid. Server akan memvalidasi ulang kurikulum, prasyarat, batas SKS, jadwal, kelas yang masih dibuka, dan kapasitas sebelum persetujuan disimpan.',
+      'Pilih Minta Revisi bila ada mata kuliah yang harus diperbaiki. Tulis alasan yang jelas minimal 10 karakter dan tandai satu atau lebih mata kuliah pilihan yang perlu direvisi. Mata kuliah wajib tidak dapat ditolak.',
+      'Mahasiswa akan melihat alasan revisi per mata kuliah dan dapat memperbaiki serta mengajukan ulang. Riwayat keputusan tetap tercatat untuk transparansi bimbingan.',
+      'Pada bagian Pengajuan KPRS, bandingkan daftar sebelum dan sesudah. Isi catatan keputusan, lalu Setujui, Minta Revisi, atau Tolak. Keputusan revisi/penolakan harus menyertakan alasan yang memadai.',
+      'Gunakan status dan riwayat pada halaman bimbingan untuk memantau hasil. Dosen PA tidak mengubah katalog, kuota kelas, atau penetapan Dosen PA.'
+    ]
+  },
+  {
+    role: 'Admin Prodi',
+    title: 'Dashboard, akun, dan penetapan Dosen PA',
+    intro: 'Admin mengelola data operasional program studi dan menjadi pengendali konfigurasi akademik.',
+    steps: [
+      'Masuk sebagai Admin Prodi. Dashboard menampilkan ringkasan mahasiswa, KHS terkonfirmasi, dosen PA, distribusi katalog, serta data mahasiswa.',
+      'Pada Dashboard, tetapkan atau ubah Dosen PA per mahasiswa. Perubahan dapat disertai alasan dan masuk ke Riwayat Dosen PA.',
+      'Buka Daftar Akun Dosen PA untuk mendaftarkan, mengubah, atau menghapus akun dosen. Penghapusan akun melepaskan relasi bimbingan tanpa menghapus rekam jejak audit.',
+      'Gunakan Riwayat Dosen PA untuk menelusuri dosen sebelumnya, dosen baru, admin yang melakukan perubahan, tanggal, dan alasan penetapan.',
+      'Pada Manajemen Data, tambah, edit, atau nonaktifkan mata kuliah; kelola kode, nama, SKS, semester tersedia, kategori, prasyarat, keterangan, jadwal umum, dan kuota.',
+      'Impor katalog melalui CSV atau Excel. Periksa isi berkas sebelum mengimpor karena berkas tertentu dapat menggantikan katalog aktif; lakukan pencadangan data sumber terlebih dahulu.',
+      'Pada bagian Periode dan Batas Akademik, atur tahun ajaran, awal/akhir periode KRS, deadline pengisian, periode KPRS, dan aturan kuota SKS berdasarkan IPS.',
+      'Gunakan bagian Override KRS hanya untuk koreksi administratif yang beralasan. Setiap override dicatat dan tidak menggantikan proses review normal tanpa alasan.'
+    ]
+  },
+  {
+    role: 'Admin Prodi',
+    title: 'Kelas paralel, jadwal, kapasitas, dan pelaporan',
+    intro: 'Kelola kelas per mata kuliah dan semester agar pilihan mahasiswa, jadwal, dosen, ruangan, serta sisa kursi konsisten.',
+    steps: [
+      'Buka menu Kelas & Jadwal. Pilih mata kuliah aktif, isi nama kelas paralel, dosen pengampu, ruang, hari, jam mulai/selesai, kapasitas, dan semester.',
+      'Simpan kelas untuk menerbitkan pilihan pada alur KRS mahasiswa. Kelas dapat diedit atau ditutup; penutupan ditolak saat masih ada peserta/reservasi. Kapasitas tidak dapat diturunkan di bawah kursi yang telah terpakai.',
+      'Sistem memeriksa bentrok ruang dan dosen pada interval waktu yang tumpang tindih, termasuk lintas semester. Selesaikan bentrok sebelum kelas dibuka.',
+      'Kelas yang sudah dibuka ditampilkan pada Draft KRS beserta dosen, ruang, waktu, dan kursi tersisa. Kuota dihitung per kelas paralel, bukan hanya berdasarkan jumlah mahasiswa pada mata kuliah.',
+      'Buka Riwayat Aktivitas pada Manajemen Data untuk menelusuri perubahan katalog, pengaturan, dan aktivitas administratif. Audit log menyimpan metadata perubahan, bukan isi berkas KHS/KRS.',
+      'Gunakan laporan mahasiswa tanpa KRS dan peserta per mata kuliah untuk pemantauan. Bagian model menyediakan pelatihan/evaluasi; jalankan Latih/Evaluasi Ulang Model hanya setelah dataset cukup dan tinjau metriknya.',
+      'Precision@5 dan Recall@5 yang belum tersedia berarti model belum memiliki evaluasi tersimpan yang memadai; jangan menafsirkan skor rekomendasi sebagai probabilitas lulus.'
+    ]
+  }
+];
+
+
+function parallelScheduleConflict(courseEntries) {
+  const schedules = [];
+  for (const course of courseEntries) {
+    if (!course.day || !course.start_time || !course.end_time) continue;
+    const start = Number(course.start_time.slice(0, 2)) * 60 + Number(course.start_time.slice(3, 5));
+    const end = Number(course.end_time.slice(0, 2)) * 60 + Number(course.end_time.slice(3, 5));
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) continue;
+    for (const previous of schedules) {
+      if (previous.day.trim().toLocaleLowerCase('id-ID') === course.day.trim().toLocaleLowerCase('id-ID')
+        && start < previous.end && previous.start < end) {
+        return { current: course.code, previous: previous.code };
+      }
+    }
+    schedules.push({ code: course.code, day: course.day, start, end });
+  }
+  return null;
+}
+
+function GuideStep({ index, children }) {
+  return (
+    <li className="guide-step">
+      <span className="guide-step-number">{String(index + 1).padStart(2, '0')}</span>
+      <span>{children}</span>
+    </li>
+  );
+}
+
 function App() {
   const [user, setUser] = useState(null);
   const [view, setView] = useState('dashboard');
@@ -373,6 +499,7 @@ function App() {
   const [approvedPlans, setApprovedPlans] = useState([]);
   const [overrideReason, setOverrideReason] = useState({});
   const [overrideCourses, setOverrideCourses] = useState({});
+  const [overrideClassSelections, setOverrideClassSelections] = useState({});
   const [settingDraft, setSettingDraft] = useState({
     active_academic_year: DEFAULT_ACADEMIC_YEAR,
     krs_period_start: '',
@@ -394,6 +521,18 @@ function App() {
   const [reviewNotes, setReviewNotes] = useState({});
   const [reviewRejectedCourses, setReviewRejectedCourses] = useState({});
   const [courseList, setCourseList] = useState([]);
+  const [classList, setClassList] = useState([]);
+  const [studentClasses, setStudentClasses] = useState([]);
+  const [studentClassesLoaded, setStudentClassesLoaded] = useState(false);
+  const [classBusy, setClassBusy] = useState(false);
+  const [editingClassId, setEditingClassId] = useState(null);
+  const [classForm, setClassForm] = useState({
+    course_code: '', class_name: '', lecturer_id: '', room: '', day: 'Senin',
+    start_time: '08:00', end_time: '09:40', capacity: 40, semester: '1', is_open: true,
+  });
+  const [guideRole, setGuideRole] = useState('Semua');
+  const [guideSearch, setGuideSearch] = useState('');
+  const [kprsClassSelections, setKprsClassSelections] = useState({});
   const [editingCourseCode, setEditingCourseCode] = useState('');
   const [courseBusyCode, setCourseBusyCode] = useState('');
   const [newCourse, setNewCourse] = useState({
@@ -752,9 +891,13 @@ function App() {
         }
 
         if (user.role === 'admin') {
-          const list = await apiRequest('/admin/courses');
+          const [list, sections] = await Promise.all([
+            apiRequest('/admin/courses'),
+            apiRequest('/admin/classes'),
+          ]);
           if (cancelled) return;
           setCourseList(list.map((course) => ({ ...course, _originalCode: course.code })));
+          setClassList(sections);
         }
 
         if (user.role === 'admin') {
@@ -781,6 +924,21 @@ function App() {
     loadDashboardData();
     return () => { cancelled = true; };
   }, [user]);
+
+  useEffect(() => {
+    if (user?.role !== 'mahasiswa' || !recommendationResult.target_semester) {
+      setStudentClasses([]);
+      setStudentClassesLoaded(false);
+      return undefined;
+    }
+    let active = true;
+    setStudentClassesLoaded(false);
+    apiRequest(`/mahasiswa/kelas?semester=${recommendationResult.target_semester}`, { suppressLoader: true })
+      .then((sections) => { if (active) setStudentClasses(Array.isArray(sections) ? sections : []); })
+      .catch((error) => { if (active) pushToast(error.message || 'Pilihan kelas paralel gagal dimuat.', 'error'); })
+      .finally(() => { if (active) setStudentClassesLoaded(true); });
+    return () => { active = false; };
+  }, [user?.role, recommendationResult.target_semester, pushToast]);
 
   useEffect(() => {
     if (user?.role !== 'admin' || view !== 'dashboard') return undefined;
@@ -966,6 +1124,9 @@ function App() {
     setAdminAnalytics(null);
     setStudyPlans([]);
     setCourseList([]);
+    setClassList([]);
+    setStudentClasses([]);
+    setStudentClassesLoaded(false);
     setKhsPreview(null);
     setView('dashboard');
   };
@@ -1029,15 +1190,22 @@ function App() {
       setActionMessage('Alasan override minimal 10 karakter.');
       return;
     }
+    const originalPlan = approvedPlans.find((item) => item.id === planId);
+    const courseCodes = courseCodesText.trim()
+      ? courseCodesText.split(',').map((code) => code.trim().toUpperCase()).filter(Boolean)
+      : (originalPlan?.courses || []).map((item) => typeof item === 'string' ? item : item.code);
+    const selections = Object.fromEntries((originalPlan?.courses || []).filter((item) => typeof item === 'object' && item.class_id).map((item) => [item.code, Number(item.class_id)]));
+    Object.entries(overrideClassSelections[planId] || {}).forEach(([code, classId]) => {
+      if (classId) selections[code] = Number(classId);
+    });
     try {
       await apiRequest(`/admin/study-plans/${planId}/override`, {
         method: 'PATCH',
         body: JSON.stringify({
           status,
           reason: reason.trim(),
-          course_codes: courseCodesText.trim()
-            ? courseCodesText.split(',').map((code) => code.trim().toUpperCase()).filter(Boolean)
-            : null,
+          course_codes: courseCodesText.trim() ? courseCodes : null,
+          class_selections: Object.fromEntries(courseCodes.filter((code) => selections[code]).map((code) => [code, selections[code]])),
         }),
       });
       setApprovedPlans((previous) => status === 'approved' ? previous : previous.filter((plan) => plan.id !== planId));
@@ -1150,10 +1318,22 @@ function App() {
       setActionMessage('Pilih KRS approved, isi mata kuliah, dan alasan KPRS minimal 10 karakter.');
       return;
     }
+    const sourcePlan = studyPlans.find((plan) => plan.id === Number(kprsDraft.planId));
+    const selections = Object.fromEntries((sourcePlan?.courses || []).filter((course) => course.class_id).map((course) => [course.code, Number(course.class_id)]));
+    Object.entries(kprsClassSelections).forEach(([code, id]) => { if (id) selections[code] = Number(id); });
+    for (const code of courses) {
+      const options = studentClasses.filter((section) => section.course_code === code);
+      const previousClassId = sourcePlan?.courses?.find((course) => course.code === code)?.class_id;
+      const selectedSection = options.find((section) => Number(section.class_id) === Number(selections[code]));
+      if (options.length && (!selectedSection || !selectedSection.is_open || (selectedSection.remaining_seats <= 0 && Number(previousClassId) !== Number(selectedSection.class_id)))) {
+        setActionMessage(`Pilih kelas paralel yang masih dibuka dan memiliki kursi untuk ${code}.`);
+        return;
+      }
+    }
     try {
       await apiRequest('/mahasiswa/kprs', {
         method: 'POST',
-        body: JSON.stringify({ study_plan_id: Number(kprsDraft.planId), course_codes: courses, reason: kprsDraft.reason.trim() }),
+        body: JSON.stringify({ study_plan_id: Number(kprsDraft.planId), course_codes: courses, class_selections: selections, reason: kprsDraft.reason.trim() }),
       });
       setKprsRequests(await apiRequest('/mahasiswa/kprs'));
       setActionMessage('Pengajuan KPRS berhasil dikirim.');
@@ -1265,6 +1445,104 @@ function App() {
     } finally {
       setCourseBusyCode('');
     }
+  };
+
+  const refreshClassList = async () => {
+    const sections = await apiRequest('/admin/classes');
+    setClassList(sections);
+    return sections;
+  };
+
+  const saveParallelClass = async (event) => {
+    event.preventDefault();
+    if (user?.role !== 'admin') return;
+    setClassBusy(true);
+    try {
+      const payload = {
+        ...classForm,
+        course_code: classForm.course_code.trim().toUpperCase(),
+        class_name: classForm.class_name.trim(),
+        lecturer_id: classForm.lecturer_id ? Number(classForm.lecturer_id) : null,
+        room: classForm.room.trim(),
+        day: classForm.day.trim(),
+        start_time: classForm.start_time,
+        end_time: classForm.end_time,
+        capacity: Number(classForm.capacity),
+        semester: String(classForm.semester),
+        is_open: Boolean(classForm.is_open),
+      };
+      await apiRequest(editingClassId ? `/admin/classes/${editingClassId}` : '/admin/classes', {
+        method: editingClassId ? 'PUT' : 'POST',
+        body: JSON.stringify(payload),
+      });
+      await refreshClassList();
+      const wasEditing = Boolean(editingClassId);
+      setEditingClassId(null);
+      setClassForm({
+        course_code: '', class_name: '', lecturer_id: '', room: '', day: 'Senin',
+        start_time: '08:00', end_time: '09:40', capacity: 40, semester: '1', is_open: true,
+      });
+      setActionMessage(wasEditing ? 'Kelas paralel berhasil diperbarui.' : 'Kelas paralel berhasil ditambahkan.');
+    } catch (error) {
+      setActionMessage(error.message || 'Kelas paralel gagal disimpan.');
+    } finally {
+      setClassBusy(false);
+    }
+  };
+
+  const editParallelClass = (section) => {
+    setEditingClassId(section.id);
+    setClassForm({
+      course_code: section.course_code,
+      class_name: section.class_name,
+      lecturer_id: section.lecturer_id ?? '',
+      room: section.room,
+      day: section.day,
+      start_time: section.start_time,
+      end_time: section.end_time,
+      capacity: section.capacity,
+      semester: String(section.semester),
+      is_open: Boolean(section.is_open),
+    });
+    setView('kelas');
+    setMobileMenuOpen(false);
+  };
+
+  const closeParallelClass = async (section) => {
+    if (section.occupied > 0 || !window.confirm(`Tutup kelas ${section.course_code} - ${section.class_name}?`)) return;
+    setClassBusy(true);
+    try {
+      await apiRequest(`/admin/classes/${section.id}`, { method: 'DELETE' });
+      await refreshClassList();
+      setActionMessage('Kelas paralel berhasil ditutup. Riwayat kelas tetap disimpan.');
+    } catch (error) {
+      setActionMessage(error.message || 'Kelas paralel gagal ditutup.');
+    } finally {
+      setClassBusy(false);
+    }
+  };
+
+  const updateDraftClass = (courseCode, classId) => {
+    const section = studentClasses.find((item) => Number(item.class_id) === Number(classId));
+    const nextDraft = draftCourses.map((course) => {
+      if (course.code !== courseCode) return course;
+      if (!section) return {
+        ...course, class_id: null, class_name: null, lecturer_id: null,
+        lecturer_name: '', room: '', day: '', start_time: '', end_time: '', schedule: '',
+      };
+      return {
+        ...course, class_id: section.class_id, class_name: section.class_name,
+        lecturer_id: section.lecturer_id, lecturer_name: section.lecturer_name,
+        room: section.room, day: section.day, start_time: section.start_time,
+        end_time: section.end_time, schedule: `${section.day}, ${section.start_time}-${section.end_time}`,
+      };
+    });
+    const conflict = parallelScheduleConflict(nextDraft);
+    if (conflict) {
+      pushToast(`Jadwal kelas ${conflict.current} berbenturan dengan ${conflict.previous}. Pilih kelas dengan waktu berbeda.`, 'warning');
+      return;
+    }
+    setDraftCourses(nextDraft);
   };
 
   const deleteStudentAccount = async (student) => {
@@ -1643,6 +1921,7 @@ function App() {
     ] : []),
     ...(user?.role === 'admin' ? [
       { key: 'admin', label: 'Manajemen Data', Icon: Settings },
+      { key: 'kelas', label: 'Kelas & Jadwal', Icon: CalendarDays },
       { key: 'akun-dosen', label: 'Daftar Akun Dosen PA', Icon: UsersRound },
       { key: 'riwayat-pa', label: 'Riwayat Dosen PA', Icon: History },
     ] : []),
@@ -1704,11 +1983,41 @@ function App() {
     setStudyPlanBusy(true);
     setActionMessage('');
     try {
-      const plan = await apiRequest('/mahasiswa/rencana-studi', {
-        method: 'POST',
-        body: JSON.stringify({ course_codes: draftCourses.map((course) => course.code) }),
-      });
-      setStudyPlans((previousPlans) => [plan, ...previousPlans]);
+      if (recommendationResult.target_semester && !studentClassesLoaded) {
+        pushToast('Daftar kelas paralel masih dimuat. Coba ajukan kembali setelah selesai.', 'warning');
+        return;
+      }
+      for (const course of draftCourses) {
+        const sections = studentClasses.filter((section) => section.course_code === course.code);
+        if (sections.length && !sections.some((section) => Number(section.class_id) === Number(course.class_id) && section.is_open && section.remaining_seats > 0)) {
+          pushToast(`Pilih kelas yang masih tersedia untuk ${course.code} sebelum mengajukan KRS.`, 'warning');
+          return;
+        }
+      }
+      const classSelections = Object.fromEntries(draftCourses.filter((course) => course.class_id).map((course) => [course.code, Number(course.class_id)]));
+      const planPayload = {
+        course_codes: draftCourses.map((course) => course.code),
+        class_selections: classSelections,
+      };
+      const revisionPlan = studyPlans.find((item) => (
+        item.status === 'revision_requested'
+        && item.semester === recommendationResult.target_semester
+      ));
+      let plan;
+      if (revisionPlan) {
+        await apiRequest(`/mahasiswa/rencana-studi/${revisionPlan.id}`, {
+          method: 'PATCH',
+          body: JSON.stringify(planPayload),
+        });
+        plan = await apiRequest(`/mahasiswa/rencana-studi/${revisionPlan.id}/submit`, { method: 'POST' });
+        setStudyPlans((previousPlans) => [plan, ...previousPlans.filter((item) => item.id !== plan.id)]);
+      } else {
+        plan = await apiRequest('/mahasiswa/rencana-studi', {
+          method: 'POST',
+          body: JSON.stringify(planPayload),
+        });
+        setStudyPlans((previousPlans) => [plan, ...previousPlans]);
+      }
       setDraftCourses([]);
       setActionMessage('Rencana studi berhasil diajukan ke dosen PA.');
     } catch (error) {
@@ -1718,6 +2027,17 @@ function App() {
       setStudyPlanBusy(false);
     }
   };
+
+  useEffect(() => {
+    const revisionPlan = studyPlans.find((item) => (
+      item.status === 'revision_requested'
+      && item.semester === recommendationResult.target_semester
+      && Array.isArray(item.courses)
+    ));
+    if (revisionPlan?.courses?.length) {
+      setDraftCourses(revisionPlan.courses);
+    }
+  }, [studyPlans, recommendationResult.target_semester, setDraftCourses]);
 
   const reviewStudyPlan = async (planId, status) => {
     const advisorNote = (reviewNotes[planId] ?? '').trim();
@@ -2197,8 +2517,8 @@ function App() {
                   <table className="table">
                     <thead><tr><th>Sebelum</th><th>Sesudah</th></tr></thead>
                     <tbody><tr>
-                      <td>{request.before.map((course) => `${course.code} (${course.sks} SKS)`).join(', ')}</td>
-                      <td>{request.after.map((course) => `${course.code} (${course.sks} SKS)`).join(', ')}</td>
+                      <td>{request.before.map((course) => `${course.code} (${course.sks} SKS)${course.class_name ? ` · Kelas ${course.class_name} · ${course.day} ${course.start_time}-${course.end_time} · ${course.room}` : ''}`).join('; ')}</td>
+                      <td>{request.after.map((course) => `${course.code} (${course.sks} SKS)${course.class_name ? ` · Kelas ${course.class_name} · ${course.day} ${course.start_time}-${course.end_time} · ${course.room}` : ''}`).join('; ')}</td>
                     </tr></tbody>
                   </table>
                 </div>
@@ -2236,7 +2556,7 @@ function App() {
                   <thead><tr><th>Mata kuliah</th><th>SKS</th><th>Skor</th><th>Prasyarat</th><th>Alasan rekomendasi</th></tr></thead>
                   <tbody>{plan.courses.map((course) => (
                     <tr key={course.code}>
-                      <td>{course.name}<br /><span className="muted">{course.code} · {course.category}</span></td>
+                      <td>{course.name}<br /><span className="muted">{course.code} · {course.category}</span>{course.class_name && <small className="draft-class-meta"><span><CalendarDays size={13} /> {course.class_name}</span><span><Clock3 size={13} /> {course.day} {course.start_time}-{course.end_time}</span><span><MapPin size={13} /> {course.room}</span></small>}</td>
                       <td>{course.sks}</td>
                       <td>{course.score}%</td>
                       <td>{course.prerequisite_text || '—'}</td>
@@ -2343,6 +2663,11 @@ function App() {
               </span>
               <span>Rencana studi semester {latestStudyPlan.semester}</span>
               {latestStudyPlan.advisor_note && <p><strong>Catatan dosen PA:</strong> {latestStudyPlan.advisor_note}</p>}
+              {latestStudyPlan.status === 'revision_requested' && (
+                <button type="button" className="btn primary" onClick={() => setView('rekomendasi')}>
+                  Perbaiki draft dan ajukan ulang
+                </button>
+              )}
               {latestStudyPlan.advisor_feedback?.length > 0 && (
                 <div className="history-document" style={{ marginTop: 10 }}>
                   <strong>{latestStudyPlan.status === 'revision_requested' ? 'Mata kuliah yang perlu diperbaiki' : 'Riwayat feedback dosen PA (digunakan model ML)'}</strong>
@@ -2369,9 +2694,36 @@ function App() {
             <section className="study-plan-summary">
               <h3>Pengajuan Perubahan KRS (KPRS)</h3>
               <div className="course-edit-grid kprs-edit-grid">
-                <label className="course-edit-field"><span className="muted">KRS approved</span><select value={kprsDraft.planId} onChange={(event) => setKprsDraft((previous) => ({ ...previous, planId: event.target.value }))}><option value="">Pilih</option><option value={approvedStudyPlan.id}>KRS semester {approvedStudyPlan.semester}</option></select></label>
+                <label className="course-edit-field"><span className="muted">KRS approved</span><select value={kprsDraft.planId} onChange={(event) => {
+                  const nextId = event.target.value;
+                  const selectedPlan = studyPlans.find((plan) => plan.id === Number(nextId));
+                  setKprsDraft((previous) => ({ ...previous, planId: nextId }));
+                  setKprsClassSelections(Object.fromEntries((selectedPlan?.courses || []).filter((course) => course.class_id).map((course) => [course.code, Number(course.class_id)])));
+                }}><option value="">Pilih</option><option value={approvedStudyPlan.id}>KRS semester {approvedStudyPlan.semester}</option></select></label>
                 <label className="course-edit-field"><span className="muted">Kode mata kuliah baru (pisahkan koma)</span><input value={kprsDraft.courses} onChange={(event) => setKprsDraft((previous) => ({ ...previous, courses: event.target.value }))} /></label>
                 <label className="course-edit-field"><span className="muted">Alasan perubahan</span><textarea rows={3} value={kprsDraft.reason} onChange={(event) => setKprsDraft((previous) => ({ ...previous, reason: event.target.value }))} /></label>
+              </div>
+              <div className="kprs-class-options">
+                {kprsDraft.courses.split(',').map((rawCode) => rawCode.trim().toUpperCase()).filter(Boolean).map((code) => {
+                  const options = studentClasses.filter((section) => section.course_code === code);
+                  if (!options.length) return null;
+                  const currentPlan = studyPlans.find((plan) => plan.id === Number(kprsDraft.planId));
+                  const previousClassId = currentPlan?.courses?.find((course) => course.code === code)?.class_id;
+                  const selectedClassId = kprsClassSelections[code] ?? previousClassId ?? '';
+                  return (
+                    <label className="course-edit-field" key={code}>
+                      <span className="muted">Kelas paralel {code}</span>
+                      <select value={selectedClassId} onChange={(event) => setKprsClassSelections((previous) => ({ ...previous, [code]: event.target.value }))}>
+                        <option value="">Pilih kelas untuk {code}</option>
+                        {options.map((section) => (
+                          <option key={section.class_id} value={section.class_id} disabled={!section.is_open || (section.remaining_seats <= 0 && Number(selectedClassId) !== Number(section.class_id))}>
+                            {section.class_name} · {section.day} {section.start_time}-{section.end_time} · {section.room} · {section.remaining_seats} kursi tersisa
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  );
+                })}
               </div>
               <button className="btn primary" type="button" onClick={submitKprs}>Ajukan KPRS</button>
               {kprsRequests.map((request) => (
@@ -2598,10 +2950,37 @@ function App() {
                   const mandatory = isMandatoryCourse(course);
                   return (
                     <li key={course.code} className={mandatory ? 'draft-course-item draft-course-item-mandatory' : 'draft-course-item'}>
-                      <span>{course.code} — {course.name} ({course.sks} SKS)</span>
-                      {mandatory
-                        ? <span className="mandatory-status">WAJIB · OTOMATIS</span>
-                        : <button type="button" className="btn outline" style={{ marginLeft: 8 }} disabled={Boolean(approvedStudyPlan)} onClick={() => removeFromDraft(course.code)}>Hapus</button>}
+                      <div className="draft-course-main">
+                        <strong>{course.code} — {course.name} ({course.sks} SKS)</strong>
+                        {mandatory && <span className="mandatory-status">WAJIB · OTOMATIS</span>}
+                        {(() => {
+                          const sections = studentClasses.filter((section) => section.course_code === course.code);
+                          if (!sections.length) {
+                            return <small className="muted">Kelas paralel belum dipublikasikan; jadwal mengikuti katalog prodi.</small>;
+                          }
+                          return (
+                            <label className="draft-class-select">
+                              <span><CalendarDays size={15} /> Pilih kelas paralel</span>
+                              <select value={course.class_id ?? ''} disabled={Boolean(approvedStudyPlan) || !studentClassesLoaded} onChange={(event) => updateDraftClass(course.code, event.target.value)}>
+                                <option value="">Pilih kelas yang tersedia</option>
+                                {sections.map((section) => (
+                                  <option key={section.class_id} value={section.class_id} disabled={!section.is_open || section.remaining_seats <= 0}>
+                                    {section.class_name} · {section.lecturer_name} · {section.day} {section.start_time}-{section.end_time} · {section.room} · {section.remaining_seats} kursi
+                                  </option>
+                                ))}
+                              </select>
+                              {course.class_id && (
+                                <small className="draft-class-meta">
+                                  <span><Clock3 size={13} /> {course.day} {course.start_time}-{course.end_time}</span>
+                                  <span><MapPin size={13} /> {course.room}</span>
+                                  <span><Users size={13} /> {course.lecturer_name}</span>
+                                </small>
+                              )}
+                            </label>
+                          );
+                        })()}
+                      </div>
+                      {!mandatory && <button type="button" className="btn outline" disabled={Boolean(approvedStudyPlan)} onClick={() => removeFromDraft(course.code)}>Hapus</button>}
                     </li>
                   );
                 })}
@@ -2754,8 +3133,74 @@ function App() {
       );
     }
 
+
     if (view === 'panduan') {
-      return <div className="card"><h3>Panduan Pengguna</h3><ul><li>Mahasiswa: cek rekomendasi dan draft KRS.</li><li>Dosen PA: review dan setujui.</li><li>Admin Prodi: kelola kurikulum dan impor data.</li></ul></div>;
+      const searchTerm = guideSearch.trim().toLocaleLowerCase('id-ID');
+      const visibleSections = GUIDE_SECTIONS.filter((section) => (
+        (guideRole === 'Semua' || section.role === guideRole)
+        && (!searchTerm || [section.role, section.title, section.intro, ...section.steps].join(' ').toLocaleLowerCase('id-ID').includes(searchTerm))
+      ));
+      const roles = ['Semua', 'Semua Akun', 'Mahasiswa', 'Dosen PA', 'Admin Prodi'];
+      return (
+        <div className="guide-page">
+          <section className="guide-hero">
+            <div className="guide-hero-content">
+              <span className="guide-eyebrow"><HelpCircle size={15} /> PUSAT BANTUAN COURSERECOM</span>
+              <h2>Panduan lengkap penggunaan aplikasi</h2>
+              <p>Petunjuk langkah demi langkah untuk setiap menu, fitur, keputusan akademik, dan alur kerja. Pilih peran akun atau cari kata kunci untuk menemukan bagian yang dibutuhkan.</p>
+              <div className="guide-hero-meta">
+                <span><Users size={15} /> 3 level akun</span>
+                <span><BookOpenCheck size={15} /> Alur dari awal sampai akhir</span>
+                <span><ShieldCheck size={15} /> Hak akses sesuai peran</span>
+              </div>
+            </div>
+            <div className="guide-hero-art" aria-hidden="true">
+              <div className="guide-art-orbit guide-art-orbit-one" />
+              <div className="guide-art-orbit guide-art-orbit-two" />
+              <div className="guide-art-document"><BookOpenCheck size={52} /><span>USER GUIDE</span><i /><i /><i /></div>
+              <div className="guide-art-chip guide-art-chip-one"><CheckCircle2 size={17} /> KRS</div>
+              <div className="guide-art-chip guide-art-chip-two"><CalendarDays size={17} /> Jadwal</div>
+            </div>
+          </section>
+          <section className="guide-toolbar">
+            <div className="guide-role-filters" aria-label="Filter panduan berdasarkan peran">
+              {roles.map((role) => <button type="button" key={role} className={guideRole === role ? 'active' : ''} onClick={() => setGuideRole(role)}>{role}</button>)}
+            </div>
+            <label className="guide-search">
+              <Search size={17} />
+              <input value={guideSearch} onChange={(event) => setGuideSearch(event.target.value)} placeholder="Cari fitur, misalnya KHS, KPRS, kelas paralel..." />
+              {guideSearch && <button type="button" onClick={() => setGuideSearch('')} aria-label="Hapus pencarian">×</button>}
+            </label>
+          </section>
+          <div className="guide-summary-row">
+            <strong>{visibleSections.length} bagian panduan</strong>
+            <span>Konten dapat dibuka per topik agar mudah dibaca di desktop maupun ponsel.</span>
+          </div>
+          <div className="guide-section-grid">
+            {visibleSections.map((section, index) => (
+              <article className="guide-section-card" key={section.title}>
+                <div className="guide-section-top">
+                  <span className={section.role === 'Mahasiswa' ? 'guide-role-tag student' : section.role === 'Dosen PA' ? 'guide-role-tag lecturer' : section.role === 'Admin Prodi' ? 'guide-role-tag admin' : 'guide-role-tag common'}>{section.role}</span>
+                  <span className="guide-index">{String(index + 1).padStart(2, '0')}</span>
+                </div>
+                <h3>{section.title}</h3>
+                <p className="guide-section-intro">{section.intro}</p>
+                <details className="guide-details" open={guideSearch.length > 0}>
+                  <summary><span>Lihat langkah penggunaan</span><ChevronDown size={17} /></summary>
+                  <ol>{section.steps.map((step, stepIndex) => <GuideStep key={stepIndex} index={stepIndex}>{step}</GuideStep>)}</ol>
+                </details>
+              </article>
+            ))}
+          </div>
+          {visibleSections.length === 0 && (
+            <div className="guide-empty"><Search size={28} /><strong>Panduan tidak ditemukan</strong><span>Coba kata kunci lain atau pilih filter Semua.</span><button className="btn outline" type="button" onClick={() => { setGuideRole('Semua'); setGuideSearch(''); }}>Reset filter</button></div>
+          )}
+          <section className="guide-help-footer">
+            <div><strong>Butuh bantuan?</strong><p>Mulai dari petunjuk sesuai peran. Untuk akun, penetapan Dosen PA, periode akademik, dan kelas paralel, hubungi Admin Prodi.</p></div>
+            <button className="btn primary" type="button" onClick={() => setView('dashboard')}>Kembali ke Dashboard</button>
+          </section>
+        </div>
+      );
     }
 
     if (view === 'akun-dosen' && user.role === 'admin') {
@@ -2858,6 +3303,63 @@ function App() {
       );
     }
 
+
+    if (view === 'kelas' && user.role === 'admin') {
+      const totalSections = classList.length;
+      const openSections = classList.filter((section) => section.is_open).length;
+      const totalSeats = classList.filter((section) => section.is_open).reduce((sum, section) => sum + Number(section.capacity || 0), 0);
+      const usedSeats = classList.filter((section) => section.is_open).reduce((sum, section) => sum + Number(section.occupied || 0), 0);
+      return (
+        <div className="class-management-page">
+          <section className="class-management-hero">
+            <div><span className="guide-eyebrow"><CalendarDays size={15} /> MANAJEMEN PERKULIAHAN</span><h2>Kelas Paralel & Jadwal</h2><p>Publikasikan beberapa kelas untuk satu mata kuliah, atur dosen/ruang/waktu dan pantau kapasitas sebelum mahasiswa menyusun KRS.</p></div>
+            <div className="class-management-icon"><CalendarDays size={54} /></div>
+          </section>
+          <div className="stat-grid class-management-stats">
+            <div className="stat"><small>Total kelas</small><strong>{totalSections}</strong></div>
+            <div className="stat"><small>Kelas dibuka</small><strong>{openSections}</strong></div>
+            <div className="stat"><small>Kapasitas aktif</small><strong>{totalSeats} kursi</strong></div>
+            <div className="stat"><small>Terpakai</small><strong>{usedSeats} kursi</strong></div>
+          </div>
+          <section className="class-form-card">
+            <div className="class-section-heading"><div><span className="guide-role-tag admin">{editingClassId ? 'EDIT KELAS' : 'KELAS BARU'}</span><h3>{editingClassId ? 'Perbarui kelas paralel' : 'Buat kelas paralel'}</h3><p className="muted">Kelas yang dibuka akan muncul pada proses pemilihan kelas mahasiswa.</p></div>
+              {editingClassId && <button className="btn outline" type="button" onClick={() => { setEditingClassId(null); setClassForm({ course_code: '', class_name: '', lecturer_id: '', room: '', day: 'Senin', start_time: '08:00', end_time: '09:40', capacity: 40, semester: '1', is_open: true }); }}>Batal edit</button>}
+            </div>
+            <form className="class-form-grid" onSubmit={saveParallelClass}>
+              <label><span>Mata kuliah aktif</span><select required value={classForm.course_code} onChange={(event) => setClassForm((previous) => ({ ...previous, course_code: event.target.value }))}><option value="">Pilih mata kuliah</option>{courseList.map((course) => <option key={course.code} value={course.code}>{course.code} · {course.name}</option>)}</select></label>
+              <label><span>Nama kelas</span><input required maxLength="40" placeholder="A / B / Reguler 1" value={classForm.class_name} onChange={(event) => setClassForm((previous) => ({ ...previous, class_name: event.target.value }))} /></label>
+              <label><span>Dosen pengampu</span><select value={classForm.lecturer_id} onChange={(event) => setClassForm((previous) => ({ ...previous, lecturer_id: event.target.value }))}><option value="">Belum ditentukan</option>{adminAdvisors.map((lecturer) => <option key={lecturer.id} value={lecturer.id}>{lecturer.full_name} · {lecturer.nim}</option>)}</select></label>
+              <label><span>Ruang</span><input required maxLength="40" placeholder="Lab 2 / R. 301" value={classForm.room} onChange={(event) => setClassForm((previous) => ({ ...previous, room: event.target.value }))} /></label>
+              <label><span>Hari</span><select required value={classForm.day} onChange={(event) => setClassForm((previous) => ({ ...previous, day: event.target.value }))}>{['Senin','Selasa','Rabu','Kamis','Jumat','Sabtu','Minggu'].map((day) => <option key={day} value={day}>{day}</option>)}</select></label>
+              <label><span>Semester</span><input required type="number" min="1" max="14" step="1" value={classForm.semester} onChange={(event) => setClassForm((previous) => ({ ...previous, semester: event.target.value }))} /></label>
+              <label><span>Jam mulai</span><input required type="time" value={classForm.start_time} onChange={(event) => setClassForm((previous) => ({ ...previous, start_time: event.target.value }))} /></label>
+              <label><span>Jam selesai</span><input required type="time" value={classForm.end_time} onChange={(event) => setClassForm((previous) => ({ ...previous, end_time: event.target.value }))} /></label>
+              <label><span>Kapasitas kursi</span><input required type="number" min="0" max="10000" step="1" value={classForm.capacity} onChange={(event) => setClassForm((previous) => ({ ...previous, capacity: event.target.value }))} /></label>
+              <label className="class-open-toggle"><input type="checkbox" checked={classForm.is_open} onChange={(event) => setClassForm((previous) => ({ ...previous, is_open: event.target.checked }))} /> Buka kelas untuk dipilih mahasiswa</label>
+              <div className="class-form-actions"><button className="btn primary" type="submit" disabled={classBusy || !courseList.length}>{classBusy ? 'Menyimpan...' : editingClassId ? 'Simpan perubahan' : 'Tambah kelas paralel'}</button></div>
+            </form>
+            <div className="class-validation-note"><ShieldCheck size={17} /><span>Validasi otomatis: jam harus berurutan, ruang dan dosen tidak boleh bentrok dalam interval waktu yang sama, serta kapasitas tidak boleh di bawah jumlah kursi yang telah terpakai.</span></div>
+          </section>
+          <section className="class-table-card">
+            <div className="class-section-heading"><div><h3>Daftar kelas terdaftar</h3><p className="muted">Sisa kursi dan status kelas akan dipakai sebagai informasi saat mahasiswa memilih kelas di Draft KRS.</p></div><button className="btn outline" type="button" onClick={() => refreshClassList().catch((error) => setActionMessage(error.message))}>Perbarui data</button></div>
+            <div className="table-wrap"><table className="table class-table">
+              <thead><tr><th>Mata kuliah</th><th>Kelas / dosen</th><th>Jadwal / ruang</th><th>Kapasitas</th><th>Status</th><th>Aksi</th></tr></thead>
+              <tbody>{classList.map((section) => (
+                <tr key={section.id}>
+                  <td><strong>{section.course_code}</strong><br />{section.course_name}</td>
+                  <td>{section.class_name}<br /><span className="muted">{section.lecturer_name || 'Dosen belum ditentukan'}</span></td>
+                  <td>{section.day}, {section.start_time}-{section.end_time}<br /><span className="muted">{section.room}</span></td>
+                  <td><strong>{section.occupied}/{section.capacity}</strong><div className="class-seat-meter"><span style={{ width: `${section.capacity ? Math.min(100, (section.occupied / section.capacity) * 100) : 100}%` }} /></div><small>{section.remaining_seats} kursi tersisa</small></td>
+                  <td><span className={section.is_open ? 'class-status-open' : 'class-status-closed'}>{section.is_open ? 'Dibuka' : 'Ditutup'}</span></td>
+                  <td><div className="class-row-actions"><button className="btn outline" type="button" disabled={classBusy} onClick={() => editParallelClass(section)}>Edit</button><button className="btn outline danger" type="button" disabled={classBusy || !section.is_open || section.occupied > 0} onClick={() => closeParallelClass(section)}>Tutup</button></div></td>
+                </tr>
+              ))}{classList.length === 0 && <tr><td colSpan="6" className="muted">Belum ada kelas paralel. Buat kelas pertama menggunakan formulir di atas.</td></tr>}</tbody>
+            </table></div>
+          </section>
+        </div>
+      );
+    }
+
     if (view === 'admin') {
       const courseFields = [
         ['code', 'Kode'], ['name', 'Nama mata kuliah'], ['sks', 'SKS'],
@@ -2953,9 +3455,30 @@ function App() {
                           style={{ marginTop: 6 }}
                           value={overrideCourses[plan.id] || ''}
                           onChange={(event) => setOverrideCourses((previous) => ({ ...previous, [plan.id]: event.target.value }))}
-                          placeholder="Kode MK baru (opsional)"
+                          placeholder="Kode MK baru (pisahkan koma, opsional)"
                           aria-label={`Mata kuliah override ${plan.student_name || plan.student_id}`}
                         />
+                        {(overrideCourses[plan.id]?.trim()
+                          ? overrideCourses[plan.id].split(',').map((code) => code.trim().toUpperCase()).filter(Boolean)
+                          : (plan.courses || []).map((course) => typeof course === 'string' ? course : course.code)
+                        ).map((code) => {
+                          const options = classList.filter((section) => section.course_code === code && String(section.semester) === String(plan.semester));
+                          if (!options.length) return null;
+                          const original = (plan.courses || []).find((course) => typeof course === 'object' && course.code === code);
+                          const selected = overrideClassSelections[plan.id]?.[code] ?? original?.class_id ?? '';
+                          return (
+                            <label key={code} className="course-edit-field" style={{ marginTop: 7 }}>
+                              <span className="muted">Kelas {code}</span>
+                              <select value={selected} onChange={(event) => setOverrideClassSelections((previous) => ({
+                                ...previous,
+                                [plan.id]: { ...(previous[plan.id] || {}), [code]: event.target.value },
+                              }))}>
+                                <option value="">Pilih kelas</option>
+                                {options.map((section) => <option key={section.id} value={section.id} disabled={!section.is_open || (section.remaining_seats <= 0 && Number(selected) !== Number(section.id))}>{section.class_name} · {section.day} {section.start_time}-{section.end_time} · {section.remaining_seats} kursi</option>)}
+                              </select>
+                            </label>
+                          );
+                        })}
                       </td>
                       <td>
                         <button className="btn outline" type="button" onClick={() => overrideStudyPlan(plan.id, 'revision_requested', overrideReason[plan.id], overrideCourses[plan.id])}>Buka/Revisi</button>
