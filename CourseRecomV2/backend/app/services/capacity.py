@@ -9,6 +9,15 @@ class CapacityError(ValueError):
     pass
 
 
+def _entry_code(entry) -> str | None:
+    if isinstance(entry, str):
+        return entry.strip().upper()
+    if isinstance(entry, dict):
+        code = entry.get('code')
+        return str(code).strip().upper() if code else None
+    return None
+
+
 def begin_capacity_transaction(db: Session) -> None:
     db.commit()
     if db.get_bind().dialect.name == 'sqlite':
@@ -59,7 +68,7 @@ def course_occupancy(
             raise ValueError('Data mata kuliah pada KRS tersimpan tidak valid.') from exc
         if not isinstance(plan_courses, list):
             raise ValueError('Data mata kuliah pada KRS tersimpan tidak valid.')
-        if any(item.get('code') == code for item in plan_courses if isinstance(item, dict)):
+        if any(_entry_code(item) == code.strip().upper() for item in plan_courses):
             used += 1
 
     requests_query = db.query(KprsRequest).filter(KprsRequest.status == 'pending')
@@ -73,9 +82,9 @@ def course_occupancy(
             raise ValueError('Data mata kuliah pada pengajuan KPRS tersimpan tidak valid.') from exc
         if not isinstance(before, list) or not isinstance(after, list):
             raise ValueError('Data mata kuliah pada pengajuan KPRS tersimpan tidak valid.')
-        before_codes = {item.get('code') for item in before if isinstance(item, dict)}
-        after_codes = {item.get('code') for item in after if isinstance(item, dict)}
-        if code in after_codes - before_codes:
+        before_codes = {_entry_code(item) for item in before}
+        after_codes = {_entry_code(item) for item in after}
+        if code.strip().upper() in after_codes - before_codes:
             used += 1
     return used
 
@@ -102,9 +111,9 @@ def class_occupancy(
         if not isinstance(entries, list):
             raise ValueError('Data mata kuliah pada KRS tersimpan tidak valid.')
         for entry in entries:
-            if not isinstance(entry, dict) or entry.get('code') != section.course_code:
+            if _entry_code(entry) != section.course_code.strip().upper():
                 continue
-            assigned_class = entry.get('class_id')
+            assigned_class = entry.get('class_id') if isinstance(entry, dict) else None
             # Legacy KRS without a class assignment reserves a seat conservatively
             # in every parallel section until it is reconciled.
             if assigned_class is None or str(assigned_class) == str(class_id):
@@ -119,14 +128,16 @@ def class_occupancy(
             after = json.loads(request.after_json)
         except (TypeError, json.JSONDecodeError) as exc:
             raise ValueError('Data mata kuliah pada pengajuan KPRS tersimpan tidak valid.') from exc
-        before_by_code = {entry.get('code'): entry for entry in before if isinstance(entry, dict)}
+        before_by_code = {_entry_code(entry): entry for entry in before if _entry_code(entry)}
         for entry in after:
-            if not isinstance(entry, dict) or entry.get('code') != section.course_code:
+            if _entry_code(entry) != section.course_code.strip().upper():
                 continue
-            if str(entry.get('class_id') or '') != str(class_id):
+            assigned_class = entry.get('class_id') if isinstance(entry, dict) else None
+            if str(assigned_class or '') != str(class_id):
                 continue
-            previous = before_by_code.get(section.course_code)
-            if previous is None or str(previous.get('class_id') or '') != str(class_id):
+            previous = before_by_code.get(section.course_code.strip().upper())
+            previous_class_id = previous.get('class_id') if isinstance(previous, dict) else None
+            if previous is None or str(previous_class_id or '') != str(class_id):
                 used += 1
     return used
 
@@ -147,6 +158,15 @@ def assert_course_capacity(
         if not course:
             raise ValueError(f'Mata kuliah {code} tidak aktif.')
 
+        course_used = course_occupancy(
+            db,
+            code,
+            exclude_plan_id=exclude_plan_id,
+            exclude_kprs_request_id=exclude_kprs_request_id,
+        )
+        course_capacity = course.capacity if course.capacity is not None else 40
+        if course_used >= course_capacity:
+            raise CapacityError(f'Kuota keseluruhan mata kuliah {code} sudah penuh.')
         class_id = selected.get('class_id')
         if class_id is not None:
             section = db.query(CourseClass).filter(
@@ -166,12 +186,5 @@ def assert_course_capacity(
                 raise CapacityError(f'Kuota kelas {section.class_name} untuk {code} sudah penuh.')
             continue
 
-        used = course_occupancy(
-            db,
-            code,
-            exclude_plan_id=exclude_plan_id,
-            exclude_kprs_request_id=exclude_kprs_request_id,
-        )
-        capacity = course.capacity if course.capacity is not None else 40
-        if used >= capacity:
+        if course_used >= course_capacity:
             raise CapacityError(f'Kuota mata kuliah {code} sudah penuh.')
