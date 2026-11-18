@@ -694,6 +694,7 @@ def test_admin_can_manually_link_lecturer_directory_profile_to_account():
     db.add_all([first_account, second_account, first_profile, second_profile])
     db.commit()
     first_account_id = first_account.id
+    second_account_id = second_account.id
     first_profile_id = first_profile.id
     second_profile_id = second_profile.id
     db.close()
