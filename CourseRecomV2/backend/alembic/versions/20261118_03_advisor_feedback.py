@@ -26,7 +26,7 @@ def upgrade() -> None:
         sa.Column('id', sa.Integer(), primary_key=True, nullable=False),
         sa.Column('student_id', sa.Integer(), sa.ForeignKey('users.id'), nullable=False),
         sa.Column('study_plan_id', sa.Integer(), sa.ForeignKey('study_plans.id'), nullable=False),
-        sa.Column('reviewer_id', sa.Integer(), sa.ForeignKey('users.id'), nullable=False),
+        sa.Column('reviewer_id', sa.Integer(), sa.ForeignKey('users.id'), nullable=True),
         sa.Column('semester', sa.Integer(), nullable=False),
         sa.Column('course_code', sa.String(length=20), nullable=False),
         sa.Column('reason', sa.Text(), nullable=False),
