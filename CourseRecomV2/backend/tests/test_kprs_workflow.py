@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 from app.database import SessionLocal
 from app.deps import create_access_token, get_password_hash
 from app.main import app
-from app.models import AuditLog, Course, KhsDocument, KprsRequest, StudentRecord, StudyPlan, SystemSetting, User
+from app.models import AdvisorCourseFeedback, AuditLog, Course, KhsDocument, KprsRequest, StudentRecord, StudyPlan, SystemSetting, User
 
 
 def test_kprs_revalidates_reserves_capacity_and_releases_cancelled_seats():
@@ -208,6 +208,9 @@ def test_kprs_revalidates_reserves_capacity_and_releases_cancelled_seats():
         ]
         db.query(KprsRequest).filter(
             KprsRequest.study_plan_id.in_(plan_ids),
+        ).delete(synchronize_session=False)
+        db.query(AdvisorCourseFeedback).filter(
+            AdvisorCourseFeedback.study_plan_id.in_(plan_ids),
         ).delete(synchronize_session=False)
         db.query(StudyPlan).filter(StudyPlan.id.in_(plan_ids)).delete(synchronize_session=False)
         db.query(KhsDocument).filter(KhsDocument.student_id.in_(student_ids)).delete(synchronize_session=False)
