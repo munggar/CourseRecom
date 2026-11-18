@@ -100,7 +100,6 @@ def list_parallel_classes(
         .join(Room, Room.code == CourseClass.room)
         .filter(
             Course.is_active.is_(True),
-            CourseClass.is_open.is_(True),
             Room.is_active.is_(True),
             CourseClass.semester == str(semester),
         )
