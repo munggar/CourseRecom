@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.deps import get_db, require_roles
-from app.models import Course, KhsDocument, KrsDocument, OfficialKrsDocument, StudentRecord, StudyPlan, User, KprsRequest
+from app.models import AdvisorCourseFeedback, Course, KhsDocument, KrsDocument, OfficialKrsDocument, StudentRecord, StudyPlan, User, KprsRequest
 from app.schemas import KhsConfirm, ProfileUpdate, RecommendationItem, StudyPlanSubmit, StudyPlanUpdate, KprsMutation
 from app.services.khs_parser import (
     GRADE_POINTS,
@@ -543,7 +543,25 @@ def list_my_study_plans(
         .order_by(StudyPlan.created_at.desc(), StudyPlan.id.desc())
         .all()
     )
-    return [_serialize_study_plan(plan) for plan in plans]
+    serialized = []
+    for plan in plans:
+        item = _serialize_study_plan(plan)
+        item['advisor_feedback'] = [
+            {
+                'course_code': feedback.course_code,
+                'reason': feedback.reason,
+                'reviewed_at': feedback.created_at.isoformat(),
+            }
+            for feedback in db.query(AdvisorCourseFeedback)
+            .filter(
+                AdvisorCourseFeedback.study_plan_id == plan.id,
+                AdvisorCourseFeedback.student_id == current_user.id,
+            )
+            .order_by(AdvisorCourseFeedback.created_at.desc(), AdvisorCourseFeedback.id.desc())
+            .all()
+        ]
+        serialized.append(item)
+    return serialized
 
 
 @router.get('/mahasiswa/rencana-studi/{plan_id}')
@@ -552,7 +570,23 @@ def get_my_study_plan(
     current_user: User = Depends(require_roles('mahasiswa')),
     db: Session = Depends(get_db),
 ):
-    return _serialize_study_plan(_owned_study_plan(db, plan_id, current_user.id))
+    plan = _owned_study_plan(db, plan_id, current_user.id)
+    item = _serialize_study_plan(plan)
+    item['advisor_feedback'] = [
+        {
+            'course_code': feedback.course_code,
+            'reason': feedback.reason,
+            'reviewed_at': feedback.created_at.isoformat(),
+        }
+        for feedback in db.query(AdvisorCourseFeedback)
+        .filter(
+            AdvisorCourseFeedback.study_plan_id == plan.id,
+            AdvisorCourseFeedback.student_id == current_user.id,
+        )
+        .order_by(AdvisorCourseFeedback.created_at.desc(), AdvisorCourseFeedback.id.desc())
+        .all()
+    ]
+    return item
 
 
 @router.patch('/mahasiswa/rencana-studi/{plan_id}')

@@ -10,6 +10,7 @@ from app.database import SessionLocal, ensure_schema
 from app.deps import create_access_token, get_password_hash
 from app.main import app
 from app.models import (
+    AdvisorCourseFeedback,
     AuditLog,
     Course,
     KhsDocument,
@@ -335,15 +336,21 @@ def test_student_registration_creates_student_only_account():
         response = client.post('/api/auth/register', json={
             'nim': nim,
             'full_name': 'Mahasiswa Baru',
+            'program_study': 'Sistem dan Teknologi Informasi',
+            'interests': 'Manajemen Teknologi Informasi',
             'password': 'password-baru-123',
             'role': 'admin',
         })
         assert response.status_code == 201, response.text
         assert response.json()['role'] == 'mahasiswa'
+        assert response.json()['program_study'] == 'Sistem dan Teknologi Informasi'
+        assert response.json()['interests'] == 'Manajemen Teknologi Informasi'
 
         duplicate = client.post('/api/auth/register', json={
             'nim': nim,
             'full_name': 'Nama Lain',
+            'program_study': 'Sistem dan Teknologi Informasi',
+            'interests': 'Manajemen Teknologi Informasi',
             'password': 'password-baru-123',
         })
         assert duplicate.status_code == 409
@@ -387,6 +394,8 @@ def test_student_registration_enforces_numeric_angkatan_and_active_academic_year
     non_numeric = client.post('/api/auth/register', json={
         'nim': f'NEW{uuid4().hex[:12]}',
         'full_name': 'Mahasiswa Angkatan Tidak Valid',
+        'program_study': 'Sistem dan Teknologi Informasi',
+        'interests': 'Manajemen Teknologi Informasi',
         'angkatan': f'{max_year}A',
         'password': 'password-baru-123',
     })
@@ -395,6 +404,8 @@ def test_student_registration_enforces_numeric_angkatan_and_active_academic_year
     future_year = client.post('/api/auth/register', json={
         'nim': f'NEW{uuid4().hex[:12]}',
         'full_name': 'Mahasiswa Angkatan Masa Depan',
+            'program_study': 'Sistem dan Teknologi Informasi',
+            'interests': 'Manajemen Teknologi Informasi',
         'angkatan': str(max_year + 1),
         'password': 'password-baru-123',
     })
@@ -594,8 +605,18 @@ def test_teacher_reviews_submitted_study_plan_with_guidance_note():
         sks=3,
         semester=4,
         available_semesters='4',
-        category='Wajib',
+        category='Pilihan',
         prerequisite_codes='TST301',
+        is_active=True,
+    ))
+    db.add(Course(
+        code='TST402',
+        name='Analisis Proses Bisnis',
+        sks=3,
+        semester=4,
+        available_semesters='4',
+        category='Pilihan',
+        prerequisite_codes='',
         is_active=True,
     ))
     db.add(StudentRecord(
@@ -656,17 +677,36 @@ def test_teacher_reviews_submitted_study_plan_with_guidance_note():
         revision = client.patch(
             f'/api/dosen/rencana-studi/{plan_id}',
             headers=teacher_headers,
-            json={'status': 'revision_requested', 'advisor_note': 'Tinjau kembali beban SKS.'},
+            json={'status': 'revision_requested', 'advisor_note': 'Tinjau kembali beban SKS.', 'rejected_course_codes': ['TST401']},
         )
         assert revision.status_code == 200
         assert revision.json()['status'] == 'revision_requested'
         assert revision.json()['advisor_note'] == 'Tinjau kembali beban SKS.'
+        feedback_rows = db.query(AdvisorCourseFeedback).filter(
+            AdvisorCourseFeedback.study_plan_id == plan_id,
+        ).all()
+        assert len(feedback_rows) == 1
+        assert feedback_rows[0].course_code == 'TST401'
+        assert feedback_rows[0].reason == 'Tinjau kembali beban SKS.'
+        student_plans = client.get('/api/mahasiswa/rencana-studi', headers=student_headers)
+        assert student_plans.status_code == 200
+        assert student_plans.json()[0]['advisor_feedback'][0]['course_code'] == 'TST401'
+
+        replacement = client.patch(
+            f'/api/mahasiswa/rencana-studi/{plan_id}',
+            headers=student_headers,
+            json={'course_codes': ['TST402']},
+        )
+        assert replacement.status_code == 200, replacement.text
+        alternatives = client.get('/api/rekomendasi', headers=student_headers)
+        assert alternatives.status_code == 200, alternatives.text
+        assert all(item['code'] != 'TST401' for item in alternatives.json())
 
         resubmitted = client.post(
             f'/api/mahasiswa/rencana-studi/{plan_id}/submit',
             headers=student_headers,
         )
-        assert resubmitted.status_code == 200
+        assert resubmitted.status_code == 200, resubmitted.text
         assert resubmitted.json()['status'] == 'pending'
 
         approved = client.patch(
@@ -685,10 +725,11 @@ def test_teacher_reviews_submitted_study_plan_with_guidance_note():
     finally:
         db = SessionLocal()
         try:
+            db.query(AdvisorCourseFeedback).filter(AdvisorCourseFeedback.study_plan_id == plan_id).delete()
             db.query(StudyPlan).filter(StudyPlan.id == plan_id).delete()
             db.query(KhsDocument).filter(KhsDocument.student_id == student_id).delete()
             db.query(StudentRecord).filter(StudentRecord.student_id == student_id).delete()
-            db.query(Course).filter(Course.code == 'TST401').delete()
+            db.query(Course).filter(Course.code.in_(['TST401', 'TST402'])).delete()
             db.query(AuditLog).filter(
                 AuditLog.actor_id.in_([student_id, teacher_id]),
             ).delete(synchronize_session=False)

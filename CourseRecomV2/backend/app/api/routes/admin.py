@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.deps import get_db, require_roles
 from app.models import (
+    AdvisorCourseFeedback,
     Course,
     KhsDocument,
     RecommendationCache,
@@ -145,6 +146,9 @@ def delete_lecturer(
         raise HTTPException(status_code=404, detail='Akun dosen tidak ditemukan.')
     db.query(User).filter(User.advisor_id == lecturer.id).update({'advisor_id': None}, synchronize_session=False)
     db.query(CourseClass).filter(CourseClass.lecturer_id == lecturer.id).update({'lecturer_id': None}, synchronize_session=False)
+    db.query(AdvisorCourseFeedback).filter(AdvisorCourseFeedback.reviewer_id == lecturer.id).update(
+        {'reviewer_id': None}, synchronize_session=False,
+    )
     write_audit(db, current_user, 'lecturer_deleted', 'user', lecturer.id, {'nim': lecturer.nim}, None)
     db.delete(lecturer)
     db.commit()
@@ -347,6 +351,10 @@ def delete_student(
         db.query(KprsRequest).filter(KprsRequest.student_id == student.id).delete(
             synchronize_session=False,
         )
+        db.query(AdvisorCourseFeedback).filter(
+            (AdvisorCourseFeedback.student_id == student.id)
+            | (AdvisorCourseFeedback.reviewer_id == student.id),
+        ).delete(synchronize_session=False)
         db.query(StudyPlan).filter(StudyPlan.reviewer_id == student.id).update(
         {'reviewer_id': None},
         synchronize_session=False,

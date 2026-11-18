@@ -6,7 +6,7 @@ from collections import defaultdict
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.models import Course, KhsDocument, RecommendationModelVersion, StudentRecord, User
+from app.models import AdvisorCourseFeedback, Course, KhsDocument, RecommendationModelVersion, StudentRecord, User
 from app.services.time_utils import utc_now_naive
 from app.services.khs_parser import GRADE_POINTS
 from app.services.validation import get_sks_quota
@@ -26,39 +26,54 @@ def is_mandatory_course(course: Course) -> bool:
 
 
 INTEREST_ALIASES = {
-    'manajemen sistem informasi': {
-        'manajemen sistem informasi',
-        'manajemen & sistem informasi',
-        'peminatan manajemen si',
-        'peminatan msi',
-        'sistem informasi',
-        'information systems',
-        'msi',
+    'manajemen teknologi informasi': {
+        'manajemen teknologi informasi', 'manajemen sistem informasi',
+        'manajemen & sistem informasi', 'peminatan manajemen si',
+        'peminatan msi', 'sistem informasi', 'information systems', 'msi', 'mti',
     },
     'kecerdasan bisnis': {
-        'kecerdasan bisnis',
-        'peminatan kecerdasan bisnis',
-        'kb',
-        'data',
-        'data science',
-        'ai/ml',
-        'ai',
-        'artificial intelligence',
-        'machine learning',
-        'business intelligence',
-        'data analytics',
+        'kecerdasan bisnis', 'peminatan kecerdasan bisnis', 'kb', 'data',
+        'ai/ml', 'ai', 'artificial intelligence', 'machine learning',
+        'business intelligence', 'data analytics',
     },
+    'software engineer': {'software engineer', 'software engineering', 'rekayasa perangkat lunak', 'pengembangan perangkat lunak'},
+    'manajer proyek ti': {'manajer proyek ti', 'manajemen proyek ti', 'it project manager', 'technology project management'},
+    'data scientist': {'data scientist', 'data science', 'ilmu data', 'analitika data'},
+    'analisis dan rekayasa jaringan': {'analisis dan rekayasa jaringan', 'jaringan komputer', 'network engineering', 'network analysis'},
+    'perancangan ui ux': {'perancangan ui ux', 'ui ux', 'ui/ux', 'user interface', 'user experience', 'desain antarmuka'},
+    'manufaktur': {'manufaktur', 'manufacturing', 'proses produksi', 'produksi industri'},
+    'energi dan konversi energi': {'energi dan konversi energi', 'konversi energi', 'energy conversion', 'energi terbarukan', 'sistem energi'},
+    'material': {'material', 'materials engineering', 'rekayasa material', 'ilmu material'},
+    'sistem mekanikal': {'sistem mekanikal', 'mekanikal', 'mechanical systems', 'sistem mekanik'},
+    'teknik telekomunikasi': {'teknik telekomunikasi', 'telekomunikasi', 'telecommunication', 'komunikasi data'},
+    'pengembangan robotika': {'pengembangan robotika', 'robotika', 'robotics', 'robot'},
+    'pemeliharaan industri': {'pemeliharaan industri', 'industrial maintenance', 'maintenance', 'perawatan mesin'},
+    'manajemen proyek mekatronika': {'manajemen proyek mekatronika', 'mechatronics project manager', 'manajemen proyek mekatronika'},
 }
 
 INTEREST_TOPIC_MAP = {
-    'manajemen sistem informasi': {
-        'information_systems', 'application_development', 'database_management',
-        'it_infrastructure', 'enterprise_systems', 'it_governance', 'business_process',
+    'manajemen teknologi informasi': {
+        'information_systems', 'application_development', 'programming',
+        'database_management', 'it_infrastructure', 'enterprise_systems',
+        'it_governance', 'business_process',
     },
     'kecerdasan bisnis': {
         'data_analytics', 'business_intelligence', 'artificial_intelligence',
         'statistical_analysis', 'decision_support', 'data_mining', 'database_management',
     },
+    'software engineer': {'application_development', 'software_architecture', 'software_testing', 'programming'},
+    'manajer proyek ti': {'project_management', 'systems_engineering', 'it_governance'},
+    'data scientist': {'data_analytics', 'statistical_analysis', 'data_mining', 'artificial_intelligence'},
+    'analisis dan rekayasa jaringan': {'it_infrastructure', 'networking', 'cybersecurity', 'cloud_computing'},
+    'perancangan ui ux': {'user_experience', 'interface_design', 'human_computer_interaction', 'application_development'},
+    'manufaktur': {'manufacturing', 'production_systems', 'cad_cam', 'industrial_engineering'},
+    'energi dan konversi energi': {'energy_conversion', 'thermodynamics', 'heat_transfer', 'fluid_mechanics'},
+    'material': {'materials_engineering', 'metallurgy', 'material_testing'},
+    'sistem mekanikal': {'mechanical_systems', 'thermodynamics', 'fluid_mechanics', 'machine_design'},
+    'teknik telekomunikasi': {'telecommunications', 'networking', 'wireless_communications', 'optical_communications'},
+    'pengembangan robotika': {'robotics', 'control_systems', 'embedded_systems', 'sensors', 'industrial_automation'},
+    'pemeliharaan industri': {'industrial_maintenance', 'reliability_engineering', 'mechanical_systems'},
+    'manajemen proyek mekatronika': {'project_management', 'systems_engineering', 'mechatronics', 'industrial_engineering'},
 }
 
 COURSE_TOPIC_KEYWORDS = {
@@ -116,6 +131,46 @@ COURSE_TOPIC_KEYWORDS = {
         'data mining', 'text mining', 'sentiment analysis', 'analisis sentimen',
         'pattern recognition', 'pengenalan pola',
     ),
+    'software_architecture': ('arsitektur perangkat lunak', 'software architecture', 'design pattern', 'microservices'),
+    'software_testing': ('software testing', 'pengujian perangkat lunak', 'quality assurance', 'unit testing'),
+    'programming': ('pemrograman', 'programming', 'algoritma', 'coding', 'struktur data'),
+    'networking': ('jaringan komputer', 'computer network', 'routing', 'switching', 'network protocol'),
+    'cybersecurity': ('keamanan jaringan', 'keamanan siber', 'cybersecurity', 'network security'),
+    'cloud_computing': ('cloud computing', 'komputasi awan', 'virtualisasi', 'cloud infrastructure'),
+    'user_experience': ('user experience', 'usability', 'pengalaman pengguna', 'interaksi manusia komputer'),
+    'interface_design': ('user interface', 'ui design', 'ux design', 'desain antarmuka', 'prototyping'),
+    'human_computer_interaction': ('human computer interaction', 'interaksi manusia dan komputer', 'hci'),
+    'manufacturing': ('manufaktur', 'manufacturing', 'proses manufaktur', 'mesin produksi'),
+    'materials_engineering': ('material teknik', 'rekayasa material', 'material engineering', 'materials engineering', 'ilmu material'),
+    'metallurgy': ('metalurgi', 'metallurgy', 'logam dan paduan'),
+    'material_testing': ('pengujian material', 'material testing', 'uji material'),
+    'machine_design': ('perancangan mesin', 'machine design', 'elemen mesin'),
+    'production_systems': ('sistem produksi', 'production system', 'perencanaan produksi', 'pengendalian produksi'),
+    'cad_cam': ('cad cam', 'computer aided design', 'computer aided manufacturing', 'gambar teknik'),
+    'industrial_engineering': ('rekayasa industri', 'industrial engineering', 'sistem industri'),
+    'energy_conversion': ('konversi energi', 'energy conversion', 'pembangkit listrik', 'energi terbarukan'),
+    'thermodynamics': ('termodinamika', 'thermodynamics', 'mesin kalor'),
+    'heat_transfer': ('perpindahan panas', 'heat transfer', 'perpindahan kalor'),
+    'fluid_mechanics': ('mekanika fluida', 'fluid mechanics', 'pompa', 'turbin'),
+    'telecommunications': ('telekomunikasi', 'telecommunication', 'komunikasi data'),
+    'satellite_communications': ('satelit', 'satellite communication', 'komunikasi satelit'),
+    'optical_communications': ('serat optik', 'fiber optic', 'optical communication', 'komunikasi optik'),
+    'wireless_communications': ('nirkabel', 'wireless', 'radio frequency', 'komunikasi seluler'),
+    'antenna_systems': ('antena', 'antenna', 'antenna array', 'propagasi gelombang'),
+    'industrial_automation': ('otomasi industri', 'industrial automation', 'plc', 'scada'),
+    'robotics': ('robotika', 'robotics', 'robot', 'manipulator'),
+    'iot': ('internet of things', 'iot', 'industrial internet of things', 'iiot'),
+    'smart_manufacturing': ('smart manufacturing', 'industri cerdas', 'industry 4.0', 'smart factory'),
+    'control_systems': ('sistem kendali', 'control system', 'kontrol otomatis'),
+    'plc_scada': ('plc', 'scada', 'programmable logic controller'),
+    'embedded_systems': ('embedded system', 'sistem tertanam', 'mikrokontroler'),
+    'sensors': ('sensor', 'instrumentasi', 'transduser'),
+    'industrial_maintenance': ('pemeliharaan mesin', 'maintenance', 'perawatan industri'),
+    'reliability_engineering': ('reliability', 'keandalan mesin', 'maintenance management'),
+    'mechanical_systems': ('sistem mekanik', 'mechanical system', 'elemen mesin'),
+    'project_management': ('manajemen proyek', 'project management', 'perencanaan proyek'),
+    'systems_engineering': ('systems engineering', 'rekayasa sistem', 'integrasi sistem'),
+    'mechatronics': ('mekatronika', 'mechatronics', 'sistem mekatronika'),
 }
 
 
@@ -134,6 +189,13 @@ def _interest_groups(interests: str) -> set[str]:
     for raw_interest in (interests or '').split(','):
         normalized = _normalize_text(raw_interest)
         if not normalized:
+            continue
+        exact_group = next(
+            (group for group in INTEREST_ALIASES if _normalize_text(group) == normalized),
+            None,
+        )
+        if exact_group:
+            selected.add(exact_group)
             continue
         for group, aliases in INTEREST_ALIASES.items():
             normalized_aliases = {_normalize_text(alias) for alias in aliases | {group}}
@@ -375,12 +437,29 @@ def _peer_course_scores(
             weighted_scores[identity] += similarity
             counts[identity][0] += 1
 
+    feedback_by_peer: dict[int, set[str]] = defaultdict(set)
+    feedback_rows = (
+        db.query(AdvisorCourseFeedback)
+        .filter(AdvisorCourseFeedback.semester == target_semester)
+        .all()
+    )
+    for feedback in feedback_rows:
+        feedback_by_peer[feedback.student_id].add(str(feedback.course_code).strip().upper())
+
+    for similarity, next_semester_records in peers:
+        peer_id = next_semester_records[0].student_id if next_semester_records else None
+        if peer_id is None:
+            continue
+        for rejected_code in feedback_by_peer.get(peer_id, set()):
+            rejected_identity = _course_identity(rejected_code)
+            weighted_scores[rejected_identity] -= similarity * 0.75
+
     peer_total = len(peers)
     for count in counts.values():
         count[1] = peer_total
 
     normalized = {
-        identity: score / total_similarity
+        identity: max(0.0, score / total_similarity)
         for identity, score in weighted_scores.items()
     } if total_similarity else {}
     return normalized, {
@@ -560,6 +639,19 @@ def build_recommendation_result(db: Session, student: User) -> dict:
     similarities, cohort_counts, peer_count = _peer_course_scores(
         db, student, target_semester, records, catalog_courses
     )
+    advisor_feedback_rows = (
+        db.query(AdvisorCourseFeedback)
+        .filter(
+            AdvisorCourseFeedback.student_id == student.id,
+            AdvisorCourseFeedback.semester == target_semester,
+        )
+        .order_by(AdvisorCourseFeedback.created_at.desc(), AdvisorCourseFeedback.id.desc())
+        .all()
+    )
+    advisor_feedback_by_code = {}
+    for feedback in advisor_feedback_rows:
+        advisor_feedback_by_code.setdefault(feedback.course_code.upper(), feedback)
+
     target_courses = [
         course for course in catalog_courses
         if target_semester in {
@@ -739,6 +831,23 @@ def build_recommendation_result(db: Session, student: User) -> dict:
         else:
             recommendations.append(item)
 
+    advisor_rejected = []
+    for item in recommendations:
+        feedback = advisor_feedback_by_code.get(item['code'].upper())
+        if feedback:
+            item['advisor_feedback'] = {
+                'reason': feedback.reason,
+                'reviewed_at': feedback.created_at.isoformat(),
+            }
+            item['valid'] = False
+            item['reason_block'] = f"Ditolak Dosen PA sebelumnya: {feedback.reason}"
+            item['reasons'].append('Dikeluarkan dari rekomendasi karena umpan balik negatif Dosen PA')
+            advisor_rejected.append(item)
+    if advisor_rejected:
+        rejected.extend(advisor_rejected)
+        rejected_codes = {item['code'] for item in advisor_rejected}
+        recommendations = [item for item in recommendations if item['code'] not in rejected_codes]
+
     recommendations.sort(key=lambda item: item['score'], reverse=True)
     mandatory_courses.sort(key=lambda item: item['code'])
     rejected.sort(key=lambda item: item['score'], reverse=True)
@@ -790,6 +899,7 @@ def build_recommendation_result(db: Session, student: User) -> dict:
         'taken_course_codes': sorted(all_codes),
         'not_taken_course_codes': sorted(catalog_codes - all_codes),
         'interests': student.interests or '',
+        'advisor_feedback_samples': len(advisor_feedback_rows),
     }
     return {
         'status': 'ready',
@@ -813,6 +923,11 @@ def train_similarity_model(db: Session) -> RecommendationModelVersion:
     for record in records:
         if _passed(record):
             by_student_semester[(record.student_id, record.semester)].add(record.course_code)
+
+    negative_feedback = db.query(AdvisorCourseFeedback).all()
+    negative_by_student_semester: dict[tuple[int, int], set[str]] = defaultdict(set)
+    for feedback in negative_feedback:
+        negative_by_student_semester[(feedback.student_id, feedback.semester)].add(feedback.course_code)
 
     episodes = []
     for student_id in students_with_history:
@@ -842,6 +957,8 @@ def train_similarity_model(db: Session) -> RecommendationModelVersion:
             if similarity:
                 for code in peer_courses:
                     votes[code] += similarity
+                for code in negative_by_student_semester.get((peer_id, semester), set()):
+                    votes[code] -= similarity * 0.75
         ranked = [code for code, _ in sorted(votes.items(), key=lambda item: item[1], reverse=True)[:5]]
         if not ranked:
             continue
@@ -857,6 +974,7 @@ def train_similarity_model(db: Session) -> RecommendationModelVersion:
         'precision_at_5': round(sum(precisions) / len(precisions), 4) if precisions else None,
         'recall_at_5': round(sum(recalls) / len(recalls), 4) if recalls else None,
         'evaluation_samples': len(precisions),
+        'advisor_negative_feedback_samples': len(negative_feedback),
         'evaluation_status': 'evaluated' if precisions else 'insufficient_history',
     }
     version_number = db.query(RecommendationModelVersion).count() + 1

@@ -72,6 +72,7 @@ def test_fresh_migration_is_repeatable_and_creates_constraints(tmp_path):
     engine = create_engine(database_url)
     inspector = inspect(engine)
     assert 'kprs_requests' in inspector.get_table_names()
+    assert 'advisor_course_feedback' in inspector.get_table_names()
     assert 'advisor_id' in {
         column['name'] for column in inspector.get_columns('users')
     }

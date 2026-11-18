@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 from app.database import SessionLocal
 from app.deps import create_access_token, get_password_hash
 from app.main import app
-from app.models import AuditLog, Course, KhsDocument, KprsRequest, StudentRecord, StudyPlan, SystemSetting, User
+from app.models import AdvisorCourseFeedback, AuditLog, Course, KhsDocument, KprsRequest, StudentRecord, StudyPlan, SystemSetting, User
 
 
 def test_kprs_revalidates_reserves_capacity_and_releases_cancelled_seats():
@@ -62,7 +62,7 @@ def test_kprs_revalidates_reserves_capacity_and_releases_cancelled_seats():
             sks=3,
             semester=3,
             available_semesters='3',
-            category='Wajib',
+            category='Pilihan',
             capacity=1,
             prerequisite_codes='',
             is_active=True,
@@ -169,7 +169,7 @@ def test_kprs_revalidates_reserves_capacity_and_releases_cancelled_seats():
         revision = client.patch(
             f'/api/dosen/rencana-studi/{student_b_plan_id}',
             headers=advisor_headers,
-            json={'status': 'revision_requested', 'advisor_note': 'Perbarui pilihan mata kuliah.'},
+            json={'status': 'revision_requested', 'advisor_note': 'Perbarui pilihan mata kuliah.', 'rejected_course_codes': [replacement_code]},
         )
         assert revision.status_code == 200
         second_request = client.post(
@@ -208,6 +208,9 @@ def test_kprs_revalidates_reserves_capacity_and_releases_cancelled_seats():
         ]
         db.query(KprsRequest).filter(
             KprsRequest.study_plan_id.in_(plan_ids),
+        ).delete(synchronize_session=False)
+        db.query(AdvisorCourseFeedback).filter(
+            AdvisorCourseFeedback.study_plan_id.in_(plan_ids),
         ).delete(synchronize_session=False)
         db.query(StudyPlan).filter(StudyPlan.id.in_(plan_ids)).delete(synchronize_session=False)
         db.query(KhsDocument).filter(KhsDocument.student_id.in_(student_ids)).delete(synchronize_session=False)

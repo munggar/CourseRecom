@@ -72,9 +72,50 @@ const EMPTY_RECOMMENDATIONS = {
   semester_antara: [],
 };
 const INTEREST_OPTIONS = [
-  'Manajemen Sistem Informasi',
+  'Manajemen Teknologi Informasi',
   'Kecerdasan Bisnis',
+  'Software Engineer',
+  'Manajer Proyek TI',
+  'Data Scientist',
+  'Analisis dan Rekayasa Jaringan',
+  'Perancangan UI/UX',
+  'Manufaktur',
+  'Energi dan Konversi Energi',
+  'Material',
+  'Sistem Mekanikal',
+  'Teknik Telekomunikasi',
+  'Pengembangan Robotika',
+  'Pemeliharaan Industri',
+  'Manajemen Proyek Mekatronika',
 ];
+const PROGRAM_INTERESTS = {
+  'Sistem dan Teknologi Informasi': {
+    kind: 'Peminatan resmi program studi',
+    options: ['Manajemen Teknologi Informasi', 'Kecerdasan Bisnis'],
+    note: 'Mengikuti peminatan pada laman resmi STI UHAMKA. Label Manajemen Sistem Informasi adalah data lama di CourseRecom.',
+  },
+  'Teknik Informatika': {
+    kind: 'Arah minat berdasarkan profil lulusan',
+    options: ['Software Engineer', 'Manajer Proyek TI', 'Data Scientist', 'Analisis dan Rekayasa Jaringan', 'Perancangan UI/UX'],
+    note: 'Dirangkum dari profil lulusan dan CPL Prodi Teknik Informatika, bukan peminatan formal.',
+  },
+  'Teknik Mesin': {
+    kind: 'Arah minat berdasarkan bidang keilmuan',
+    options: ['Manufaktur', 'Energi dan Konversi Energi', 'Material', 'Sistem Mekanikal'],
+    note: 'Mengacu pada bidang manufaktur, energi, material, dan mekanikal yang dipublikasikan Prodi Teknik Mesin, bukan peminatan formal.',
+  },
+  'Teknik Elektro': {
+    kind: 'Spesialisasi bidang program studi',
+    options: ['Teknik Telekomunikasi'],
+    note: 'Laman resmi Teknik Elektro menyebut spesialisasi bidang Teknik Telekomunikasi.',
+  },
+  'Teknologi Rekayasa Mekatronika': {
+    kind: 'Arah minat berdasarkan profil lulusan',
+    options: ['Pengembangan Robotika', 'Pemeliharaan Industri', 'Manajemen Proyek Mekatronika'],
+    note: 'Mengikuti tiga profil lulusan resmi TRM, bukan peminatan formal.',
+  },
+};
+const PROGRAM_STUDY_OPTIONS = Object.keys(PROGRAM_INTERESTS);
 const RECOMMENDATION_FACTOR_LABELS = {
   similar_students: 'Similar Students',
   academic_history: 'Academic History',
@@ -90,10 +131,12 @@ const RECOMMENDATION_FACTOR_HINTS = {
   course_pattern: 'Proporsi mahasiswa pembanding yang mengambil mata kuliah tersebut pada semester target.',
 };
 const LEGACY_INTERESTS = {
-  'manajemen sistem informasi': 'Manajemen Sistem Informasi',
-  'manajemen & sistem informasi': 'Manajemen Sistem Informasi',
-  'peminatan manajemen si': 'Manajemen Sistem Informasi',
-  msi: 'Manajemen Sistem Informasi',
+  'manajemen sistem informasi': 'Manajemen Teknologi Informasi',
+  'manajemen teknologi informasi': 'Manajemen Teknologi Informasi',
+  'mti': 'Manajemen Teknologi Informasi',
+  'manajemen & sistem informasi': 'Manajemen Teknologi Informasi',
+  'peminatan manajemen si': 'Manajemen Teknologi Informasi',
+  msi: 'Manajemen Teknologi Informasi',
   'kecerdasan bisnis': 'Kecerdasan Bisnis',
   'peminatan kecerdasan bisnis': 'Kecerdasan Bisnis',
   kb: 'Kecerdasan Bisnis',
@@ -110,7 +153,7 @@ function canonicalizeInterests(interests) {
       LEGACY_INTERESTS[interest.trim().toLowerCase()]
     )).filter(Boolean),
   );
-  return INTEREST_OPTIONS.find((interest) => selected.has(interest)) || '';
+  return INTEREST_OPTIONS.find((interest) => selected.has(interest)) || interests.trim();
 }
 
 function isMandatoryCourse(course) {
@@ -278,7 +321,7 @@ function App() {
   const [authMode, setAuthMode] = useState('login');
   const [selectedRole, setSelectedRole] = useState('mahasiswa');
   const [form, setForm] = useState({ username: '', password: '' });
-  const [registrationForm, setRegistrationForm] = useState({ nim: '', username: '', full_name: '', program_study: '', angkatan: '', password: '', passwordConfirmation: '' });
+  const [registrationForm, setRegistrationForm] = useState({ nim: '', username: '', full_name: '', program_study: 'Sistem dan Teknologi Informasi', interests: 'Manajemen Sistem Informasi', angkatan: '', password: '', passwordConfirmation: '' });
   const [profile, setProfile] = useState(null);
   const [recommendationResult, setRecommendationResult] = useState(EMPTY_RECOMMENDATIONS);
   const recommendations = useMemo(
@@ -334,6 +377,7 @@ function App() {
   const [studyPlanBusy, setStudyPlanBusy] = useState(false);
   const studyPlanSubmissionRef = useRef(false);
   const [reviewNotes, setReviewNotes] = useState({});
+  const [reviewRejectedCourses, setReviewRejectedCourses] = useState({});
   const [courseList, setCourseList] = useState([]);
   const [editingCourseCode, setEditingCourseCode] = useState('');
   const [courseBusyCode, setCourseBusyCode] = useState('');
@@ -837,6 +881,7 @@ function App() {
           username: registrationForm.username || registrationForm.nim,
           full_name: registrationForm.full_name,
           program_study: registrationForm.program_study,
+          interests: registrationForm.interests,
           angkatan: registrationForm.angkatan,
           password: registrationForm.password,
         }),
@@ -846,7 +891,8 @@ function App() {
         nim: '',
         username: '',
         full_name: '',
-        program_study: '',
+        program_study: 'Sistem dan Teknologi Informasi',
+        interests: 'Manajemen Teknologi Informasi',
         angkatan: '',
         password: '',
         passwordConfirmation: '',
@@ -1481,11 +1527,11 @@ function App() {
     && recommendationResult.target_semester != null
     && plan.semester === recommendationResult.target_semester
   ));
-  const interestDistribution = INTEREST_OPTIONS.map((interest) => ({
+  const interestDistribution = [...new Set(
+    mentees.map((student) => canonicalizeInterests(student.interests || '')).filter(Boolean),
+  )].map((interest) => ({
     name: interest,
-    count: mentees.filter((student) => canonicalizeInterests(student.interests || '')
-      .split(',')
-      .includes(interest)).length,
+    count: mentees.filter((student) => canonicalizeInterests(student.interests || '') === interest).length,
   }));
   const mostPopularInterest = [...interestDistribution].sort((left, right) => right.count - left.count)[0];
   const pendingPlans = studyPlans.filter((plan) => plan.status === 'pending');
@@ -1591,13 +1637,22 @@ function App() {
   };
 
   const reviewStudyPlan = async (planId, status) => {
-    const advisorNote = reviewNotes[planId] ?? '';
+    const advisorNote = (reviewNotes[planId] ?? '').trim();
+    const rejectedCourseCodes = reviewRejectedCourses[planId] ?? [];
+    if (status === 'revision_requested' && advisorNote.length < 10) {
+      setActionMessage('Alasan revisi wajib diisi minimal 10 karakter.');
+      return;
+    }
+    if (status === 'revision_requested' && rejectedCourseCodes.length === 0) {
+      setActionMessage('Pilih minimal satu mata kuliah yang perlu direvisi.');
+      return;
+    }
     setStudyPlanBusy(true);
     setActionMessage('');
     try {
       const result = await apiRequest(`/dosen/rencana-studi/${planId}`, {
         method: 'PATCH',
-        body: JSON.stringify({ status, advisor_note: advisorNote }),
+        body: JSON.stringify({ status, advisor_note: advisorNote, rejected_course_codes: status === 'revision_requested' ? rejectedCourseCodes : [] }),
       });
       setStudyPlans((previousPlans) => previousPlans.map((plan) => (
         plan.id === planId
@@ -1614,8 +1669,8 @@ function App() {
 
   const reviewKprs = async (requestId, status) => {
     const note = kprsReviewNotes[requestId] ?? '';
-    if (!note.trim()) {
-      setActionMessage('Catatan keputusan KPRS wajib diisi.');
+    if (!note.trim() || (status !== 'approved' && note.trim().length < 10)) {
+      setActionMessage(status === 'approved' ? 'Catatan keputusan KPRS wajib diisi.' : 'Alasan revisi/penolakan KPRS wajib diisi minimal 10 karakter.');
       return;
     }
     setStudyPlanBusy(true);
@@ -2108,17 +2163,46 @@ function App() {
                 </table>
               </div>
               <label className="course-edit-field" style={{ marginTop: 14 }}>
-                Catatan / arahan dosen PA
+                Alasan revisi / arahan dosen PA
                 <textarea
                   rows="3"
+                  minLength="10"
                   maxLength="2000"
+                  placeholder="Jelaskan alasan akademik revisi (minimal 10 karakter)"
                   value={reviewNotes[plan.id] ?? plan.advisor_note ?? ''}
                   onChange={(event) => setReviewNotes((previousNotes) => ({
                     ...previousNotes,
                     [plan.id]: event.target.value,
                   }))}
                 />
+                <small className="muted">Wajib diisi minimal 10 karakter ketika meminta revisi. Catatan ini akan diteruskan kepada mahasiswa.</small>
               </label>
+              {plan.status !== 'approved' && (
+                <fieldset className="course-edit-field" style={{ marginTop: 10 }}>
+                  <legend>Mata kuliah yang perlu direvisi</legend>
+                  <p className="muted">Pilih mata kuliah yang ditolak/diminta untuk diganti. Mata kuliah wajib tidak dapat ditolak.</p>
+                  <div className="interest-options">
+                    {plan.courses.filter((course) => !isMandatoryCourse(course)).map((course) => {
+                      const selected = reviewRejectedCourses[plan.id] ?? [];
+                      return (
+                        <label key={course.code} className="interest-option">
+                          <input
+                            type="checkbox"
+                            checked={selected.includes(course.code)}
+                            onChange={(event) => setReviewRejectedCourses((previous) => ({
+                              ...previous,
+                              [plan.id]: event.target.checked
+                                ? [...selected, course.code]
+                                : selected.filter((code) => code !== course.code),
+                            }))}
+                          />
+                          <span>{course.name} ({course.code})</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </fieldset>
+              )}
               {plan.status !== 'approved' && (
                 <div className="preview-actions">
                   <button
@@ -2132,7 +2216,7 @@ function App() {
                   <button
                     className="btn outline"
                     type="button"
-                    disabled={studyPlanBusy || !(reviewNotes[plan.id] ?? plan.advisor_note ?? '').trim()}
+                    disabled={studyPlanBusy || (reviewNotes[plan.id] ?? plan.advisor_note ?? '').trim().length < 10 || !(reviewRejectedCourses[plan.id] ?? []).length}
                     onClick={() => reviewStudyPlan(plan.id, 'revision_requested')}
                   >
                     Kirim catatan revisi
@@ -2175,7 +2259,18 @@ function App() {
                 {latestStudyPlan.status === 'pending' ? 'Menunggu review' : latestStudyPlan.status === 'approved' ? 'Disetujui dosen PA' : 'Perlu revisi'}
               </span>
               <span>Rencana studi semester {latestStudyPlan.semester}</span>
-              {latestStudyPlan.advisor_note && <p><strong>Catatan dosen:</strong> {latestStudyPlan.advisor_note}</p>}
+              {latestStudyPlan.advisor_note && <p><strong>Catatan dosen PA:</strong> {latestStudyPlan.advisor_note}</p>}
+              {latestStudyPlan.advisor_feedback?.length > 0 && (
+                <div className="history-document" style={{ marginTop: 10 }}>
+                  <strong>{latestStudyPlan.status === 'revision_requested' ? 'Mata kuliah yang perlu diperbaiki' : 'Riwayat feedback dosen PA (digunakan model ML)'}</strong>
+                  {latestStudyPlan.advisor_feedback.map((feedback, index) => (
+                    <p key={`${feedback.course_code}-${index}`}>
+                      <strong>{feedback.course_code}</strong> — {feedback.reason}
+                    </p>
+                  ))}
+                  <p className="muted">Saran alternatif sudah diperbarui dengan mempertimbangkan catatan Dosen PA sebagai sinyal negatif pada rekomendasi berikutnya.</p>
+                </div>
+              )}
               {latestStudyPlan.status === 'approved' && (
                 <button
                   type="button"
@@ -2502,8 +2597,9 @@ function App() {
       return (
         <div className="card">
           <h3>Minat & Profil</h3>
-          <p className="muted">Pilih satu peminatan. Pilihan ini memengaruhi skor kecocokan mata kuliah pada rekomendasi.</p>
-          <div className="interest-options">{INTEREST_OPTIONS.map((interest) => {
+          <p className="muted">Pilih satu bidang minat sesuai program studi. Pilihan ini memengaruhi skor kecocokan mata kuliah pada rekomendasi.</p>
+          <p className="muted">{PROGRAM_INTERESTS[user?.program_study]?.kind || 'Bidang minat'} · {PROGRAM_INTERESTS[user?.program_study]?.note || 'Pilihan bidang minat mahasiswa.'}</p>
+          <div className="interest-options">{(PROGRAM_INTERESTS[user?.program_study]?.options || INTEREST_OPTIONS).map((interest) => {
             const selected = canonicalizeInterests(profileDraft) === interest;
             return (
               <label className="interest-option" key={interest}>
@@ -2937,7 +3033,27 @@ function App() {
                 </label>
                 <label>
                   <span className="muted">Program studi</span>
-                  <input maxLength="120" value={registrationForm.program_study} onChange={(e) => setRegistrationForm({ ...registrationForm, program_study: e.target.value })} />
+                  <select
+                    required
+                    value={registrationForm.program_study}
+                    onChange={(event) => {
+                      const program_study = event.target.value;
+                      const options = PROGRAM_INTERESTS[program_study]?.options || [];
+                      setRegistrationForm({ ...registrationForm, program_study, interests: options[0] || '' });
+                    }}
+                  >
+                    <option value="">Pilih program studi</option>
+                    {PROGRAM_STUDY_OPTIONS.map((program) => <option key={program} value={program}>{program}</option>)}
+                  </select>
+                </label>
+                <label>
+                  <span className="muted">{PROGRAM_INTERESTS[registrationForm.program_study]?.kind || 'Bidang minat'}</span>
+                  <select required value={registrationForm.interests} onChange={(event) => setRegistrationForm({ ...registrationForm, interests: event.target.value })}>
+                    {(PROGRAM_INTERESTS[registrationForm.program_study]?.options || []).map((interest) => <option key={interest} value={interest}>{interest}</option>)}
+                  </select>
+                  <small className="muted">{registrationForm.program_study === 'Sistem dan Teknologi Informasi'
+                    ? 'Mengikuti dua peminatan resmi STI: Manajemen Teknologi Informasi (MTI) dan Kecerdasan Bisnis (KB).'
+                    : 'Untuk program studi yang belum mempublikasikan jalur formal, pilihan ini dicatat sebagai bidang minat akademik.'}</small>
                 </label>
                 <label>
                   <span className="muted">Angkatan</span>
