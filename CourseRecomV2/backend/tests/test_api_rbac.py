@@ -777,7 +777,7 @@ def test_student_recommendations_separate_mandatory_courses_from_optional_recomm
         full_name='Mahasiswa Rekomendasi',
         role='mahasiswa',
         password_hash=get_password_hash('password-mhs'),
-        semester=1,
+        semester=4,
         ipk=3.5,
         interests='Kecerdasan Bisnis',
     )
@@ -785,8 +785,8 @@ def test_student_recommendations_separate_mandatory_courses_from_optional_recomm
         code=mandatory_code,
         name='Mata Kuliah Wajib Uji',
         sks=3,
-        semester=2,
-        available_semesters='2',
+        semester=5,
+        available_semesters='5',
         category='Inti Teknologi & Pemrograman',
         description='Wajib Semester 5',
         is_active=True,
@@ -795,8 +795,8 @@ def test_student_recommendations_separate_mandatory_courses_from_optional_recomm
         code=optional_code,
         name='Mata Kuliah Pilihan Uji',
         sks=3,
-        semester=2,
-        available_semesters='2',
+        semester=5,
+        available_semesters='5',
         category='Pilihan',
         is_active=True,
     )
@@ -808,7 +808,7 @@ def test_student_recommendations_separate_mandatory_courses_from_optional_recomm
         filename='rekomendasi-uji.json',
         sha256='e' * 64,
         status='confirmed',
-        parsed_data='{"metadata":{"current_semester":1,"ipk":3.5,"full_name":"Mahasiswa Rekomendasi"}}',
+        parsed_data='{"metadata":{"current_semester":4,"ipk":3.5,"full_name":"Mahasiswa Rekomendasi"}}',
         created_at=datetime.now(timezone.utc).replace(tzinfo=None),
     ))
     db.commit()
