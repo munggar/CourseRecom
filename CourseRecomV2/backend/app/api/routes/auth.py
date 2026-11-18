@@ -13,6 +13,7 @@ from app.models import SystemSetting, User
 from app.schemas import AccountProfileResponse, AccountProfileUpdate, PasswordChange, StudentRegistration, TokenResponse, UserLogin, UserOut
 from app.services.validation import get_sks_quota
 from app.services.audit import write_audit
+from app.services.program_interests import get_program_interest_catalog, validate_program_interest
 
 router = APIRouter()
 
@@ -30,6 +31,11 @@ def _academic_year_context(db: Session) -> dict[str, int | str]:
     }
 
 
+@router.get('/auth/program-interests')
+def get_program_interests():
+    return get_program_interest_catalog()
+
+
 @router.get('/auth/academic-year')
 def get_academic_year(db: Session = Depends(get_db)):
     return _academic_year_context(db)
@@ -38,6 +44,10 @@ def get_academic_year(db: Session = Depends(get_db)):
 @router.post('/auth/register', status_code=status.HTTP_201_CREATED, response_model=UserOut)
 def register_student(payload: StudentRegistration, db: Session = Depends(get_db)):
     academic_year = _academic_year_context(db)
+    try:
+        program_study, interests = validate_program_interest(payload.program_study, payload.interests)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     if payload.angkatan and int(payload.angkatan) > academic_year['max_angkatan']:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -53,7 +63,7 @@ def register_student(payload: StudentRegistration, db: Session = Depends(get_db)
         nim=payload.nim,
         full_name=payload.full_name,
         username=username,
-        program_study=payload.program_study.strip() or None,
+        program_study=program_study,
         angkatan=payload.angkatan.strip() or None,
         role='mahasiswa',
         password_hash=get_password_hash(payload.password),
@@ -61,7 +71,7 @@ def register_student(payload: StudentRegistration, db: Session = Depends(get_db)
         sks_lulus=0,
         sks_sisa=settings.total_curriculum_sks,
         kuota_sks=get_sks_quota(None),
-        interests='',
+        interests=interests,
         advisor_id=None,
     )
     db.add(student)
