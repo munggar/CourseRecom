@@ -71,10 +71,6 @@ const EMPTY_RECOMMENDATIONS = {
   rejected: [],
   semester_antara: [],
 };
-const INTEREST_OPTIONS = [
-  'Manajemen Sistem Informasi',
-  'Kecerdasan Bisnis',
-];
 const RECOMMENDATION_FACTOR_LABELS = {
   similar_students: 'Similar Students',
   academic_history: 'Academic History',
@@ -93,24 +89,39 @@ const LEGACY_INTERESTS = {
   'manajemen sistem informasi': 'Manajemen Sistem Informasi',
   'manajemen & sistem informasi': 'Manajemen Sistem Informasi',
   'peminatan manajemen si': 'Manajemen Sistem Informasi',
+  'manajemen teknologi informasi': 'Manajemen Sistem Informasi',
   msi: 'Manajemen Sistem Informasi',
+  mti: 'Manajemen Sistem Informasi',
   'kecerdasan bisnis': 'Kecerdasan Bisnis',
   'peminatan kecerdasan bisnis': 'Kecerdasan Bisnis',
   kb: 'Kecerdasan Bisnis',
-  data: 'Kecerdasan Bisnis',
-  'data science': 'Kecerdasan Bisnis',
-  'ai/ml': 'Kecerdasan Bisnis',
-  ai: 'Kecerdasan Bisnis',
-  'artificial intelligence': 'Kecerdasan Bisnis',
+  'business intelligence': 'Kecerdasan Bisnis',
 };
 
-function canonicalizeInterests(interests) {
-  const selected = new Set(
-    interests.split(',').map((interest) => (
-      LEGACY_INTERESTS[interest.trim().toLowerCase()]
-    )).filter(Boolean),
-  );
-  return INTEREST_OPTIONS.find((interest) => selected.has(interest)) || '';
+function normalizeAcademicLabel(value) {
+  return String(value || '').trim().toLowerCase().replace(/[\\W_]+/g, ' ').trim();
+}
+
+function findAcademicProgram(catalog, programStudy) {
+  const normalized = normalizeAcademicLabel(programStudy);
+  return (catalog?.programs || []).find((program) => (
+    normalizeAcademicLabel(program.value) === normalized
+    || (program.aliases || []).some((alias) => normalizeAcademicLabel(alias) === normalized)
+  )) || null;
+}
+
+function canonicalizeInterests(interests, programStudy, catalog) {
+  const program = findAcademicProgram(catalog, programStudy);
+  if (!program) return '';
+  const raw = String(interests || '').split(',')[0].trim();
+  const normalized = normalizeAcademicLabel(raw);
+  const legacy = LEGACY_INTERESTS[normalized] || raw;
+  const legacyNormalized = normalizeAcademicLabel(legacy);
+  return (program.interests || []).find((option) => (
+    normalizeAcademicLabel(option.value) === legacyNormalized
+    || normalizeAcademicLabel(option.label) === normalized
+    || (option.official_label && normalizeAcademicLabel(option.official_label) === normalized)
+  ))?.value || '';
 }
 
 function isMandatoryCourse(course) {
@@ -278,7 +289,12 @@ function App() {
   const [authMode, setAuthMode] = useState('login');
   const [selectedRole, setSelectedRole] = useState('mahasiswa');
   const [form, setForm] = useState({ username: '', password: '' });
-  const [registrationForm, setRegistrationForm] = useState({ nim: '', username: '', full_name: '', program_study: '', angkatan: '', password: '', passwordConfirmation: '' });
+  const [registrationForm, setRegistrationForm] = useState({ nim: '', username: '', full_name: '', program_study: '', interests: '', angkatan: '', password: '', passwordConfirmation: '' });
+  const [academicCatalog, setAcademicCatalog] = useState(null);
+  const [academicCatalogError, setAcademicCatalogError] = useState('');
+  const [reviewCourseSelections, setReviewCourseSelections] = useState({});
+  const [reviewReasonCategories, setReviewReasonCategories] = useState({});
+
   const [profile, setProfile] = useState(null);
   const [recommendationResult, setRecommendationResult] = useState(EMPTY_RECOMMENDATIONS);
   const recommendations = useMemo(
@@ -329,7 +345,7 @@ function App() {
   const [kprsRequests, setKprsRequests] = useState([]);
   const [menteeKprsRequests, setMenteeKprsRequests] = useState([]);
   const [kprsReviewNotes, setKprsReviewNotes] = useState({});
-  const [kprsDraft, setKprsDraft] = useState({ planId: '', courses: '', reason: '' });
+  const [kprsDraft, setKprsDraft] = useState({ planId: '', courses: '', reason: '', requestId: null });
   const hasPendingStudentPlan = studyPlans.some((plan) => plan.status === 'pending');
   const [studyPlanBusy, setStudyPlanBusy] = useState(false);
   const studyPlanSubmissionRef = useRef(false);
@@ -430,6 +446,18 @@ function App() {
         if (!cancelled) setAcademicYear(result);
       })
       .catch((error) => console.error('Academic year configuration could not be loaded:', error));
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    apiRequest('/auth/academic-catalog', { suppressLoader: true })
+      .then((result) => {
+        if (!cancelled) setAcademicCatalog(result);
+      })
+      .catch((error) => {
+        if (!cancelled) setAcademicCatalogError(error.message || 'Katalog Program Studi dan bidang minat gagal dimuat.');
+      });
     return () => { cancelled = true; };
   }, []);
 
@@ -837,6 +865,7 @@ function App() {
           username: registrationForm.username || registrationForm.nim,
           full_name: registrationForm.full_name,
           program_study: registrationForm.program_study,
+          interests: registrationForm.interests,
           angkatan: registrationForm.angkatan,
           password: registrationForm.password,
         }),
@@ -847,6 +876,7 @@ function App() {
         username: '',
         full_name: '',
         program_study: '',
+        interests: '',
         angkatan: '',
         password: '',
         passwordConfirmation: '',
@@ -889,7 +919,7 @@ function App() {
   };
 
   const openInterests = () => {
-    setProfileDraft(canonicalizeInterests(profile?.interests ?? user?.interests ?? ''));
+    setProfileDraft(canonicalizeInterests(profile?.interests ?? user?.interests ?? '', currentProgramStudy, academicCatalog));
     setView('minat');
   };
 
@@ -907,7 +937,7 @@ function App() {
     try {
       const updatedProfile = await apiRequest('/mahasiswa/profil', {
         method: 'PUT',
-        body: JSON.stringify({ interests: canonicalizeInterests(profileDraft) }),
+        body: JSON.stringify({ interests: canonicalizeInterests(profileDraft, currentProgramStudy, academicCatalog) }),
       });
 
       setProfile((previousProfile) => ({
@@ -1472,6 +1502,12 @@ function App() {
   };
 
   const dashboardProfile = profile || user;
+  const registrationProgram = findAcademicProgram(academicCatalog, registrationForm.program_study);
+  const registrationInterestOptions = registrationProgram?.interests || [];
+  const currentProgramStudy = user?.program_study || profile?.program_study || '';
+  const currentAcademicProgram = findAcademicProgram(academicCatalog, currentProgramStudy);
+  const currentInterestOptions = currentAcademicProgram?.interests || [];
+  const canonicalProfileInterest = canonicalizeInterests(profile?.interests ?? user?.interests ?? '', currentProgramStudy, academicCatalog);
   const curriculumLoading = user?.role === 'mahasiswa' && !curriculumLoaded;
   const totalDraftSks = draftCourses.reduce((total, course) => total + Number(course.sks || 0), 0);
   const studentIpk = profile?.ipk ?? user?.ipk;
@@ -1481,12 +1517,18 @@ function App() {
     && recommendationResult.target_semester != null
     && plan.semester === recommendationResult.target_semester
   ));
-  const interestDistribution = INTEREST_OPTIONS.map((interest) => ({
-    name: interest,
-    count: mentees.filter((student) => canonicalizeInterests(student.interests || '')
-      .split(',')
-      .includes(interest)).length,
-  }));
+  const interestCountMap = new Map();
+  mentees.forEach((student) => {
+    const interest = canonicalizeInterests(
+      student.interests || '',
+      student.program_study || '',
+      academicCatalog,
+    );
+    if (interest) interestCountMap.set(interest, (interestCountMap.get(interest) || 0) + 1);
+  });
+  const interestDistribution = [...interestCountMap.entries()]
+    .map(([name, count]) => ({ name, count }))
+    .sort((left, right) => right.count - left.count);
   const mostPopularInterest = [...interestDistribution].sort((left, right) => right.count - left.count)[0];
   const pendingPlans = studyPlans.filter((plan) => plan.status === 'pending');
   const latestStudyPlan = studyPlans[0] || null;
@@ -1890,7 +1932,7 @@ function App() {
                       <td>{student.full_name}</td>
                       <td>{student.semester ?? '—'}</td>
                       <td>{student.ipk ?? '—'}</td>
-                      <td>{canonicalizeInterests(student.interests || '').replaceAll(',', ', ') || 'Belum dipilih'}</td>
+                      <td>{canonicalizeInterests(student.interests || '', student.program_study || '', academicCatalog) || 'Belum dipilih'}</td>
                       <td>{student.khs_confirmed ? 'Terkonfirmasi' : 'Belum ada KHS'}</td>
                       <td>
                         <select
@@ -2086,7 +2128,7 @@ function App() {
               <div className="preview-header">
                 <div>
                   <h3>{plan.student_name} · {plan.student_nim}</h3>
-                  <p className="muted">Semester {plan.semester} · IPK {plan.student_ipk ?? '—'} · Peminatan {canonicalizeInterests(plan.student_interests || '').replaceAll(',', ', ') || 'belum dipilih'}</p>
+                  <p className="muted">Semester {plan.semester} · IPK {plan.student_ipk ?? '—'} · Peminatan {canonicalizeInterests(plan.student_interests || '', plan.student_program_study || '', academicCatalog) || 'belum dipilih'}</p>
                   <p className="muted">Diajukan {new Date(plan.created_at).toLocaleString('id-ID')} · diperbarui {new Date(plan.updated_at).toLocaleString('id-ID')}</p>
                 </div>
                 <span className={`status-pill ${plan.status === 'approved' ? 'status-disetujui' : plan.status === 'revision_requested' ? 'status-perhatian' : 'status-menunggu'}`}>
@@ -2502,25 +2544,33 @@ function App() {
       return (
         <div className="card">
           <h3>Minat & Profil</h3>
-          <p className="muted">Pilih satu peminatan. Pilihan ini memengaruhi skor kecocokan mata kuliah pada rekomendasi.</p>
-          <div className="interest-options">{INTEREST_OPTIONS.map((interest) => {
-            const selected = canonicalizeInterests(profileDraft) === interest;
-            return (
-              <label className="interest-option" key={interest}>
-                <input
-                  type="radio"
-                  name="student-interest"
-                  checked={selected}
-                  onChange={() => setProfileDraft(interest)}
-                />
-                {interest}
-              </label>
-            );
-          })}</div>
-          {!canonicalizeInterests(profileDraft) && (
-            <p className="muted" role="status">Pilih minimal satu peminatan sebelum menyimpan.</p>
+          <p className="muted">Pilihan minat disesuaikan dengan Program Studi {currentProgramStudy || 'mahasiswa'} dan digunakan sebagai salah satu sinyal content-based pada rekomendasi mata kuliah.</p>
+          {currentAcademicProgram?.interest_note && <p className="program-interest-note">{currentAcademicProgram.interest_note}</p>}
+          {currentInterestOptions.length > 0 ? (
+            <>
+              <div className="interest-options">{currentInterestOptions.map((interest) => {
+                const selected = canonicalizeInterests(profileDraft, currentProgramStudy, academicCatalog) === interest.value;
+                return (
+                  <label className="interest-option" key={interest.value}>
+                    <input
+                      type="radio"
+                      name="student-interest"
+                      checked={selected}
+                      onChange={() => setProfileDraft(interest.value)}
+                    />
+                    <span><strong>{interest.label}</strong>{interest.description && <small>{interest.description}</small>}
+                    {interest.official_label && <small className="muted">Nama resmi pada laman prodi: {interest.official_label}</small>}</span>
+                  </label>
+                );
+              })}</div>
+              {!canonicalizeInterests(profileDraft, currentProgramStudy, academicCatalog) && (
+                <p className="muted" role="status">Pilih satu bidang minat sebelum menyimpan.</p>
+              )}
+              <button className="btn primary" type="button" onClick={saveProfile} disabled={!canonicalizeInterests(profileDraft, currentProgramStudy, academicCatalog)}>Simpan Minat</button>
+            </>
+          ) : (
+            <p className="notice">Program Studi belum terdaftar atau belum dikenali. Hubungi Admin Akademik untuk memperbarui data program studi sebelum memilih minat.</p>
           )}
-          <button className="btn primary" type="button" onClick={saveProfile} disabled={!canonicalizeInterests(profileDraft)}>Simpan Minat</button>
         </div>
       );
     }
@@ -2534,7 +2584,7 @@ function App() {
             <label><span className="muted">Username</span><input value={accountProfileDraft.username} onChange={(event) => setAccountProfileDraft((draft) => ({ ...draft, username: event.target.value }))} /></label>
             <label><span className="muted">Email</span><input type="email" value={accountProfileDraft.email} onChange={(event) => setAccountProfileDraft((draft) => ({ ...draft, email: event.target.value }))} /></label>
             <label><span className="muted">Nomor telepon</span><input type="tel" maxLength="20" inputMode="tel" placeholder="+628123456789" value={accountProfileDraft.phone_number} onChange={(event) => setAccountProfileDraft((draft) => ({ ...draft, phone_number: event.target.value }))} /></label>
-            {(user?.role === 'mahasiswa' || user?.role === 'dosen') && <label><span className="muted">Program studi</span><input value={accountProfileDraft.program_study} onChange={(event) => setAccountProfileDraft((draft) => ({ ...draft, program_study: event.target.value }))} /></label>}
+            {(user?.role === 'mahasiswa' || user?.role === 'dosen') && <label><span className="muted">Program studi</span><input value={accountProfileDraft.program_study} readOnly={user?.role === 'mahasiswa' && Boolean(user?.program_study)} onChange={(event) => setAccountProfileDraft((draft) => ({ ...draft, program_study: event.target.value }))} />{user?.role === 'mahasiswa' && user?.program_study && <small className="muted">Perubahan program studi harus melalui Admin Akademik agar kurikulum dan histori rekomendasi tetap konsisten.</small>}</label>}
             {user?.role === 'mahasiswa' && <label><span className="muted">Angkatan</span><input value={accountProfileDraft.angkatan} onChange={(event) => setAccountProfileDraft((draft) => ({ ...draft, angkatan: event.target.value }))} /></label>}
           </div>
           <h4>Ubah password</h4>
@@ -2936,8 +2986,31 @@ function App() {
                   <input minLength="2" maxLength="120" autoComplete="username" value={registrationForm.username} placeholder="Default: NIM" onChange={(e) => setRegistrationForm({ ...registrationForm, username: e.target.value })} />
                 </label>
                 <label>
-                  <span className="muted">Program studi</span>
-                  <input maxLength="120" value={registrationForm.program_study} onChange={(e) => setRegistrationForm({ ...registrationForm, program_study: e.target.value })} />
+                  <span className="muted">Program studi FTII UHAMKA</span>
+                  <select required value={registrationForm.program_study} onChange={(event) => setRegistrationForm((previous) => ({
+                    ...previous,
+                    program_study: event.target.value,
+                    interests: '',
+                  }))}>
+                    <option value="">Pilih Program Studi</option>
+                    {(academicCatalog?.programs || []).map((program) => (
+                      <option key={program.value} value={program.value}>{program.value}</option>
+                    ))}
+                  </select>
+                  {academicCatalogError && <small className="error-text">{academicCatalogError}</small>}
+                </label>
+                <label>
+                  <span className="muted">Peminatan / bidang minat</span>
+                  <select required value={registrationForm.interests} disabled={!registrationProgram} onChange={(event) => setRegistrationForm((previous) => ({ ...previous, interests: event.target.value }))}>
+                    <option value="">{registrationProgram ? 'Pilih bidang minat' : 'Pilih Program Studi terlebih dahulu'}</option>
+                    {registrationInterestOptions.map((interest) => (
+                      <option key={interest.value} value={interest.value}>{interest.label}</option>
+                    ))}
+                  </select>
+                  {registrationProgram?.interest_note && <small className="muted">{registrationProgram.interest_note}</small>}
+                  {registrationInterestOptions.find((interest) => interest.value === registrationForm.interests)?.official_label && (
+                    <small className="muted">Nama pada sumber prodi: {registrationInterestOptions.find((interest) => interest.value === registrationForm.interests).official_label}</small>
+                  )}
                 </label>
                 <label>
                   <span className="muted">Angkatan</span>
