@@ -200,6 +200,57 @@ async function apiRequest(path, options = {}) {
   }
 }
 
+function AnimatedDonut({ title, value, percentage, subtitle, accent = 'teal' }) {
+  const [animate, setAnimate] = useState(false);
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => setAnimate(true));
+    return () => window.cancelAnimationFrame(frame);
+  }, [value, percentage]);
+  const safePercentage = Math.max(0, Math.min(100, Number(percentage) || 0));
+  return (
+    <article className="admin-donut-card">
+      <div className={`admin-donut admin-donut-${accent}`} style={{ '--donut-value': `${animate ? safePercentage : 0}%` }}>
+        <div className="admin-donut-center">
+          <strong>{value}</strong>
+          <span>{title}</span>
+        </div>
+      </div>
+      <div className="admin-donut-caption"><strong>{title}</strong><span>{subtitle}</span></div>
+    </article>
+  );
+}
+
+function SemesterCourseChart({ items = [] }) {
+  const [animate, setAnimate] = useState(false);
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => setAnimate(true));
+    return () => window.cancelAnimationFrame(frame);
+  }, [items]);
+  const maxCount = Math.max(1, ...items.map((item) => Number(item.count) || 0));
+  return (
+    <section className="admin-chart-card">
+      <div className="admin-chart-heading">
+        <div><h3>Distribusi Mata Kuliah per Semester</h3><p className="muted">Jumlah mata kuliah aktif yang tersedia pada setiap semester</p></div>
+      </div>
+      {items.length ? (
+        <div className="semester-chart" role="img" aria-label="Grafik jumlah mata kuliah semester satu sampai delapan">
+          {items.map((item) => {
+            const count = Number(item.count) || 0;
+            const height = count ? Math.max(4, (count / maxCount) * 100) : 0;
+            return (
+              <div className="semester-chart-column" key={item.semester}>
+                <strong>{count}</strong>
+                <div className="semester-chart-track"><span style={{ height: `${animate ? height : 0}%` }} /></div>
+                <span>Semester {item.semester}</span>
+              </div>
+            );
+          })}
+        </div>
+      ) : <p className="muted">Data mata kuliah belum tersedia.</p>}
+    </section>
+  );
+}
+
 function App() {
   const [user, setUser] = useState(null);
   const [view, setView] = useState('dashboard');
@@ -214,8 +265,8 @@ function App() {
     [recommendationResult.recommendations],
   );
   const mandatoryRecommendations = useMemo(
-    () => recommendations.filter(isMandatoryCourse),
-    [recommendations],
+    () => recommendationResult.mandatory_courses || recommendations.filter(isMandatoryCourse),
+    [recommendationResult.mandatory_courses, recommendations],
   );
   const optionalRecommendations = useMemo(
     () => recommendations.filter((item) => !isMandatoryCourse(item)),
@@ -228,6 +279,7 @@ function App() {
   const [curriculumError, setCurriculumError] = useState('');
   const [mentees, setMentees] = useState([]);
   const [adminAdvisors, setAdminAdvisors] = useState([]);
+  const [adminAnalytics, setAdminAnalytics] = useState(null);
   const [lecturerForm, setLecturerForm] = useState({
     nip: '', full_name: '', username: '', email: '', password: '', passwordConfirmation: '',
   });
@@ -384,14 +436,14 @@ function App() {
       && plan.semester === recommendationResult.target_semester
     ));
     if (recommendationResult.status !== 'ready' || hasApprovedPlan) return storedDraftCourses;
-    const requiredCourses = recommendations.filter(isMandatoryCourse);
+    const requiredCourses = mandatoryRecommendations;
     const existingCodes = new Set(storedDraftCourses.map((course) => course.code));
     const missingCourses = requiredCourses.filter((course) => !existingCodes.has(course.code));
     return missingCourses.length ? [...storedDraftCourses, ...missingCourses] : storedDraftCourses;
   }, [
     recommendationResult.status,
     recommendationResult.target_semester,
-    recommendations,
+    mandatoryRecommendations,
     storedDraftCourses,
     studyPlans,
   ]);
@@ -595,6 +647,7 @@ function App() {
           if (cancelled) return;
           setMentees(dashboard.students);
           setAdminAdvisors(lecturers);
+          setAdminAnalytics(dashboard.analytics || null);
         }
 
         if (user.role === 'admin') {
@@ -627,6 +680,28 @@ function App() {
     loadDashboardData();
     return () => { cancelled = true; };
   }, [user]);
+
+  useEffect(() => {
+    if (user?.role !== 'admin' || view !== 'dashboard') return undefined;
+    let active = true;
+    const refreshAdminAnalytics = async () => {
+      try {
+        const dashboard = await apiRequest('/admin/dashboard', { suppressLoader: true });
+        if (!active) return;
+        setMentees(dashboard.students || []);
+        setAdminAnalytics(dashboard.analytics || null);
+      } catch (error) {
+        console.error('Admin analytics refresh failed:', error);
+      }
+    };
+    const interval = window.setInterval(refreshAdminAnalytics, 30000);
+    window.addEventListener('focus', refreshAdminAnalytics);
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+      window.removeEventListener('focus', refreshAdminAnalytics);
+    };
+  }, [user, view]);
 
   const login = async (event) => {
     event.preventDefault();
@@ -785,6 +860,7 @@ function App() {
     setCurriculumError('');
     setMentees([]);
     setAdminAdvisors([]);
+    setAdminAnalytics(null);
     setStudyPlans([]);
     setCourseList([]);
     setKhsPreview(null);
@@ -1757,16 +1833,25 @@ function App() {
     }
 
     if (view === 'dashboard' && user.role === 'admin') {
-      const confirmedKhsCount = mentees.filter((student) => student.khs_confirmed).length;
+      const confirmedKhsCount = Number(adminAnalytics?.confirmed_khs_students ?? mentees.filter((student) => student.khs_confirmed).length);
+      const totalStudents = Number(adminAnalytics?.total_students ?? mentees.length);
+      const totalAdvisors = Number(adminAnalytics?.total_advisors ?? adminAdvisors.length);
+      const totalAcademicAccounts = Math.max(1, totalStudents + totalAdvisors);
+      const courseSemesterCounts = adminAnalytics?.courses_by_semester || Array.from({ length: 8 }, (_, index) => ({ semester: index + 1, count: 0 }));
       return (
         <div className="card">
           <h2>Dashboard Admin Prodi</h2>
           <p className="muted">Ringkasan akun mahasiswa dan dosen PA yang terdaftar.</p>
-          <div className="stat-grid">
-            <div className="stat"><small>Total mahasiswa</small><strong>{mentees.length}</strong></div>
-            <div className="stat"><small>KHS terkonfirmasi</small><strong>{confirmedKhsCount}</strong></div>
-            <div className="stat"><small>Total dosen PA</small><strong>{adminAdvisors.length}</strong></div>
+          <div className="admin-donut-grid">
+            <AnimatedDonut title="Total mahasiswa" value={totalStudents} percentage={(totalStudents / totalAcademicAccounts) * 100} subtitle="Proporsi akun mahasiswa" accent="teal" />
+            <AnimatedDonut title="KHS terkonfirmasi" value={confirmedKhsCount} percentage={totalStudents ? (confirmedKhsCount / totalStudents) * 100 : 0} subtitle={`${totalStudents ? Math.round((confirmedKhsCount / totalStudents) * 100) : 0}% dari mahasiswa`} accent="blue" />
+            <AnimatedDonut title="Total dosen PA" value={totalAdvisors} percentage={(totalAdvisors / totalAcademicAccounts) * 100} subtitle="Proporsi akun dosen" accent="violet" />
           </div>
+          <div className="admin-analytics-meta">
+            <span>{adminAnalytics?.total_active_courses ?? courseList.length} mata kuliah aktif terdaftar</span>
+            <span>Data diperbarui otomatis setiap 30 detik</span>
+          </div>
+          <SemesterCourseChart items={courseSemesterCounts} />
           <section style={{ marginTop: 24 }}>
             <h3>Data Mahasiswa</h3>
             <div className="table-wrap">
