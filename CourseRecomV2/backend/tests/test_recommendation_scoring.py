@@ -5,6 +5,7 @@ from app.services.recommendation import (
     _build_model_runtime_info,
     _course_recommendation_explanation,
     _interest_topic_score,
+    _interest_groups,
     _peer_course_scores,
     _score_with_available_factors,
     _similar_students_factor,
@@ -262,3 +263,28 @@ def test_per_course_explanation_distinguishes_collaborative_and_content_fallback
     assert '2 di antaranya' in collaborative
     assert 'content-based scoring' in content_fallback
     assert 'belum ada kelompok mahasiswa pembanding' in content_fallback.lower()
+
+
+def test_ftii_program_interest_labels_map_to_distinct_ml_topic_groups():
+    assert _interest_groups('Data Science') == {'data science'}
+    assert _interest_groups('Manufaktur') == {'manufaktur'}
+    assert _interest_groups('Robotika') == {'robotika'}
+    assert _interest_groups('Telekomunikasi - Satelit') == {'telekomunikasi satelit'}
+
+    software_course = SimpleNamespace(
+        name='Rekayasa Perangkat Lunak',
+        category='Pilihan',
+        description='Software engineering dan pengembangan aplikasi',
+        prerequisite_text='',
+    )
+    score, _ = _interest_topic_score(software_course, 'Software Engineering')
+    assert score is not None and score > 0
+
+    manufacturing_course = SimpleNamespace(
+        name='Proses Manufaktur',
+        category='Pilihan',
+        description='Sistem produksi dan mesin produksi',
+        prerequisite_text='',
+    )
+    score, _ = _interest_topic_score(manufacturing_course, 'Manufaktur')
+    assert score is not None and score > 0
