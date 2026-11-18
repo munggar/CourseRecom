@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.deps import get_db, require_roles
-from app.models import KhsDocument, KrsDocument, KprsRequest, StudyPlan, User
+from app.models import AdvisorFeedback, Course, KhsDocument, KrsDocument, KprsRequest, StudyPlan, User
 from fastapi.responses import Response
 from app.schemas import KprsReview, StudyPlanReview
 from app.services.academic import validate_course_selection
@@ -15,6 +15,7 @@ from app.services.capacity import (
     lock_capacity_courses,
 )
 from app.services.time_utils import utc_now_naive
+from app.services.recommendation import is_mandatory_course
 from app.services.validation import assert_kprs_period_open, assert_krs_period_open
 
 router = APIRouter()
@@ -76,6 +77,16 @@ def list_study_plans(
             'courses': json.loads(plan.courses_json),
             'status': plan.status,
             'advisor_note': plan.advisor_note,
+            'advisor_feedback': [
+                {
+                    'id': feedback.id,
+                    'note': feedback.note,
+                    'affected_course_codes': json.loads(feedback.affected_course_codes_json),
+                    'reason_category': feedback.reason_category,
+                    'created_at': feedback.created_at.isoformat(),
+                }
+                for feedback in plan.advisor_feedback
+            ],
             'created_at': plan.created_at.isoformat(),
             'updated_at': plan.updated_at.isoformat(),
         }
@@ -109,10 +120,43 @@ def review_study_plan(
     if not student:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Rencana studi tidak ditemukan.')
 
+    stored_courses = json.loads(plan.courses_json)
+    stored_by_code = {
+        str(item.get('code', '')).strip().upper(): item
+        for item in stored_courses
+        if item.get('code')
+    }
+    if payload.status == 'revision_requested':
+        unknown_codes = set(payload.affected_course_codes) - set(stored_by_code)
+        if unknown_codes:
+            raise HTTPException(
+                status_code=422,
+                detail=f'Mata kuliah terkait tidak ada dalam KRS ini: {", ".join(sorted(unknown_codes))}.',
+            )
+        catalog_courses = {
+            course.code: course
+            for course in db.query(Course).filter(
+                Course.code.in_(payload.affected_course_codes)
+            ).all()
+        } if payload.affected_course_codes else {}
+        mandatory_codes = [
+            code for code in payload.affected_course_codes
+            if (
+                (code in catalog_courses and is_mandatory_course(catalog_courses[code]))
+                or stored_by_code[code].get('mandatory') is True
+            )
+        ]
+        if mandatory_codes:
+            raise HTTPException(
+                status_code=422,
+                detail='Mata kuliah wajib tidak dapat ditandai untuk diganti: ' + ', '.join(mandatory_codes),
+            )
+
     if payload.status == 'approved':
+        if payload.affected_course_codes:
+            raise HTTPException(status_code=422, detail='Persetujuan tidak dapat memuat daftar mata kuliah yang ditolak.')
         try:
             assert_krs_period_open(db)
-            stored_courses = json.loads(plan.courses_json)
             courses = validate_course_selection(
                 db,
                 student,
@@ -130,6 +174,18 @@ def review_study_plan(
     plan.advisor_note = payload.advisor_note
     plan.reviewer_id = current_user.id
     plan.updated_at = utc_now_naive()
+    if payload.status == 'revision_requested':
+        db.add(AdvisorFeedback(
+            student_id=student.id,
+            study_plan_id=plan.id,
+            reviewer_id=current_user.id,
+            semester=plan.semester,
+            affected_course_codes_json=json.dumps(payload.affected_course_codes, ensure_ascii=False),
+            reason_category=payload.reason_category,
+            note=payload.advisor_note,
+            feedback_type='revision_requested',
+            created_at=plan.updated_at,
+        ))
     write_audit(
         db,
         current_user,
@@ -137,7 +193,12 @@ def review_study_plan(
         'study_plan',
         plan.id,
         {'status': 'pending'},
-        {'status': payload.status, 'advisor_note': payload.advisor_note},
+        {
+            'status': payload.status,
+            'advisor_note': payload.advisor_note,
+            'affected_course_codes': payload.affected_course_codes,
+            'reason_category': payload.reason_category,
+        },
     )
     db.commit()
     db.refresh(plan)
@@ -145,6 +206,8 @@ def review_study_plan(
         'id': plan.id,
         'status': plan.status,
         'advisor_note': plan.advisor_note,
+        'affected_course_codes': payload.affected_course_codes,
+        'reason_category': payload.reason_category,
         'updated_at': plan.updated_at.isoformat(),
     }
 
