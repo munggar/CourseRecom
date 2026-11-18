@@ -36,6 +36,7 @@ from app.services.official_krs import (
 )
 from app.services.audit import write_audit
 from app.services.time_utils import utc_now_naive, WIB
+from app.services.program_interests import normalize_program_name, validate_program_interest
 
 router = APIRouter()
 MAX_KHS_BYTES = 20 * 1024 * 1024
@@ -271,6 +272,19 @@ def confirm_khs(
             'grade_point': GRADE_POINTS[grade],
         })
 
+    submitted_program = normalize_program_name(payload.program_study or current_user.program_study or '')
+    if not submitted_program:
+        raise HTTPException(
+            status_code=422,
+            detail='Program studi pada KHS tidak dikenali. Periksa data program studi akun/KHS atau hubungi admin akademik.',
+        )
+    registered_program = normalize_program_name(current_user.program_study or '')
+    if registered_program and submitted_program != registered_program:
+        raise HTTPException(
+            status_code=422,
+            detail='Program studi pada KHS berbeda dengan data akun. Minta admin akademik memperbaiki data sebelum konfirmasi.',
+        )
+
     parsed = json.loads(document.parsed_data)
     original_semesters = [
         int(item['semester']) for item in parsed.get('semesters', [])
@@ -305,7 +319,7 @@ def confirm_khs(
     parsed['metadata'] = {
         'nim': payload.nim.strip(),
         'full_name': payload.full_name.strip(),
-        'program_study': payload.program_study.strip(),
+        'program_study': submitted_program,
         'current_semester': latest_semester,
         'ipk': payload.ipk,
     }
@@ -350,6 +364,8 @@ def confirm_khs(
     document.status = 'confirmed'
     document.updated_at = utc_now_naive()
     current_user.semester = latest_semester
+    if not registered_program:
+        current_user.program_study = submitted_program
     current_user.full_name = payload.full_name.strip()
     if payload.ipk is not None:
         current_user.ipk = payload.ipk
@@ -497,9 +513,26 @@ def update_profile(
     current_user: User = Depends(require_roles('mahasiswa')),
     db: Session = Depends(get_db),
 ):
-    current_user.interests = payload.interests
+    try:
+        program_study, interests = validate_program_interest(
+            current_user.program_study or '',
+            payload.interests,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    old_interests = current_user.interests
+    current_user.interests = interests
+    write_audit(
+        db,
+        current_user,
+        'student_interest_updated',
+        'user',
+        current_user.id,
+        {'interests': old_interests, 'program_study': program_study},
+        {'interests': interests, 'program_study': program_study},
+    )
     db.commit()
-    return {'status': 'updated', 'interests': payload.interests}
+    return {'status': 'updated', 'interests': interests, 'program_study': program_study}
 
 
 @router.get('/mahasiswa/rekomendasi')
