@@ -75,6 +75,29 @@ const INTEREST_OPTIONS = [
   'Manajemen Sistem Informasi',
   'Kecerdasan Bisnis',
 ];
+const PROGRAM_INTERESTS = {
+  'Sistem dan Teknologi Informasi': {
+    kind: 'Peminatan program studi',
+    options: ['Manajemen Sistem Informasi', 'Kecerdasan Bisnis'],
+  },
+  'Teknik Informatika': {
+    kind: 'Bidang minat akademik',
+    options: ['Software Engineering', 'Data Science', 'Jaringan Komputer', 'UI/UX'],
+  },
+  'Teknik Mesin': {
+    kind: 'Peminatan program studi',
+    options: ['Manufaktur', 'Konversi Energi'],
+  },
+  'Teknik Elektro': {
+    kind: 'Bidang minat akademik',
+    options: ['Telekomunikasi - Satelit', 'Telekomunikasi - Optik', 'Telekomunikasi - Nirkabel dan Antena', 'Industri Cerdas'],
+  },
+  'Teknologi Rekayasa Mekatronika': {
+    kind: 'Bidang minat akademik',
+    options: ['Robotika', 'Otomasi Industri', 'Pemeliharaan Industri', 'Manajemen Proyek Mekatronika'],
+  },
+};
+const PROGRAM_STUDY_OPTIONS = Object.keys(PROGRAM_INTERESTS);
 const RECOMMENDATION_FACTOR_LABELS = {
   similar_students: 'Similar Students',
   academic_history: 'Academic History',
@@ -110,7 +133,7 @@ function canonicalizeInterests(interests) {
       LEGACY_INTERESTS[interest.trim().toLowerCase()]
     )).filter(Boolean),
   );
-  return INTEREST_OPTIONS.find((interest) => selected.has(interest)) || '';
+  return INTEREST_OPTIONS.find((interest) => selected.has(interest)) || interests.trim();
 }
 
 function isMandatoryCourse(course) {
@@ -278,7 +301,7 @@ function App() {
   const [authMode, setAuthMode] = useState('login');
   const [selectedRole, setSelectedRole] = useState('mahasiswa');
   const [form, setForm] = useState({ username: '', password: '' });
-  const [registrationForm, setRegistrationForm] = useState({ nim: '', username: '', full_name: '', program_study: '', angkatan: '', password: '', passwordConfirmation: '' });
+  const [registrationForm, setRegistrationForm] = useState({ nim: '', username: '', full_name: '', program_study: 'Sistem dan Teknologi Informasi', interests: 'Manajemen Sistem Informasi', angkatan: '', password: '', passwordConfirmation: '' });
   const [profile, setProfile] = useState(null);
   const [recommendationResult, setRecommendationResult] = useState(EMPTY_RECOMMENDATIONS);
   const recommendations = useMemo(
@@ -837,6 +860,7 @@ function App() {
           username: registrationForm.username || registrationForm.nim,
           full_name: registrationForm.full_name,
           program_study: registrationForm.program_study,
+          interests: registrationForm.interests,
           angkatan: registrationForm.angkatan,
           password: registrationForm.password,
         }),
@@ -846,7 +870,8 @@ function App() {
         nim: '',
         username: '',
         full_name: '',
-        program_study: '',
+        program_study: 'Sistem dan Teknologi Informasi',
+        interests: 'Manajemen Sistem Informasi',
         angkatan: '',
         password: '',
         passwordConfirmation: '',
@@ -2937,7 +2962,27 @@ function App() {
                 </label>
                 <label>
                   <span className="muted">Program studi</span>
-                  <input maxLength="120" value={registrationForm.program_study} onChange={(e) => setRegistrationForm({ ...registrationForm, program_study: e.target.value })} />
+                  <select
+                    required
+                    value={registrationForm.program_study}
+                    onChange={(event) => {
+                      const program_study = event.target.value;
+                      const options = PROGRAM_INTERESTS[program_study]?.options || [];
+                      setRegistrationForm({ ...registrationForm, program_study, interests: options[0] || '' });
+                    }}
+                  >
+                    <option value="">Pilih program studi</option>
+                    {PROGRAM_STUDY_OPTIONS.map((program) => <option key={program} value={program}>{program}</option>)}
+                  </select>
+                </label>
+                <label>
+                  <span className="muted">{PROGRAM_INTERESTS[registrationForm.program_study]?.kind || 'Bidang minat'}</span>
+                  <select required value={registrationForm.interests} onChange={(event) => setRegistrationForm({ ...registrationForm, interests: event.target.value })}>
+                    {(PROGRAM_INTERESTS[registrationForm.program_study]?.options || []).map((interest) => <option key={interest} value={interest}>{interest}</option>)}
+                  </select>
+                  <small className="muted">{registrationForm.program_study === 'Sistem dan Teknologi Informasi'
+                    ? 'Pilihan mengikuti data peminatan STI yang digunakan pada CourseRecom.'
+                    : 'Untuk program studi yang belum mempublikasikan jalur formal, pilihan ini dicatat sebagai bidang minat akademik.'}</small>
                 </label>
                 <label>
                   <span className="muted">Angkatan</span>
