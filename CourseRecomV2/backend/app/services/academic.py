@@ -25,7 +25,13 @@ def validate_course_selection(
     if result['target_semester'] != semester:
         raise ValueError('Semester rencana studi tidak sesuai dengan semester rekomendasi.')
 
-    recommendations = {item['code']: item for item in result['recommendations']}
+    # KRS validation must know both elective recommendations and mandatory
+    # courses, even though only electives are exposed in the recommendation list.
+    selectable_courses = [
+        *(result.get('recommendations') or []),
+        *(result.get('mandatory_courses') or []),
+    ]
+    recommendations = {item['code']: item for item in selectable_courses}
     rejected = {item['code']: item for item in result['rejected']}
     mandatory_codes = {
         code for code, item in recommendations.items()
