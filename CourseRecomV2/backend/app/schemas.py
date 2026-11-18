@@ -390,6 +390,10 @@ class StudyPlanOverride(BaseModel):
 
 
 
+class LecturerDirectoryLink(BaseModel):
+    user_id: int | None = Field(default=None, gt=0)
+
+
 class RoomMutation(BaseModel):
     code: str = Field(min_length=5, max_length=10, pattern=r'^FT[234]\d{2}$')
     capacity: int | None = Field(default=None, ge=1, le=1000)
