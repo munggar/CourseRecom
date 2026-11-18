@@ -157,6 +157,23 @@ async def preview_khs(
         created_at=utc_now_naive(),
     )
     db.add(document)
+    db.flush()
+    write_audit(
+        db,
+        current_user,
+        'khs_preview_uploaded',
+        'khs_document',
+        document.id,
+        None,
+        {
+            'filename': document.filename,
+            'sha256': document.sha256,
+            'size': len(document.content or b''),
+            'file_count': len(uploads),
+            'source_type': parsed.get('source_type', 'pdf' if is_pdf else 'image'),
+            'status': document.status,
+        },
+    )
     db.commit()
     db.refresh(document)
     return _serialize_document(document)
@@ -209,6 +226,19 @@ def discard_khs_preview(
     )
     if not document:
         raise HTTPException(status_code=404, detail='Pratinjau KHS tidak ditemukan atau sudah diproses.')
+    write_audit(
+        db,
+        current_user,
+        'khs_preview_discarded',
+        'khs_document',
+        document.id,
+        {
+            'status': document.status,
+            'filename': document.filename,
+            'sha256': document.sha256,
+        },
+        None,
+    )
     db.delete(document)
     db.commit()
     return {'status': 'discarded'}
