@@ -2682,8 +2682,8 @@ function App() {
         <div className="card">
           <h3>Minat & Profil</h3>
           <p className="muted">Pilih satu bidang minat sesuai program studi. Pilihan ini memengaruhi skor kecocokan mata kuliah pada rekomendasi.</p>
-          <p className="muted">{programInterestCatalog[canonicalProgramName(user?.program_study)]?.kind || 'Bidang minat'} · {PROGRAM_INTERESTS[canonicalProgramName(user?.program_study)]?.note || 'Pilihan bidang minat mahasiswa.'}</p>
-          <div className="interest-options">{(PROGRAM_INTERESTS[canonicalProgramName(user?.program_study)]?.options || INTEREST_OPTIONS).map((interest) => {
+          <p className="muted">{programInterestCatalog[canonicalProgramName(user?.program_study)]?.kind || 'Bidang minat'} · {programInterestCatalog[canonicalProgramName(user?.program_study)]?.note || 'Pilihan bidang minat mahasiswa.'}</p>
+          <div className="interest-options">{(programInterestCatalog[canonicalProgramName(user?.program_study)]?.options || INTEREST_OPTIONS).map((interest) => {
             const selected = canonicalizeInterests(profileDraft) === interest;
             return (
               <label className="interest-option" key={interest}>
@@ -3133,7 +3133,7 @@ function App() {
                 <label>
                   <span className="muted">{programInterestCatalog[registrationForm.program_study]?.kind || 'Bidang minat'}</span>
                   <select required value={registrationForm.interests} onChange={(event) => setRegistrationForm({ ...registrationForm, interests: event.target.value })}>
-                    {(PROGRAM_INTERESTS[registrationForm.program_study]?.options || []).map((interest) => <option key={interest} value={interest}>{interest}</option>)}
+                    {(programInterestCatalog[registrationForm.program_study]?.options || []).map((interest) => <option key={interest} value={interest}>{interest}</option>)}
                   </select>
                   <small className="muted">{registrationForm.program_study === 'Sistem dan Teknologi Informasi'
                     ? 'Mengikuti dua peminatan resmi STI: Manajemen Teknologi Informasi (MTI) dan Kecerdasan Bisnis (KB).'
