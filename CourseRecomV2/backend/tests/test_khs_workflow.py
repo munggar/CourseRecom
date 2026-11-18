@@ -443,6 +443,28 @@ def test_multiple_khs_images_create_a_reviewable_preview(monkeypatch):
                 assert preview['filename'] == 'halaman-1.jpg, halaman-2.jpg'
                 db = SessionLocal()
                 assert db.query(StudentRecord).filter(StudentRecord.student_id == student_id).count() == 0
+                preview_audit = db.query(AuditLog).filter(
+                    AuditLog.actor_id == student_id,
+                    AuditLog.action == 'khs_preview_uploaded',
+                    AuditLog.entity_id == str(preview['id']),
+                ).one()
+                assert 'sha256' in preview_audit.new_value
+                assert 'file_count' in preview_audit.new_value
+                db.close()
+
+                discarded = client.delete(
+                    f"/api/mahasiswa/khs/{preview['id']}",
+                    headers=headers,
+                )
+                assert discarded.status_code == 200
+                assert discarded.json()['status'] == 'discarded'
+                db = SessionLocal()
+                discard_audit = db.query(AuditLog).filter(
+                    AuditLog.actor_id == student_id,
+                    AuditLog.action == 'khs_preview_discarded',
+                    AuditLog.entity_id == str(preview['id']),
+                ).one()
+                assert 'pending' in discard_audit.old_value
                 db.close()
     finally:
             db = SessionLocal()
