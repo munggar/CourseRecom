@@ -61,7 +61,7 @@ def test_khs_preview_is_not_saved_until_confirmation_and_rules_filter_courses(mo
         password_hash=get_password_hash('test-password'),
     )
     eligible = Course(
-        code='TST301', name='Kursus Layak', sks=3, semester=3, category='Data',
+        code='TST301', name='Kursus Layak', sks=3, semester=3, category='Software Engineering',
         prerequisite_codes='PRE001',
     )
     missing_prereq = Course(
