@@ -787,7 +787,8 @@ def test_student_recommendations_separate_mandatory_courses_from_optional_recomm
         sks=3,
         semester=2,
         available_semesters='2',
-        category='Wajib',
+        category='Inti Teknologi & Pemrograman',
+        description='Wajib Semester 5',
         is_active=True,
     )
     optional_course = Course(
@@ -823,6 +824,8 @@ def test_student_recommendations_separate_mandatory_courses_from_optional_recomm
         result = response.json()
         assert all(item['mandatory'] is False for item in result['recommendations'])
         assert [item['code'] for item in result['mandatory_courses']] == [mandatory_code]
+        assert result['mandatory_courses'][0]['mandatory'] is True
+        assert result['mandatory_courses'][0]['description'] == 'Wajib Semester 5'
         assert [item['code'] for item in result['recommendations']] == [optional_code]
     finally:
         db = SessionLocal()
