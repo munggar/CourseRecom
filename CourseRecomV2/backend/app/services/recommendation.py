@@ -142,6 +142,11 @@ def _interest_groups(interests: str) -> set[str]:
     return selected
 
 
+def _interest_matches(category: str, interests: str) -> bool:
+    """Legacy specialization matcher retained for callers and old tests."""
+    return bool(_interest_groups(category) & _interest_groups(interests))
+
+
 def _interest_topic_score(course: Course, interests: str) -> tuple[float | None, str]:
     selected_groups = _interest_groups(interests)
     if not selected_groups:
@@ -224,11 +229,11 @@ def _catalog_code_for_record(code: str, catalog_codes: set[str]) -> str:
 
 
 def _course_identity(code: str, name: str | None = None) -> str:
-    normalized_code = str(code or '').strip().upper()
-    if normalized_code:
-        return f'code:{normalized_code}'
     normalized_name = _normalize_text(name or '')
-    return f'name:{normalized_name}'
+    if normalized_name:
+        return f'name:{normalized_name}'
+    normalized_code = str(code or '').strip().upper()
+    return f'code:{normalized_code}'
 
 
 def _record_identity(
@@ -237,13 +242,14 @@ def _record_identity(
     catalog_name_to_code: dict[str, str] | None = None,
 ) -> str:
     code = str(record.course_code or '').strip().upper()
-    if catalog_codes:
+    if catalog_codes is not None:
         normalized_code = _catalog_code_for_record(code, catalog_codes)
         if normalized_code in catalog_codes:
             return _course_identity(normalized_code)
-    normalized_name = _normalize_text(record.course_name or '')
-    if catalog_name_to_code and normalized_name in catalog_name_to_code:
-        return _course_identity(catalog_name_to_code[normalized_name])
+        normalized_name = _normalize_text(record.course_name or '')
+        if catalog_name_to_code and normalized_name in catalog_name_to_code:
+            return _course_identity(catalog_name_to_code[normalized_name])
+        return _course_identity(code) if code else _course_identity('', record.course_name)
     return _course_identity(code, record.course_name)
 
 
@@ -547,7 +553,7 @@ def build_recommendation_result(db: Session, student: User) -> dict:
             reasons.append('Prasyarat terpenuhi')
         reasons.append(f'Sesuai kurikulum semester {target_semester}')
 
-        course_identity = _course_identity(course.code, course.name)
+        course_identity = _course_identity(course.code)
         similar_score = _similar_students_factor(similarities, course_identity, peer_count)
         peer_count_for_course, peer_total = cohort_counts.get(
             course_identity,
