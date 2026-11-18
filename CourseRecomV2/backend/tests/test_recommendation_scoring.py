@@ -1,10 +1,11 @@
 from types import SimpleNamespace
 
-from app.models import Course, StudentRecord
+from app.models import StudentRecord
 from app.services.recommendation import (
     _interest_topic_score,
     _peer_course_scores,
     _score_with_available_factors,
+    _similar_students_factor,
     _similarity,
 )
 
@@ -168,3 +169,9 @@ def test_zero_is_a_real_score_and_is_not_treated_as_missing():
     assert coverage == 45.0
     assert effective_weights['similar_students'] == 66.7
     assert effective_weights['curriculum'] == 33.3
+
+
+
+def test_similar_students_zero_vote_is_distinct_from_missing_peer_data():
+    assert _similar_students_factor({}, 'code:MK001', peer_count=5) == 0.0
+    assert _similar_students_factor({}, 'code:MK001', peer_count=0) is None
