@@ -357,6 +357,7 @@ function App() {
   const [studyPlanBusy, setStudyPlanBusy] = useState(false);
   const studyPlanSubmissionRef = useRef(false);
   const [reviewNotes, setReviewNotes] = useState({});
+  const [reviewRejectedCourses, setReviewRejectedCourses] = useState({});
   const [courseList, setCourseList] = useState([]);
   const [editingCourseCode, setEditingCourseCode] = useState('');
   const [courseBusyCode, setCourseBusyCode] = useState('');
@@ -1616,13 +1617,22 @@ function App() {
   };
 
   const reviewStudyPlan = async (planId, status) => {
-    const advisorNote = reviewNotes[planId] ?? '';
+    const advisorNote = (reviewNotes[planId] ?? '').trim();
+    const rejectedCourseCodes = reviewRejectedCourses[planId] ?? [];
+    if (status === 'revision_requested' && advisorNote.length < 10) {
+      setActionMessage('Alasan revisi wajib diisi minimal 10 karakter.');
+      return;
+    }
+    if (status === 'revision_requested' && rejectedCourseCodes.length === 0) {
+      setActionMessage('Pilih minimal satu mata kuliah yang perlu direvisi.');
+      return;
+    }
     setStudyPlanBusy(true);
     setActionMessage('');
     try {
       const result = await apiRequest(`/dosen/rencana-studi/${planId}`, {
         method: 'PATCH',
-        body: JSON.stringify({ status, advisor_note: advisorNote }),
+        body: JSON.stringify({ status, advisor_note: advisorNote, rejected_course_codes: status === 'revision_requested' ? rejectedCourseCodes : [] }),
       });
       setStudyPlans((previousPlans) => previousPlans.map((plan) => (
         plan.id === planId
@@ -2133,17 +2143,46 @@ function App() {
                 </table>
               </div>
               <label className="course-edit-field" style={{ marginTop: 14 }}>
-                Catatan / arahan dosen PA
+                Alasan revisi / arahan dosen PA
                 <textarea
                   rows="3"
+                  minLength="10"
                   maxLength="2000"
+                  placeholder="Jelaskan alasan akademik revisi (minimal 10 karakter)"
                   value={reviewNotes[plan.id] ?? plan.advisor_note ?? ''}
                   onChange={(event) => setReviewNotes((previousNotes) => ({
                     ...previousNotes,
                     [plan.id]: event.target.value,
                   }))}
                 />
+                <small className="muted">Wajib diisi minimal 10 karakter ketika meminta revisi. Catatan ini akan diteruskan kepada mahasiswa.</small>
               </label>
+              {plan.status !== 'approved' && (
+                <fieldset className="course-edit-field" style={{ marginTop: 10 }}>
+                  <legend>Mata kuliah yang perlu direvisi</legend>
+                  <p className="muted">Pilih mata kuliah yang ditolak/diminta untuk diganti. Mata kuliah wajib tidak dapat ditolak.</p>
+                  <div className="interest-options">
+                    {plan.courses.filter((course) => !isMandatoryCourse(course)).map((course) => {
+                      const selected = reviewRejectedCourses[plan.id] ?? [];
+                      return (
+                        <label key={course.code} className="interest-option">
+                          <input
+                            type="checkbox"
+                            checked={selected.includes(course.code)}
+                            onChange={(event) => setReviewRejectedCourses((previous) => ({
+                              ...previous,
+                              [plan.id]: event.target.checked
+                                ? [...selected, course.code]
+                                : selected.filter((code) => code !== course.code),
+                            }))}
+                          />
+                          <span>{course.name} ({course.code})</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </fieldset>
+              )}
               {plan.status !== 'approved' && (
                 <div className="preview-actions">
                   <button
@@ -2157,7 +2196,7 @@ function App() {
                   <button
                     className="btn outline"
                     type="button"
-                    disabled={studyPlanBusy || !(reviewNotes[plan.id] ?? plan.advisor_note ?? '').trim()}
+                    disabled={studyPlanBusy || (reviewNotes[plan.id] ?? plan.advisor_note ?? '').trim().length < 10 || !(reviewRejectedCourses[plan.id] ?? []).length}
                     onClick={() => reviewStudyPlan(plan.id, 'revision_requested')}
                   >
                     Kirim catatan revisi
@@ -2200,7 +2239,18 @@ function App() {
                 {latestStudyPlan.status === 'pending' ? 'Menunggu review' : latestStudyPlan.status === 'approved' ? 'Disetujui dosen PA' : 'Perlu revisi'}
               </span>
               <span>Rencana studi semester {latestStudyPlan.semester}</span>
-              {latestStudyPlan.advisor_note && <p><strong>Catatan dosen:</strong> {latestStudyPlan.advisor_note}</p>}
+              {latestStudyPlan.advisor_note && <p><strong>Catatan dosen PA:</strong> {latestStudyPlan.advisor_note}</p>}
+              {latestStudyPlan.advisor_feedback?.length > 0 && (
+                <div className="history-document" style={{ marginTop: 10 }}>
+                  <strong>Mata kuliah yang perlu diperbaiki</strong>
+                  {latestStudyPlan.advisor_feedback.map((feedback, index) => (
+                    <p key={`${feedback.course_code}-${index}`}>
+                      <strong>{feedback.course_code}</strong> — {feedback.reason}
+                    </p>
+                  ))}
+                  <p className="muted">Saran alternatif sudah diperbarui dengan mempertimbangkan catatan Dosen PA sebagai sinyal negatif pada rekomendasi berikutnya.</p>
+                </div>
+              )}
               {latestStudyPlan.status === 'approved' && (
                 <button
                   type="button"
