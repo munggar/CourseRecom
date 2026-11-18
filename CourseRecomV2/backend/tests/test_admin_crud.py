@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 from app.database import SessionLocal
 from app.deps import create_access_token
 from app.main import app
-from app.models import AdvisorCourseFeedback, AuditLog, Course, CourseClass, KprsRequest, StudyPlan, User
+from app.models import AdvisorCourseFeedback, AuditLog, Course, CourseClass, KprsRequest, StudyPlan, User, Room
 
 
 client = TestClient(app)
@@ -317,15 +317,25 @@ def test_admin_cannot_change_or_close_parallel_class_with_active_krs_reservation
         capacity=20,
         is_active=True,
     )
-    db.add_all([student, course])
+    room_301 = Room(
+        code='FT301', floor=3, room_number='01', capacity=40,
+        room_type='Ruang kuliah', is_active=True, source_status='test',
+        source_url=None, notes='Room test fixture', verified_at=now, created_at=now,
+    )
+    room_302 = Room(
+        code='FT302', floor=3, room_number='02', capacity=40,
+        room_type='Ruang kuliah', is_active=True, source_status='test',
+        source_url=None, notes='Room test fixture', verified_at=now, created_at=now,
+    )
+    db.add_all([student, course, room_301, room_302])
     db.flush()
     section = CourseClass(
         course_code=code,
         class_name='A',
-        room='R.101',
+        room='FT301',
         day='Senin',
         start_time='08:00',
-        end_time='10:00',
+        end_time='10:30',
         capacity=5,
         semester='1',
         is_open=True,
@@ -360,10 +370,10 @@ def test_admin_cannot_change_or_close_parallel_class_with_active_krs_reservation
         'course_code': code,
         'class_name': 'A',
         'lecturer_id': None,
-        'room': 'R.101',
+        'room': 'FT301',
         'day': 'Senin',
         'start_time': '08:00',
-        'end_time': '10:00',
+        'end_time': '10:30',
         'capacity': 5,
         'semester': '1',
         'is_open': True,
@@ -372,7 +382,7 @@ def test_admin_cannot_change_or_close_parallel_class_with_active_krs_reservation
         changed_schedule = client.put(
             f'/api/admin/classes/{class_id}',
             headers=ADMIN_HEADERS,
-            json={**base_payload, 'room': 'R.202', 'day': 'Selasa'},
+            json={**base_payload, 'room': 'FT302', 'day': 'Selasa'},
         )
         assert changed_schedule.status_code == 409, changed_schedule.text
         assert 'dikunci' in changed_schedule.json()['detail']
@@ -401,11 +411,11 @@ def test_admin_cannot_change_or_close_parallel_class_with_active_krs_reservation
         db = SessionLocal()
         stored_class = db.query(CourseClass).filter(CourseClass.id == class_id).one()
         stored_plan = db.query(StudyPlan).filter(StudyPlan.id == plan_id).one()
-        assert stored_class.room == 'R.101'
+        assert stored_class.room == 'FT301'
         assert stored_class.day == 'Senin'
         assert stored_class.is_open is True
         assert stored_class.capacity == 8
-        assert json.loads(stored_plan.courses_json)[0]['room'] == 'R.101'
+        assert json.loads(stored_plan.courses_json)[0]['room'] == 'FT301'
         db.close()
     finally:
         db = SessionLocal()
@@ -416,6 +426,177 @@ def test_admin_cannot_change_or_close_parallel_class_with_active_krs_reservation
         db.query(StudyPlan).filter(StudyPlan.id == plan_id).delete(synchronize_session=False)
         db.query(CourseClass).filter(CourseClass.id == class_id).delete(synchronize_session=False)
         db.query(Course).filter(Course.code == code).delete(synchronize_session=False)
+        db.query(Room).filter(Room.code.in_(['FT301', 'FT302'])).delete(synchronize_session=False)
         db.query(User).filter(User.id == student_id).delete(synchronize_session=False)
+        db.commit()
+        db.close()
+
+
+
+def test_admin_room_schedule_rules_and_separate_exports():
+    suffix = uuid4().hex[:8].upper()
+    room_a = f'FT2{int(suffix[:2], 16) % 90 + 10}'
+    room_b = f'FT3{int(suffix[2:4], 16) % 90 + 10}'
+    code_a = f'SCH{suffix}A'
+    code_b = f'SCH{suffix}B'
+    lecturer_nip = f'SCHD{suffix}'
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    db = SessionLocal()
+    lecturer = User(
+        nim=lecturer_nip,
+        username=f'sched-{suffix.lower()}',
+        full_name='Dosen Jadwal Uji',
+        role='dosen',
+        password_hash='unused-hash',
+    )
+    course_a = Course(
+        code=code_a, name='Mata Kuliah Jadwal 3 SKS', sks=3, semester=2,
+        available_semesters='2', category='Pilihan', capacity=30, is_active=True,
+    )
+    course_b = Course(
+        code=code_b, name='Mata Kuliah Jadwal 2 SKS', sks=2, semester=4,
+        available_semesters='4', category='Pilihan', capacity=30, is_active=True,
+    )
+    db.add_all([lecturer, course_a, course_b])
+    db.commit()
+    lecturer_id = lecturer.id
+    db.close()
+
+    created_rooms = []
+    created_classes = []
+    try:
+        for room_code in (room_a, room_b):
+            created = client.post('/api/admin/rooms', headers=ADMIN_HEADERS, json={
+                'code': room_code,
+                'capacity': 40,
+                'room_type': 'Ruang kuliah',
+                'is_active': True,
+                'notes': 'Ruang untuk pengujian jadwal otomatis.',
+            })
+            assert created.status_code == 201, created.text
+            created_rooms.append(room_code)
+
+        duration_preview = client.get(
+            '/api/admin/schedule-options',
+            headers=ADMIN_HEADERS,
+            params={'course_code': code_a, 'room_code': room_a, 'day': 'Senin', 'lecturer_id': lecturer_id},
+        )
+        assert duration_preview.status_code == 200, duration_preview.text
+        preview_data = duration_preview.json()
+        assert preview_data['duration_minutes'] == 150
+        assert preview_data['slots'][0] == {
+            'start_time': '07:00', 'end_time': '09:30', 'duration_minutes': 150,
+        }
+
+        created = client.post('/api/admin/classes', headers=ADMIN_HEADERS, json={
+            'course_code': code_a,
+            'class_name': 'A',
+            'lecturer_id': lecturer_id,
+            'room': room_a,
+            'day': 'Senin',
+            'start_time': '07:00',
+            'capacity': 20,
+            'semester': '2',
+            'is_open': True,
+        })
+        assert created.status_code == 201, created.text
+        assert created.json()['end_time'] == '09:30'
+        created_classes.append(created.json()['id'])
+
+        room_clash = client.post('/api/admin/classes', headers=ADMIN_HEADERS, json={
+            'course_code': code_b,
+            'class_name': 'A',
+            'lecturer_id': None,
+            'room': room_a,
+            'day': 'Senin',
+            'start_time': '08:00',
+            'capacity': 20,
+            'semester': '4',
+            'is_open': True,
+        })
+        assert room_clash.status_code == 409
+        assert 'Ruangan' in room_clash.json()['detail']
+
+        lecturer_clash = client.post('/api/admin/classes', headers=ADMIN_HEADERS, json={
+            'course_code': code_b,
+            'class_name': 'B',
+            'lecturer_id': lecturer_id,
+            'room': room_b,
+            'day': 'Senin',
+            'start_time': '08:00',
+            'capacity': 20,
+            'semester': '4',
+            'is_open': True,
+        })
+        assert lecturer_clash.status_code == 409
+        assert 'Dosen' in lecturer_clash.json()['detail']
+
+        outside_window = client.post('/api/admin/classes', headers=ADMIN_HEADERS, json={
+            'course_code': code_a,
+            'class_name': 'C',
+            'lecturer_id': None,
+            'room': room_b,
+            'day': 'Selasa',
+            'start_time': '16:00',
+            'capacity': 20,
+            'semester': '2',
+            'is_open': True,
+        })
+        assert outside_window.status_code == 409
+        assert '07:00–18:00' in outside_window.json()['detail']
+
+        wrong_duration = client.post('/api/admin/classes', headers=ADMIN_HEADERS, json={
+            'course_code': code_a,
+            'class_name': 'D',
+            'lecturer_id': None,
+            'room': room_b,
+            'day': 'Rabu',
+            'start_time': '07:00',
+            'end_time': '09:00',
+            'capacity': 20,
+            'semester': '2',
+            'is_open': True,
+        })
+        assert wrong_duration.status_code == 422
+        assert 'dihitung otomatis' in wrong_duration.json()['detail']
+
+        invalid_room = client.post('/api/admin/rooms', headers=ADMIN_HEADERS, json={
+            'code': 'LAB301', 'capacity': 20, 'is_active': True,
+        })
+        assert invalid_room.status_code == 422
+
+        no_capacity_activation = client.post('/api/admin/rooms', headers=ADMIN_HEADERS, json={
+            'code': f'FT4{int(suffix[4:6], 16) % 90 + 10}',
+            'capacity': None,
+            'room_type': 'Ruang kuliah',
+            'is_active': True,
+            'notes': '',
+        })
+        assert no_capacity_activation.status_code == 422
+
+        lecturer_export = client.get('/api/admin/lecturers/export', headers=ADMIN_HEADERS)
+        room_export = client.get('/api/admin/rooms/export', headers=ADMIN_HEADERS)
+        xlsx_type = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        assert lecturer_export.status_code == 200
+        assert room_export.status_code == 200
+        assert lecturer_export.headers['content-type'].startswith(xlsx_type)
+        assert room_export.headers['content-type'].startswith(xlsx_type)
+        assert lecturer_export.content[:2] == b'PK'
+        assert room_export.content[:2] == b'PK'
+    finally:
+        db = SessionLocal()
+        if created_classes:
+            db.query(AuditLog).filter(
+                AuditLog.entity_type == 'course_class',
+                AuditLog.entity_id.in_([str(item) for item in created_classes]),
+            ).delete(synchronize_session=False)
+            db.query(CourseClass).filter(CourseClass.id.in_(created_classes)).delete(synchronize_session=False)
+        db.query(AuditLog).filter(
+            AuditLog.entity_type == 'room',
+            AuditLog.entity_id.in_(created_rooms),
+        ).delete(synchronize_session=False)
+        db.query(Room).filter(Room.code.in_(created_rooms)).delete(synchronize_session=False)
+        db.query(Course).filter(Course.code.in_([code_a, code_b])).delete(synchronize_session=False)
+        db.query(User).filter(User.id == lecturer_id).delete(synchronize_session=False)
         db.commit()
         db.close()
