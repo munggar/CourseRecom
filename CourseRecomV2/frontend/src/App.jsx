@@ -116,6 +116,21 @@ const PROGRAM_INTERESTS = {
   },
 };
 const PROGRAM_STUDY_OPTIONS = Object.keys(PROGRAM_INTERESTS);
+const canonicalProgramName = (value) => {
+  const normalized = String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
+  const aliases = {
+    sti: 'Sistem dan Teknologi Informasi',
+    'sistem informasi': 'Sistem dan Teknologi Informasi',
+    'sistem dan teknologi informasi': 'Sistem dan Teknologi Informasi',
+    ti: 'Teknik Informatika',
+    'teknik informatika': 'Teknik Informatika',
+    'teknik mesin': 'Teknik Mesin',
+    'teknik elektro': 'Teknik Elektro',
+    trm: 'Teknologi Rekayasa Mekatronika',
+    'teknologi rekayasa mekatronika': 'Teknologi Rekayasa Mekatronika',
+  };
+  return aliases[normalized] || value || '';
+};
 const RECOMMENDATION_FACTOR_LABELS = {
   similar_students: 'Similar Students',
   academic_history: 'Academic History',
@@ -2646,8 +2661,8 @@ function App() {
         <div className="card">
           <h3>Minat & Profil</h3>
           <p className="muted">Pilih satu bidang minat sesuai program studi. Pilihan ini memengaruhi skor kecocokan mata kuliah pada rekomendasi.</p>
-          <p className="muted">{PROGRAM_INTERESTS[user?.program_study]?.kind || 'Bidang minat'} · {PROGRAM_INTERESTS[user?.program_study]?.note || 'Pilihan bidang minat mahasiswa.'}</p>
-          <div className="interest-options">{(PROGRAM_INTERESTS[user?.program_study]?.options || INTEREST_OPTIONS).map((interest) => {
+          <p className="muted">{PROGRAM_INTERESTS[canonicalProgramName(user?.program_study)]?.kind || 'Bidang minat'} · {PROGRAM_INTERESTS[canonicalProgramName(user?.program_study)]?.note || 'Pilihan bidang minat mahasiswa.'}</p>
+          <div className="interest-options">{(PROGRAM_INTERESTS[canonicalProgramName(user?.program_study)]?.options || INTEREST_OPTIONS).map((interest) => {
             const selected = canonicalizeInterests(profileDraft) === interest;
             return (
               <label className="interest-option" key={interest}>
