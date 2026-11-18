@@ -483,6 +483,15 @@ function App() {
   const [curriculumError, setCurriculumError] = useState('');
   const [mentees, setMentees] = useState([]);
   const [adminAdvisors, setAdminAdvisors] = useState([]);
+  const [lecturerDirectory, setLecturerDirectory] = useState([]);
+  const [roomList, setRoomList] = useState([]);
+  const [roomForm, setRoomForm] = useState({ code: '', capacity: '', room_type: 'Ruang kuliah', is_active: false, notes: '' });
+  const [editingRoomCode, setEditingRoomCode] = useState('');
+  const [roomBusy, setRoomBusy] = useState(false);
+  const [scheduleSlots, setScheduleSlots] = useState([]);
+  const [scheduleDuration, setScheduleDuration] = useState(0);
+  const [scheduleSlotBusy, setScheduleSlotBusy] = useState(false);
+  const [exportBusy, setExportBusy] = useState('');
   const [adminAnalytics, setAdminAnalytics] = useState(null);
   const [lecturerForm, setLecturerForm] = useState({
     nip: '', full_name: '', username: '', email: '', password: '', passwordConfirmation: '',
@@ -528,7 +537,7 @@ function App() {
   const [editingClassId, setEditingClassId] = useState(null);
   const [classForm, setClassForm] = useState({
     course_code: '', class_name: '', lecturer_id: '', room: '', day: 'Senin',
-    start_time: '08:00', end_time: '09:40', capacity: 40, semester: '1', is_open: true,
+    start_time: '', end_time: '', capacity: 40, semester: '1', is_open: true,
   });
   const [guideSearch, setGuideSearch] = useState('');
   const [kprsClassSelections, setKprsClassSelections] = useState({});
@@ -899,22 +908,28 @@ function App() {
         }
 
         if (user.role === 'admin') {
-          const dashboard = await apiRequest('/admin/dashboard');
-          const lecturers = await apiRequest('/admin/lecturers');
+          const [dashboard, lecturers, directory] = await Promise.all([
+            apiRequest('/admin/dashboard'),
+            apiRequest('/admin/lecturers'),
+            apiRequest('/admin/lecturer-directory'),
+          ]);
           if (cancelled) return;
           setMentees(dashboard.students);
           setAdminAdvisors(lecturers);
+          setLecturerDirectory(directory);
           setAdminAnalytics(dashboard.analytics || null);
         }
 
         if (user.role === 'admin') {
-          const [list, sections] = await Promise.all([
+          const [list, sections, rooms] = await Promise.all([
             apiRequest('/admin/courses'),
             apiRequest('/admin/classes'),
+            apiRequest('/admin/rooms'),
           ]);
           if (cancelled) return;
           setCourseList(list.map((course) => ({ ...course, _originalCode: course.code })));
           setClassList(sections);
+          setRoomList(rooms);
         }
 
         if (user.role === 'admin') {
@@ -1139,6 +1154,10 @@ function App() {
     setMentees([]);
     setAdminAdvisors([]);
     setAdminAnalytics(null);
+    setLecturerDirectory([]);
+    setRoomList([]);
+    setScheduleSlots([]);
+    setScheduleDuration(0);
     setStudyPlans([]);
     setCourseList([]);
     setClassList([]);
