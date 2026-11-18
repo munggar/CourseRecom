@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 
-from app.models import StudentRecord
+from app.models import AdvisorCourseFeedback, StudentRecord
 from app.services.recommendation import (
     _build_model_runtime_info,
     _course_recommendation_explanation,
@@ -100,10 +100,13 @@ def test_peer_course_scores_match_catalog_codes_and_count_only_similar_peers():
             return self.rows
 
     class FakeDB:
-        def __init__(self, rows):
+        def __init__(self, rows, feedback_rows=None):
             self.rows = rows
+            self.feedback_rows = feedback_rows or []
 
-        def query(self, _model):
+        def query(self, model):
+            if model is AdvisorCourseFeedback:
+                return FakeQuery(self.feedback_rows)
             return FakeQuery(self.rows)
 
     student = SimpleNamespace(id=1)
@@ -290,3 +293,36 @@ def test_ftii_program_interest_labels_map_to_distinct_ml_topic_groups():
     )
     score, _ = _interest_topic_score(manufacturing_course, 'Manufaktur')
     assert score is not None and score > 0
+
+
+def test_peer_course_scores_downweight_courses_rejected_by_similar_peers():
+    student = SimpleNamespace(id=1)
+    student_history = [
+        _record(1, 'A101', 'Algoritma', 'A', 1, 1),
+        _record(1, 'A102', 'Basis Data', 'B', 1, 2),
+    ]
+    peer_rows = [
+        _record(2, 'A101', 'Algoritma', 'A', 1, 3),
+        _record(2, 'A102', 'Basis Data', 'B', 1, 4),
+        _record(2, 'X501', 'Mobile Application', 'A', 2, 5),
+        _record(3, 'A101', 'Algoritma', 'A', 1, 6),
+        _record(3, 'A102', 'Basis Data', 'B', 1, 7),
+        _record(3, 'X502', 'Praktikum Mobile Application', 'B', 2, 8),
+    ]
+    catalog = [
+        SimpleNamespace(code='A101', name='Algoritma'),
+        SimpleNamespace(code='A102', name='Basis Data'),
+        SimpleNamespace(code='X501', name='Mobile Application'),
+        SimpleNamespace(code='X502', name='Praktikum Mobile Application'),
+    ]
+    feedback = [SimpleNamespace(student_id=2, semester=2, course_code='X501')]
+
+    similarities, counts, peer_count = _peer_course_scores(
+        FakeDB(peer_rows, feedback), student, 2, student_history, catalog
+    )
+
+    assert peer_count == 2
+    assert similarities['code:X501'] == 0.125
+    assert similarities['code:X502'] == 0.5
+    assert counts['code:X501'] == (1, 2)
+    assert counts['code:X502'] == (1, 2)
