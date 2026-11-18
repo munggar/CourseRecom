@@ -282,12 +282,13 @@ def admin_dashboard(
     active_courses = db.query(Course).filter(Course.is_active.is_(True)).all()
     for course in active_courses:
         raw_semesters = course.available_semesters or str(course.semester)
-        offered_semesters = {
+        parsed_semesters = {
             int(value.strip())
             for value in raw_semesters.replace(';', ',').split(',')
-            if value.strip().isdigit() and 1 <= int(value.strip()) <= 8
+            if value.strip().isdigit() and 1 <= int(value.strip()) <= 14
         }
-        if not offered_semesters and 1 <= course.semester <= 8:
+        offered_semesters = {semester for semester in parsed_semesters if semester <= 8}
+        if not parsed_semesters and 1 <= course.semester <= 8:
             offered_semesters.add(course.semester)
         for semester in offered_semesters:
             semester_course_counts[semester] += 1
