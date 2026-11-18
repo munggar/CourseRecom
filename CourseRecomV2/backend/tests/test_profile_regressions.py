@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 from app.database import SessionLocal, ensure_schema
 from app.deps import create_access_token, get_password_hash
 from app.main import app
-from app.models import Course, StudentRecord, User
+from app.models import AuditLog, Course, StudentRecord, User
 
 
 client = TestClient(app)
@@ -114,6 +114,7 @@ def test_profile_update_rejects_empty_and_overlong_interests():
         assert response.json()['interests'] == 'Manajemen Teknologi Informasi'
     finally:
         cleanup_db = SessionLocal()
+        cleanup_db.query(AuditLog).filter(AuditLog.actor_id == student_id).delete(synchronize_session=False)
         cleanup_db.query(User).filter(User.id == student_id).delete()
         cleanup_db.commit()
         cleanup_db.close()
