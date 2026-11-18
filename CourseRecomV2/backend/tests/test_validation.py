@@ -47,3 +47,18 @@ def test_academic_period_iso_values_are_timezone_aware():
     assert open_time.utcoffset().total_seconds() == 7 * 60 * 60
     assert utc_time.utcoffset().total_seconds() == 7 * 60 * 60
     assert utc_time.hour == 15
+
+
+def test_ftii_program_interest_catalog_is_program_scoped():
+    from app.services.program_interests import validate_program_interest
+
+    assert validate_program_interest(
+        'STI', 'Kecerdasan Bisnis'
+    ) == ('Sistem dan Teknologi Informasi', 'Kecerdasan Bisnis')
+    assert validate_program_interest('Teknik Mesin', 'Manufaktur') == ('Teknik Mesin', 'Manufaktur')
+    try:
+        validate_program_interest('Teknik Mesin', 'Kecerdasan Bisnis')
+    except ValueError as exc:
+        assert 'tidak sesuai' in str(exc)
+    else:
+        raise AssertionError('Interest dari prodi lain seharusnya ditolak.')
