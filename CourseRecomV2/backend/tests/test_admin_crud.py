@@ -461,7 +461,12 @@ def test_admin_room_schedule_rules_and_separate_exports():
         code=code_b, name='Mata Kuliah Jadwal 2 SKS', sks=2, semester=4,
         available_semesters='4', category='Pilihan', capacity=30, is_active=True,
     )
-    db.add_all([lecturer, course_a, course_b])
+    code_c = f'SCH{suffix}C'
+    course_c = Course(
+        code=code_c, name='Mata Kuliah Jadwal 1 SKS', sks=1, semester=6,
+        available_semesters='6', category='Pilihan', capacity=30, is_active=True,
+    )
+    db.add_all([lecturer, course_a, course_b, course_c])
     db.commit()
     lecturer_id = lecturer.id
     db.close()
@@ -492,6 +497,28 @@ def test_admin_room_schedule_rules_and_separate_exports():
             'start_time': '07:00', 'end_time': '09:30', 'duration_minutes': 150,
         }
 
+        one_sks_preview = client.get(
+            '/api/admin/schedule-options',
+            headers=ADMIN_HEADERS,
+            params={'course_code': code_c, 'room_code': room_b, 'day': 'Minggu'},
+        )
+        assert one_sks_preview.status_code == 200, one_sks_preview.text
+        one_sks_slots = one_sks_preview.json()['slots']
+        assert one_sks_preview.json()['duration_minutes'] == 50
+        assert one_sks_slots[0]['start_time'] == '07:00'
+        assert one_sks_slots[0]['end_time'] == '07:50'
+        assert one_sks_slots[-1]['start_time'] == '17:10'
+        assert one_sks_slots[-1]['end_time'] == '18:00'
+
+        two_sks_preview = client.get(
+            '/api/admin/schedule-options',
+            headers=ADMIN_HEADERS,
+            params={'course_code': code_b, 'room_code': room_b, 'day': 'Selasa'},
+        )
+        assert two_sks_preview.status_code == 200, two_sks_preview.text
+        assert two_sks_preview.json()['duration_minutes'] == 100
+        assert two_sks_preview.json()['slots'][0]['end_time'] == '08:40'
+
         created = client.post('/api/admin/classes', headers=ADMIN_HEADERS, json={
             'course_code': code_a,
             'class_name': 'A',
@@ -506,6 +533,20 @@ def test_admin_room_schedule_rules_and_separate_exports():
         assert created.status_code == 201, created.text
         assert created.json()['end_time'] == '09:30'
         created_classes.append(created.json()['id'])
+
+        room_capacity_clash = client.post('/api/admin/classes', headers=ADMIN_HEADERS, json={
+            'course_code': code_b,
+            'class_name': 'MELEBIHI-KAPASITAS-RUANG',
+            'lecturer_id': None,
+            'room': room_b,
+            'day': 'Kamis',
+            'start_time': '07:00',
+            'capacity': 50,
+            'semester': '4',
+            'is_open': True,
+        })
+        assert room_capacity_clash.status_code == 409
+        assert 'kapasitas fisik' in room_capacity_clash.json()['detail']
 
         room_clash = client.post('/api/admin/classes', headers=ADMIN_HEADERS, json={
             'course_code': code_b,
@@ -534,6 +575,17 @@ def test_admin_room_schedule_rules_and_separate_exports():
         })
         assert lecturer_clash.status_code == 409
         assert 'Dosen' in lecturer_clash.json()['detail']
+
+        reduce_room_capacity = client.patch(
+            f'/api/admin/rooms/{room_a}',
+            headers=ADMIN_HEADERS,
+            json={
+                'code': room_a, 'capacity': 10, 'room_type': 'Ruang kuliah',
+                'is_active': True, 'notes': 'Tidak boleh di bawah kapasitas kelas terkait.',
+            },
+        )
+        assert reduce_room_capacity.status_code == 409
+        assert 'kuota kelas' in reduce_room_capacity.json()['detail']
 
         outside_window = client.post('/api/admin/classes', headers=ADMIN_HEADERS, json={
             'course_code': code_a,
@@ -600,7 +652,7 @@ def test_admin_room_schedule_rules_and_separate_exports():
             AuditLog.entity_id.in_(created_rooms),
         ).delete(synchronize_session=False)
         db.query(Room).filter(Room.code.in_(created_rooms)).delete(synchronize_session=False)
-        db.query(Course).filter(Course.code.in_([code_a, code_b])).delete(synchronize_session=False)
+        db.query(Course).filter(Course.code.in_([code_a, code_b, code_c])).delete(synchronize_session=False)
         db.query(User).filter(User.id == lecturer_id).delete(synchronize_session=False)
         db.commit()
         db.close()
