@@ -39,6 +39,8 @@ def cleanup_users():
     yield
     db = SessionLocal()
     db.execute(text('PRAGMA foreign_keys=OFF'))
+    student_ids = db.query(User.id).filter(User.nim.like('SEC-%')).subquery()
+    db.query(AuditLog).filter(AuditLog.actor_id.in_(student_ids)).delete(synchronize_session=False)
     db.query(User).filter(User.nim.like('SEC-%')).delete(synchronize_session=False)
     db.commit()
     db.close()
