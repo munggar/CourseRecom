@@ -2242,7 +2242,7 @@ function App() {
               {latestStudyPlan.advisor_note && <p><strong>Catatan dosen PA:</strong> {latestStudyPlan.advisor_note}</p>}
               {latestStudyPlan.advisor_feedback?.length > 0 && (
                 <div className="history-document" style={{ marginTop: 10 }}>
-                  <strong>Mata kuliah yang perlu diperbaiki</strong>
+                  <strong>{latestStudyPlan.status === 'revision_requested' ? 'Mata kuliah yang perlu diperbaiki' : 'Riwayat feedback dosen PA (digunakan model ML)'}</strong>
                   {latestStudyPlan.advisor_feedback.map((feedback, index) => (
                     <p key={`${feedback.course_code}-${index}`}>
                       <strong>{feedback.course_code}</strong> — {feedback.reason}
