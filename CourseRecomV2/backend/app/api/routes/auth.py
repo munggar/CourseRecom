@@ -13,7 +13,7 @@ from app.models import SystemSetting, User
 from app.schemas import AccountProfileResponse, AccountProfileUpdate, PasswordChange, StudentRegistration, TokenResponse, UserLogin, UserOut
 from app.services.validation import get_sks_quota
 from app.services.audit import write_audit
-from app.services.program_interests import get_program_interest_catalog, validate_program_interest
+from app.services.program_interests import get_program_interest_catalog, normalize_program_name, validate_program_interest
 
 router = APIRouter()
 
@@ -55,7 +55,7 @@ def register_student(payload: StudentRegistration, db: Session = Depends(get_db)
         )
     if db.query(User).filter(User.nim == payload.nim).first():
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='NIM sudah terdaftar.')
-    username = (payload.username or payload.nim).strip()
+    username = (payload.username or payload.nim).strip().casefold()
     if db.query(User).filter((User.username == username) | (User.nim == username)).first():
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='Username sudah terdaftar.')
 
@@ -95,13 +95,13 @@ def login(payload: UserLogin, db: Session = Depends(get_db)):
     if not user:
         write_audit(db, None, 'login_failed', 'user', payload.username, None, {'role': payload.role})
         db.commit()
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Username tidak ditemukan.')
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Username atau password salah.')
     if not user.is_active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='Akun dinonaktifkan atau belum aktif.')
     if not authenticate_user(db, payload.username, payload.password):
         write_audit(db, user, 'login_failed', 'user', user.id, None, {'reason': 'invalid_password'})
         db.commit()
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Password salah.')
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Username atau password salah.')
     if payload.role and payload.role != user.role:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -130,15 +130,31 @@ def update_account_profile(
     current_user: User = Depends(get_current_user),
 ):
     username = payload.username.strip().casefold()
-    if db.query(User).filter(User.username == username, User.id != current_user.id).first():
+    if db.query(User).filter(
+        User.id != current_user.id,
+        (func.lower(User.username) == username) | (func.lower(User.nim) == username),
+    ).first():
         raise HTTPException(status_code=409, detail='Username sudah digunakan oleh akun lain.')
-    if payload.email and db.query(User).filter(User.email == payload.email.strip(), User.id != current_user.id).first():
+    if payload.email and db.query(User).filter(func.lower(User.email) == payload.email.strip().casefold(), User.id != current_user.id).first():
         raise HTTPException(status_code=409, detail='Email sudah digunakan oleh akun lain.')
     if payload.new_password:
         if not verify_password(payload.current_password, current_user.password_hash):
             raise HTTPException(status_code=401, detail='Password saat ini salah.')
         current_user.password_hash = get_password_hash(payload.new_password)
-    identity_changed = username != current_user.username.strip().casefold()
+    if current_user.role == 'mahasiswa':
+        stored_program = normalize_program_name(current_user.program_study or '')
+        requested_program = normalize_program_name(payload.program_study or current_user.program_study or '')
+        if payload.program_study is not None and requested_program != stored_program:
+            raise HTTPException(
+                status_code=409,
+                detail='Program studi merupakan data akademik dan hanya dapat diubah melalui admin akademik.',
+            )
+        if payload.angkatan is not None and payload.angkatan.strip() != (current_user.angkatan or ''):
+            raise HTTPException(
+                status_code=409,
+                detail='Angkatan merupakan data akademik dan hanya dapat diubah melalui admin akademik.',
+            )
+    identity_changed = username != (current_user.username or '').strip().casefold()
     password_changed = bool(payload.new_password)
     if identity_changed or password_changed:
         current_user.token_version += 1
@@ -146,8 +162,11 @@ def update_account_profile(
     current_user.full_name = payload.full_name.strip()
     current_user.username = username
     current_user.email = payload.email.strip() if payload.email else None
-    current_user.program_study = payload.program_study.strip() if payload.program_study else None
-    current_user.angkatan = payload.angkatan.strip() if payload.angkatan else None
+    if current_user.role != 'mahasiswa':
+        if payload.program_study is not None:
+            current_user.program_study = payload.program_study.strip() or None
+        if payload.angkatan is not None:
+            current_user.angkatan = payload.angkatan.strip() or None
     current_user.phone_number = payload.phone_number
     write_audit(db, current_user, 'profile_updated', 'user', current_user.id, None, {'password_changed': bool(payload.new_password)})
     db.commit()
