@@ -3536,16 +3536,46 @@ function App() {
               <label><span>Mata kuliah aktif</span><select required value={classForm.course_code} onChange={(event) => setClassForm((previous) => ({ ...previous, course_code: event.target.value }))}><option value="">Pilih mata kuliah</option>{courseList.map((course) => <option key={course.code} value={course.code}>{course.code} · {course.name}</option>)}</select></label>
               <label><span>Nama kelas</span><input required maxLength="40" placeholder="A / B / Reguler 1" value={classForm.class_name} onChange={(event) => setClassForm((previous) => ({ ...previous, class_name: event.target.value }))} /></label>
               <label><span>Dosen pengampu</span><select value={classForm.lecturer_id} onChange={(event) => setClassForm((previous) => ({ ...previous, lecturer_id: event.target.value }))}><option value="">Belum ditentukan</option>{adminAdvisors.map((lecturer) => <option key={lecturer.id} value={lecturer.id}>{lecturer.full_name} · {lecturer.nim}</option>)}</select></label>
-              <label><span>Ruang</span><input required maxLength="40" placeholder="Lab 2 / R. 301" value={classForm.room} onChange={(event) => setClassForm((previous) => ({ ...previous, room: event.target.value }))} /></label>
-              <label><span>Hari</span><select required value={classForm.day} onChange={(event) => setClassForm((previous) => ({ ...previous, day: event.target.value }))}>{['Senin','Selasa','Rabu','Kamis','Jumat','Sabtu','Minggu'].map((day) => <option key={day} value={day}>{day}</option>)}</select></label>
+              <label><span>Ruang aktif</span>
+                <select required value={classForm.room} onChange={(event) => setClassForm((previous) => ({ ...previous, room: event.target.value, start_time: '', end_time: '' }))}>
+                  <option value="">Pilih ruang yang sudah diverifikasi</option>
+                  {roomList.filter((room) => room.is_active).map((room) => (
+                    <option key={room.code} value={room.code}>{room.code} · Lantai {room.floor} · {room.capacity} kursi</option>
+                  ))}
+                </select>
+                <small className="muted">Hanya ruang berstatus aktif yang dapat dipakai untuk kelas.</small>
+              </label>
+              <label><span>Hari</span><select required value={classForm.day} onChange={(event) => setClassForm((previous) => ({ ...previous, day: event.target.value, start_time: '', end_time: '' }))}>{['Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'].map((day) => <option key={day} value={day}>{day}</option>)}</select></label>
               <label><span>Semester</span><input required type="number" min="1" max="14" step="1" value={classForm.semester} onChange={(event) => setClassForm((previous) => ({ ...previous, semester: event.target.value }))} /></label>
-              <label><span>Jam mulai</span><input required type="time" value={classForm.start_time} onChange={(event) => setClassForm((previous) => ({ ...previous, start_time: event.target.value }))} /></label>
-              <label><span>Jam selesai</span><input required type="time" value={classForm.end_time} onChange={(event) => setClassForm((previous) => ({ ...previous, end_time: event.target.value }))} /></label>
+              <label><span>Jam mulai (slot tersedia)</span>
+                <select
+                  required
+                  value={classForm.start_time}
+                  disabled={scheduleSlotBusy || !scheduleSlots.length}
+                  onChange={(event) => {
+                    const slot = scheduleSlots.find((item) => item.start_time === event.target.value);
+                    setClassForm((previous) => ({
+                      ...previous,
+                      start_time: slot?.start_time || '',
+                      end_time: slot?.end_time || '',
+                    }));
+                  }}
+                >
+                  <option value="">{scheduleSlotBusy ? 'Memeriksa bentrok...' : 'Pilih slot jam mulai'}</option>
+                  {scheduleSlots.map((slot) => <option key={slot.start_time} value={slot.start_time}>{slot.start_time} – selesai {slot.end_time}</option>)}
+                </select>
+                <small className="muted">{scheduleSlots.length ? `${scheduleSlots.length} slot tidak bentrok tersedia` : scheduleSlotBusy ? 'Sedang memeriksa jadwal ruang dan dosen.' : 'Tidak ada slot tersedia untuk kombinasi tersebut.'}</small>
+              </label>
+              <label><span>Jam selesai (otomatis)</span><input value={classForm.end_time || ''} readOnly aria-readonly="true" placeholder="Dihitung dari SKS" /></label>
+              <div className="schedule-duration-note">
+                <Clock3 size={16} />
+                <span>Durasi otomatis: {scheduleDuration || 0} menit · {courseList.find((course) => course.code === classForm.course_code)?.sks || 0} SKS × 50 menit. Jam kuliah hanya 07:00–18:00.</span>
+              </div>
               <label><span>Kapasitas kursi</span><input required type="number" min="1" max="10000" step="1" value={classForm.capacity} onChange={(event) => setClassForm((previous) => ({ ...previous, capacity: event.target.value }))} /></label>
               <label className="class-open-toggle"><input type="checkbox" checked={classForm.is_open} onChange={(event) => setClassForm((previous) => ({ ...previous, is_open: event.target.checked }))} /> Buka kelas untuk dipilih mahasiswa</label>
-              <div className="class-form-actions"><button className="btn primary" type="submit" disabled={classBusy || !courseList.length}>{classBusy ? 'Menyimpan...' : editingClassId ? 'Simpan perubahan' : 'Tambah kelas paralel'}</button></div>
+              <div className="class-form-actions"><button className="btn primary" type="submit" disabled={classBusy || scheduleSlotBusy || !courseList.length || !classForm.room || !classForm.start_time || !classForm.end_time}>{classBusy ? 'Menyimpan...' : editingClassId ? 'Simpan perubahan' : 'Tambah kelas paralel'}</button></div>
             </form>
-            <div className="class-validation-note"><ShieldCheck size={17} /><span>Validasi otomatis: jam harus berurutan, ruang dan dosen tidak boleh bentrok dalam interval waktu yang sama, serta kapasitas tidak boleh di bawah jumlah kursi yang telah terpakai. Jika kelas masih memiliki peserta atau reservasi, perubahan jadwal, dosen, ruang, semester, dan status kelas akan dikunci; kapasitas hanya boleh dinaikkan.</span></div>
+            <div className="class-validation-note"><ShieldCheck size={17} /><span>Sistem menghitung durasi dari bobot mata kuliah: 1 SKS = 50 menit. Slot dibatasi 07:00–18:00 dan dicek terhadap bentrok ruang serta dosen pada semua semester. Mahasiswa memilih kelas yang sudah ditetapkan, bukan menentukan waktu/ruang sendiri. Jika kelas masih memiliki peserta atau reservasi, perubahan jadwal, dosen, ruang, semester, dan status kelas dikunci; kapasitas hanya dapat dinaikkan.</span></div>
           </section>
           <section className="class-table-card">
             <div className="class-section-heading"><div><h3>Daftar kelas terdaftar</h3><p className="muted">Sisa kursi dan status kelas akan dipakai sebagai informasi saat mahasiswa memilih kelas di Draft KRS.</p></div><button className="btn outline" type="button" onClick={() => refreshClassList().catch((error) => setActionMessage(error.message))}>Perbarui data</button></div>
@@ -3562,6 +3592,50 @@ function App() {
                 </tr>
               ))}{classList.length === 0 && <tr><td colSpan="6" className="muted">Belum ada kelas paralel. Buat kelas pertama menggunakan formulir di atas.</td></tr>}</tbody>
             </table></div>
+          </section>
+          <section className="class-table-card room-inventory-section">
+            <div className="class-section-heading">
+              <div>
+                <h3>Inventaris Ruangan FTII</h3>
+                <p className="muted">Ruang yang teridentifikasi pada arsip 2023/2024 dimasukkan sebagai nonaktif. Admin wajib mengonfirmasi kondisi fisik dan kapasitas sebelum mengaktifkannya.</p>
+              </div>
+              <button className="btn outline" type="button" disabled={exportBusy === 'rooms'} onClick={() => downloadAdminExport('rooms')}>
+                {exportBusy === 'rooms' ? 'Mengekspor...' : 'Ekspor Data Ruangan'}
+              </button>
+            </div>
+            <form className="room-form-grid" onSubmit={saveRoom}>
+              <label><span>Kode Ruang</span><input required pattern="FT[234][0-9]{2}" title="Format FT2xx, FT3xx, atau FT4xx" placeholder="FT401" maxLength="5" value={roomForm.code} disabled={Boolean(editingRoomCode)} onChange={(event) => setRoomForm((previous) => ({ ...previous, code: event.target.value.toUpperCase().replace(/[^FT0-9]/g, '').slice(0, 5) }))} /></label>
+              <label><span>Kapasitas resmi</span><input type="number" min="1" max="1000" value={roomForm.capacity} onChange={(event) => setRoomForm((previous) => ({ ...previous, capacity: event.target.value }))} placeholder="Isi setelah verifikasi" /></label>
+              <label><span>Tipe ruang</span><select value={roomForm.room_type} onChange={(event) => setRoomForm((previous) => ({ ...previous, room_type: event.target.value }))}>{['Ruang kuliah','Laboratorium','Ruang praktik','Studio'].map((type) => <option key={type} value={type}>{type}</option>)}</select></label>
+              <label className="class-open-toggle"><input type="checkbox" checked={roomForm.is_active} onChange={(event) => setRoomForm((previous) => ({ ...previous, is_active: event.target.checked }))} /> Aktif dan boleh dipakai untuk penjadwalan</label>
+              <label className="room-notes-field"><span>Catatan verifikasi</span><textarea rows={2} value={roomForm.notes} onChange={(event) => setRoomForm((previous) => ({ ...previous, notes: event.target.value }))} placeholder="Contoh: kapasitas dan kondisi ruang sudah diverifikasi Admin" /></label>
+              <div className="class-form-actions">
+                <button className="btn primary" type="submit" disabled={roomBusy || !(editingRoomCode || roomForm.code)}>
+                  {roomBusy ? 'Menyimpan...' : editingRoomCode ? 'Simpan perubahan ruang' : 'Tambah ruang'}
+                </button>
+                {editingRoomCode && <button className="btn outline" type="button" onClick={() => { setEditingRoomCode(''); setRoomForm({ code: '', capacity: '', room_type: 'Ruang kuliah', is_active: false, notes: '' }); }}>Batal</button>}
+              </div>
+            </form>
+            <div className="table-wrap">
+              <table className="table">
+                <thead><tr><th>Kode</th><th>Lantai</th><th>Kapasitas</th><th>Tipe</th><th>Kelas terkait</th><th>Status</th><th>Aksi</th></tr></thead>
+                <tbody>
+                  {roomList.map((room) => (
+                    <tr key={room.code}>
+                      <td><strong>{room.code}</strong></td>
+                      <td>{room.floor}</td>
+                      <td>{room.capacity ?? 'Belum diverifikasi'}</td>
+                      <td>{room.room_type}</td>
+                      <td>{room.class_count}</td>
+                      <td><span className={room.is_active ? 'class-status-open' : 'class-status-closed'}>{room.is_active ? 'Aktif' : 'Perlu verifikasi'}</span></td>
+                      <td><button className="btn outline" type="button" disabled={roomBusy} onClick={() => editRoom(room)}>Ubah / verifikasi</button></td>
+                    </tr>
+                  ))}
+                  {roomList.length === 0 && <tr><td colSpan="7" className="muted">Belum ada data ruangan. Tambahkan ruang yang telah diverifikasi.</td></tr>}
+                </tbody>
+              </table>
+            </div>
+            <p className="muted">Format baku: FT2xx, FT3xx, FT4xx. Arsip lama mencatat FT301–FT305 dan FT401–FT406; tidak ditemukan kode FT2xx yang dapat diverifikasi pada sumber yang ditelusuri.</p>
           </section>
         </div>
       );
