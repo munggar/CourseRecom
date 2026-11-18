@@ -1,3 +1,4 @@
+import json
 from datetime import datetime, timezone
 from uuid import uuid4
 
@@ -289,5 +290,132 @@ def test_admin_delete_lecturer_preserves_review_history_and_nulls_foreign_keys()
             AuditLog.action == 'lecturer_deleted',
         ).delete(synchronize_session=False)
         db.query(User).filter(User.id.in_([student_id, lecturer_id])).delete(synchronize_session=False)
+        db.commit()
+        db.close()
+
+
+def test_admin_cannot_change_or_close_parallel_class_with_active_krs_reservations():
+    suffix = uuid4().hex[:10].upper()
+    code = f'LOCK{suffix}'
+    student_nim = f'LOCKM{suffix}'
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    db = SessionLocal()
+    student = User(
+        nim=student_nim,
+        username=f'lock-{suffix.lower()}',
+        full_name='Mahasiswa dengan KRS aktif',
+        role='mahasiswa',
+        password_hash='unused-hash',
+    )
+    course = Course(
+        code=code,
+        name='Mata Kuliah Kelas Terkunci',
+        sks=3,
+        semester=1,
+        available_semesters='1',
+        category='Pilihan',
+        capacity=20,
+        is_active=True,
+    )
+    db.add_all([student, course])
+    db.flush()
+    section = CourseClass(
+        course_code=code,
+        class_name='A',
+        room='R.101',
+        day='Senin',
+        start_time='08:00',
+        end_time='10:00',
+        capacity=5,
+        semester='1',
+        is_open=True,
+    )
+    db.add(section)
+    db.flush()
+    plan = StudyPlan(
+        student_id=student.id,
+        semester=1,
+        courses_json=json.dumps([{
+            'code': code,
+            'name': course.name,
+            'sks': 3,
+            'class_id': section.id,
+            'class_name': section.class_name,
+            'room': section.room,
+            'day': section.day,
+            'start_time': section.start_time,
+            'end_time': section.end_time,
+        }]),
+        status='approved',
+        advisor_note='',
+        created_at=now,
+        updated_at=now,
+    )
+    db.add(plan)
+    db.commit()
+    class_id, plan_id, student_id = section.id, plan.id, student.id
+    db.close()
+
+    base_payload = {
+        'course_code': code,
+        'class_name': 'A',
+        'lecturer_id': None,
+        'room': 'R.101',
+        'day': 'Senin',
+        'start_time': '08:00',
+        'end_time': '10:00',
+        'capacity': 5,
+        'semester': '1',
+        'is_open': True,
+    }
+    try:
+        changed_schedule = client.put(
+            f'/api/admin/classes/{class_id}',
+            headers=ADMIN_HEADERS,
+            json={**base_payload, 'room': 'R.202', 'day': 'Selasa'},
+        )
+        assert changed_schedule.status_code == 409, changed_schedule.text
+        assert 'dikunci' in changed_schedule.json()['detail']
+
+        close_through_update = client.put(
+            f'/api/admin/classes/{class_id}',
+            headers=ADMIN_HEADERS,
+            json={**base_payload, 'is_open': False},
+        )
+        assert close_through_update.status_code == 409, close_through_update.text
+
+        close_through_endpoint = client.delete(
+            f'/api/admin/classes/{class_id}',
+            headers=ADMIN_HEADERS,
+        )
+        assert close_through_endpoint.status_code == 409, close_through_endpoint.text
+
+        increase_capacity = client.put(
+            f'/api/admin/classes/{class_id}',
+            headers=ADMIN_HEADERS,
+            json={**base_payload, 'capacity': 8},
+        )
+        assert increase_capacity.status_code == 200, increase_capacity.text
+        assert increase_capacity.json()['capacity'] == 8
+
+        db = SessionLocal()
+        stored_class = db.query(CourseClass).filter(CourseClass.id == class_id).one()
+        stored_plan = db.query(StudyPlan).filter(StudyPlan.id == plan_id).one()
+        assert stored_class.room == 'R.101'
+        assert stored_class.day == 'Senin'
+        assert stored_class.is_open is True
+        assert stored_class.capacity == 8
+        assert json.loads(stored_plan.courses_json)[0]['room'] == 'R.101'
+        db.close()
+    finally:
+        db = SessionLocal()
+        db.query(AuditLog).filter(
+            AuditLog.entity_type == 'course_class',
+            AuditLog.entity_id == str(class_id),
+        ).delete(synchronize_session=False)
+        db.query(StudyPlan).filter(StudyPlan.id == plan_id).delete(synchronize_session=False)
+        db.query(CourseClass).filter(CourseClass.id == class_id).delete(synchronize_session=False)
+        db.query(Course).filter(Course.code == code).delete(synchronize_session=False)
+        db.query(User).filter(User.id == student_id).delete(synchronize_session=False)
         db.commit()
         db.close()

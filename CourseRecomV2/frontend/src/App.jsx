@@ -1318,6 +1318,10 @@ function App() {
       setActionMessage('Pilih KRS approved, isi mata kuliah, dan alasan KPRS minimal 10 karakter.');
       return;
     }
+    if (!studentClassesLoaded) {
+      setActionMessage('Daftar kelas untuk semester KRS masih dimuat. Tunggu sampai selesai sebelum mengajukan KPRS.');
+      return;
+    }
     const sourcePlan = studyPlans.find((plan) => plan.id === Number(kprsDraft.planId));
     const selections = Object.fromEntries((sourcePlan?.courses || []).filter((course) => course.class_id).map((course) => [course.code, Number(course.class_id)]));
     Object.entries(kprsClassSelections).forEach(([code, id]) => { if (id) selections[code] = Number(id); });
@@ -2725,7 +2729,10 @@ function App() {
                   );
                 })}
               </div>
-              <button className="btn primary" type="button" onClick={submitKprs}>Ajukan KPRS</button>
+              <div className="kprs-submit-row">
+                {!studentClassesLoaded && <small className="muted">Memuat jadwal kelas semester KRS...</small>}
+                <button className="btn primary" type="button" onClick={submitKprs} disabled={!studentClassesLoaded}>Ajukan KPRS</button>
+              </div>
               {kprsRequests.map((request) => (
                 <p key={request.id}>
                   KPRS #{request.id}: <strong>{request.status}</strong>
@@ -3334,11 +3341,11 @@ function App() {
               <label><span>Semester</span><input required type="number" min="1" max="14" step="1" value={classForm.semester} onChange={(event) => setClassForm((previous) => ({ ...previous, semester: event.target.value }))} /></label>
               <label><span>Jam mulai</span><input required type="time" value={classForm.start_time} onChange={(event) => setClassForm((previous) => ({ ...previous, start_time: event.target.value }))} /></label>
               <label><span>Jam selesai</span><input required type="time" value={classForm.end_time} onChange={(event) => setClassForm((previous) => ({ ...previous, end_time: event.target.value }))} /></label>
-              <label><span>Kapasitas kursi</span><input required type="number" min="0" max="10000" step="1" value={classForm.capacity} onChange={(event) => setClassForm((previous) => ({ ...previous, capacity: event.target.value }))} /></label>
+              <label><span>Kapasitas kursi</span><input required type="number" min="1" max="10000" step="1" value={classForm.capacity} onChange={(event) => setClassForm((previous) => ({ ...previous, capacity: event.target.value }))} /></label>
               <label className="class-open-toggle"><input type="checkbox" checked={classForm.is_open} onChange={(event) => setClassForm((previous) => ({ ...previous, is_open: event.target.checked }))} /> Buka kelas untuk dipilih mahasiswa</label>
               <div className="class-form-actions"><button className="btn primary" type="submit" disabled={classBusy || !courseList.length}>{classBusy ? 'Menyimpan...' : editingClassId ? 'Simpan perubahan' : 'Tambah kelas paralel'}</button></div>
             </form>
-            <div className="class-validation-note"><ShieldCheck size={17} /><span>Validasi otomatis: jam harus berurutan, ruang dan dosen tidak boleh bentrok dalam interval waktu yang sama, serta kapasitas tidak boleh di bawah jumlah kursi yang telah terpakai.</span></div>
+            <div className="class-validation-note"><ShieldCheck size={17} /><span>Validasi otomatis: jam harus berurutan, ruang dan dosen tidak boleh bentrok dalam interval waktu yang sama, serta kapasitas tidak boleh di bawah jumlah kursi yang telah terpakai. Jika kelas masih memiliki peserta atau reservasi, perubahan jadwal, dosen, ruang, semester, dan status kelas akan dikunci; kapasitas hanya boleh dinaikkan.</span></div>
           </section>
           <section className="class-table-card">
             <div className="class-section-heading"><div><h3>Daftar kelas terdaftar</h3><p className="muted">Sisa kursi dan status kelas akan dipakai sebagai informasi saat mahasiswa memilih kelas di Draft KRS.</p></div><button className="btn outline" type="button" onClick={() => refreshClassList().catch((error) => setActionMessage(error.message))}>Perbarui data</button></div>
@@ -3367,7 +3374,7 @@ function App() {
         ['category', 'Kategori'], ['prerequisite_text', 'Prasyarat/kriteria'],
         ['prerequisite_codes', 'Kode prasyarat yang harus lulus'],
         ['description', 'Keterangan'], ['day', 'Hari'], ['time', 'Waktu'],
-        ['capacity', 'Kuota kelas'],
+        ['capacity', 'Kuota total mata kuliah'],
       ];
       const courseFieldInput = (course, field, label, update) => (
         <label className="course-edit-field" key={field}>
@@ -3387,6 +3394,7 @@ function App() {
         <div className="card">
           <h3>Manajemen Data</h3>
           <p>Kelola seluruh data kurikulum, prasyarat, dan keterangan. Rekomendasi mahasiswa menggunakan katalog aktif di halaman ini.</p>
+          <p className="muted">Kuota total mata kuliah adalah batas agregat seluruh kelasnya. Setiap kelas paralel juga memiliki batas kursi sendiri; pengajuan harus memenuhi kedua batas tersebut.</p>
           <section style={{ marginTop: 20 }}>
             <h3>Periode dan Batas Akademik</h3>
             <div className="course-edit-grid">
