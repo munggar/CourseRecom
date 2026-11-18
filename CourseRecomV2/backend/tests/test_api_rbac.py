@@ -740,6 +740,16 @@ def test_teacher_reviews_submitted_study_plan_with_guidance_note():
         assert resubmitted.status_code == 200, resubmitted.text
         assert resubmitted.json()['status'] == 'pending'
 
+        db = SessionLocal()
+        plan_audit_actions = {
+            item.action for item in db.query(AuditLog).filter(
+                AuditLog.entity_type == 'study_plan',
+                AuditLog.entity_id == str(plan_id),
+            ).all()
+        }
+        assert {'study_plan_updated', 'study_plan_resubmitted', 'study_plan_review'} <= plan_audit_actions
+        db.close()
+
         approved = client.patch(
             f'/api/dosen/rencana-studi/{plan_id}',
             headers=teacher_headers,
