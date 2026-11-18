@@ -609,6 +609,43 @@ function App() {
   const [toasts, setToasts] = useState([]);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   useEffect(() => {
+    if (user?.role !== 'admin' || view !== 'kelas') return undefined;
+    if (!classForm.course_code || !classForm.room || !classForm.day) {
+      setScheduleSlots([]);
+      setScheduleDuration(0);
+      return undefined;
+    }
+    let active = true;
+    setScheduleSlotBusy(true);
+    const parameters = new URLSearchParams({
+      course_code: classForm.course_code,
+      room_code: classForm.room,
+      day: classForm.day,
+    });
+    if (classForm.lecturer_id) parameters.set('lecturer_id', String(classForm.lecturer_id));
+    if (editingClassId) parameters.set('exclude_class_id', String(editingClassId));
+    apiRequest(`/admin/schedule-options?${parameters.toString()}`, { suppressLoader: true })
+      .then((result) => {
+        if (!active) return;
+        const slots = Array.isArray(result.slots) ? result.slots : [];
+        setScheduleSlots(slots);
+        setScheduleDuration(Number(result.duration_minutes) || 0);
+        setClassForm((previous) => {
+          const selected = slots.find((slot) => slot.start_time === previous.start_time);
+          return selected ? { ...previous, end_time: selected.end_time } : { ...previous, start_time: '', end_time: '' };
+        });
+      })
+      .catch((error) => {
+        if (!active) return;
+        setScheduleSlots([]);
+        setScheduleDuration(0);
+        pushToast(error.message || 'Slot jadwal tidak dapat dimuat.', 'error');
+      })
+      .finally(() => { if (active) setScheduleSlotBusy(false); });
+    return () => { active = false; };
+  }, [user?.role, view, classForm.course_code, classForm.room, classForm.day, classForm.lecturer_id, editingClassId, pushToast]);
+
+  useEffect(() => {
     if (!officialKrsPreviewUrl) return undefined;
     const closeOnEscape = (event) => {
       if (event.key === 'Escape') {
@@ -1492,6 +1529,97 @@ function App() {
     }
   };
 
+  const downloadAdminExport = async (kind) => {
+    const exports = {
+      lecturers: { endpoint: '/admin/lecturers/export', filename: 'Data_Dosen_CourseRecom.xlsx' },
+      rooms: { endpoint: '/admin/rooms/export', filename: 'Data_Ruangan_CourseRecom.xlsx' },
+    };
+    const selected = exports[kind];
+    if (!selected || user?.role !== 'admin') return;
+    const token = localStorage.getItem('courseRecomToken');
+    setExportBusy(kind);
+    try {
+      const response = await fetch(`${API_BASE}${selected.endpoint}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      expireSessionOnUnauthorized(response, token);
+      if (!response.ok) {
+        let detail = 'Ekspor data gagal.';
+        try {
+          const body = await response.json();
+          detail = body.detail || detail;
+        } catch {
+          // Keep a safe default message for non-JSON responses.
+        }
+        throw new Error(detail);
+      }
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = selected.filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      pushToast(kind === 'lecturers' ? 'Data dosen berhasil diekspor.' : 'Data ruangan berhasil diekspor.', 'success');
+    } catch (error) {
+      pushToast(error.message || 'Ekspor data gagal.', 'error');
+    } finally {
+      setExportBusy('');
+    }
+  };
+
+  const refreshRoomList = async () => {
+    const rooms = await apiRequest('/admin/rooms');
+    setRoomList(rooms);
+    return rooms;
+  };
+
+  const saveRoom = async (event) => {
+    event.preventDefault();
+    if (user?.role !== 'admin') return;
+    if (roomForm.is_active && (!roomForm.capacity || Number(roomForm.capacity) < 1)) {
+      setActionMessage('Isi kapasitas resmi ruang sebelum mengaktifkannya.');
+      return;
+    }
+    setRoomBusy(true);
+    try {
+      const payload = {
+        ...roomForm,
+        code: (editingRoomCode || roomForm.code).trim().toUpperCase(),
+        capacity: roomForm.capacity === '' ? null : Number(roomForm.capacity),
+      };
+      await apiRequest(
+        editingRoomCode ? `/admin/rooms/${encodeURIComponent(editingRoomCode)}` : '/admin/rooms',
+        {
+          method: editingRoomCode ? 'PATCH' : 'POST',
+          body: JSON.stringify(payload),
+        },
+      );
+      await refreshRoomList();
+      const wasEditing = Boolean(editingRoomCode);
+      setEditingRoomCode('');
+      setRoomForm({ code: '', capacity: '', room_type: 'Ruang kuliah', is_active: false, notes: '' });
+      setActionMessage(wasEditing ? 'Inventaris ruang berhasil diperbarui.' : 'Ruang berhasil ditambahkan ke inventaris.');
+    } catch (error) {
+      setActionMessage(error.message || 'Inventaris ruang gagal disimpan.');
+    } finally {
+      setRoomBusy(false);
+    }
+  };
+
+  const editRoom = (room) => {
+    setEditingRoomCode(room.code);
+    setRoomForm({
+      code: room.code,
+      capacity: room.capacity ?? '',
+      room_type: room.room_type || 'Ruang kuliah',
+      is_active: Boolean(room.is_active),
+      notes: room.notes || '',
+    });
+  };
+
   const refreshClassList = async () => {
     const sections = await apiRequest('/admin/classes');
     setClassList(sections);
@@ -1511,7 +1639,7 @@ function App() {
         room: classForm.room.trim(),
         day: classForm.day.trim(),
         start_time: classForm.start_time,
-        end_time: classForm.end_time,
+        end_time: classForm.end_time || null,
         capacity: Number(classForm.capacity),
         semester: String(classForm.semester),
         is_open: Boolean(classForm.is_open),
@@ -1525,7 +1653,7 @@ function App() {
       setEditingClassId(null);
       setClassForm({
         course_code: '', class_name: '', lecturer_id: '', room: '', day: 'Senin',
-        start_time: '08:00', end_time: '09:40', capacity: 40, semester: '1', is_open: true,
+        start_time: '', end_time: '', capacity: 40, semester: '1', is_open: true,
       });
       setActionMessage(wasEditing ? 'Kelas paralel berhasil diperbarui.' : 'Kelas paralel berhasil ditambahkan.');
     } catch (error) {
