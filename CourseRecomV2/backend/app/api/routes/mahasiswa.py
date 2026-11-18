@@ -540,6 +540,49 @@ def _serialize_study_plan(plan: StudyPlan) -> dict:
     }
 
 
+def _advisor_rejected_course_codes(
+    db: Session,
+    student_id: int,
+    semester: int,
+) -> set[str]:
+    rejected_codes: set[str] = set()
+    feedback_rows = db.query(AdvisorFeedback).filter(
+        AdvisorFeedback.student_id == student_id,
+        AdvisorFeedback.semester == semester,
+        AdvisorFeedback.feedback_type == 'revision_requested',
+    ).all()
+    for feedback in feedback_rows:
+        try:
+            codes = json.loads(feedback.affected_course_codes_json or '[]')
+        except (TypeError, ValueError, json.JSONDecodeError):
+            codes = []
+        rejected_codes.update(
+            str(code).strip().upper()
+            for code in codes
+            if str(code).strip()
+        )
+    return rejected_codes
+
+
+def _assert_no_advisor_rejected_courses(
+    db: Session,
+    student_id: int,
+    semester: int,
+    course_codes: list[str],
+) -> None:
+    blocked = _advisor_rejected_course_codes(db, student_id, semester)
+    still_selected = blocked.intersection({code.strip().upper() for code in course_codes})
+    if still_selected:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                'KRS belum dapat diajukan. Hapus mata kuliah yang diminta revisi oleh dosen PA: '
+                + ', '.join(sorted(still_selected))
+                + '. Pilih mata kuliah alternatif yang tersedia.'
+            ),
+        )
+
+
 def _owned_study_plan(db: Session, plan_id: int, student_id: int) -> StudyPlan:
     plan = db.query(StudyPlan).filter(
         StudyPlan.id == plan_id,
@@ -587,6 +630,9 @@ def update_my_study_plan(
     if plan.status not in {'draft', 'revision_requested'}:
         raise HTTPException(status_code=409, detail='KRS yang sedang menunggu persetujuan tidak dapat diubah.')
 
+    _assert_no_advisor_rejected_courses(
+        db, current_user.id, plan.semester, payload.course_codes
+    )
     try:
         courses = validate_course_selection(db, current_user, payload.course_codes, plan.semester)
         lock_capacity_courses(db, [course['code'] for course in courses])
@@ -814,6 +860,10 @@ def resubmit_my_study_plan(
     ).first():
         raise HTTPException(status_code=409, detail='Masih ada KRS menunggu persetujuan.')
     try:
+        stored_codes = [item['code'] for item in json.loads(plan.courses_json)]
+        _assert_no_advisor_rejected_courses(
+            db, current_user.id, plan.semester, stored_codes
+        )
         courses = validate_course_selection(
             db,
             current_user,
@@ -964,6 +1014,19 @@ def submit_study_plan(
             status_code=status.HTTP_409_CONFLICT,
             detail='KRS sudah disetujui dan tidak dapat diubah.',
         )
+    revision_plan = db.query(StudyPlan).filter(
+        StudyPlan.student_id == current_user.id,
+        StudyPlan.semester == result['target_semester'],
+        StudyPlan.status == 'revision_requested',
+    ).order_by(StudyPlan.updated_at.desc(), StudyPlan.id.desc()).first()
+    if revision_plan:
+        raise HTTPException(
+            status_code=409,
+            detail='Ada KRS yang diminta revisi dosen PA. Perbaiki dan ajukan ulang rencana studi tersebut, jangan membuat pengajuan baru.',
+        )
+    _assert_no_advisor_rejected_courses(
+        db, current_user.id, result['target_semester'], payload.course_codes
+    )
     try:
         courses = validate_course_selection(
             db,
