@@ -2342,7 +2342,7 @@ function App() {
                     <Sparkles size={17} aria-hidden="true" />
                     <span><strong>Dipilih oleh model Machine Learning CourseRecom.</strong> {item.recommendation_explanation || 'Skor menggabungkan riwayat akademik, kecocokan minat yang tersedia, prasyarat, dan kurikulum.'} Skor ini menunjukkan kecocokan rekomendasi, bukan probabilitas kelulusan.</span>
                   </p>
-                  {item.description && <p>{item.description}</p>
+                  {item.description && <p>{item.description}</p>}
                   {item.prerequisite_text && (
                     <p><strong>Prasyarat:</strong><br />{item.prerequisite_text.split('\n').map((line, index) => (
                       <span key={`${item.code}-prerequisite-${index}`}>{line}<br /></span>
