@@ -112,6 +112,7 @@ def list_lecturers(
             'username': lecturer.username or lecturer.nim,
             'email': lecturer.email,
             'role': lecturer.role,
+            'is_active': bool(lecturer.is_active),
         }
         for lecturer in lecturers
     ]
