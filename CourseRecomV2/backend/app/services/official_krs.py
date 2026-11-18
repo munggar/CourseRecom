@@ -7,9 +7,17 @@ import json
 import time
 import binascii
 from urllib.parse import urlsplit
+from xml.sax.saxutils import escape
 
 import qrcode
+from reportlab.lib import colors
+from reportlab.lib.enums import TA_CENTER, TA_LEFT
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import ParagraphStyle
+from reportlab.lib.units import mm
+from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen import canvas
+from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 from app.config import settings
 
@@ -82,6 +90,11 @@ def verify_token(token: str) -> dict | None:
         return None
 
 
+def _paragraph(value: object, style: ParagraphStyle) -> Paragraph:
+    text = escape(str(value if value not in (None, '') else '-')).replace('\n', '<br/>')
+    return Paragraph(text, style)
+
+
 def build_official_krs_pdf(
     student_nim: str,
     student_name: str,
@@ -89,36 +102,213 @@ def build_official_krs_pdf(
     semester: int,
     courses: list[dict],
     verification_url: str,
+    *,
+    program_study: str = '',
+    faculty_name: str = 'Fakultas Teknologi Industri dan Informatika',
+    academic_term: str = '',
+    advisor_name: str = '',
+    advisor_nim: str = '',
+    issue_date: str = '',
 ) -> tuple[bytes, str]:
+    """Build a formal, UHAMKA-style KRS document with verifiable QR footer."""
     buffer = io.BytesIO()
-    pdf = canvas.Canvas(buffer)
-    pdf.setTitle(f'KRS Resmi {student_nim}')
-    pdf.drawString(72, 770, 'KARTU RENCANA STUDI (KRS) RESMI')
-    pdf.drawString(72, 742, f'NIM: {student_nim}')
-    pdf.drawString(72, 726, f'Nama: {student_name}')
-    pdf.drawString(72, 710, f'Semester: {semester}')
-    pdf.drawString(72, 694, f'Referensi KRS: {plan_id}')
-    pdf.line(72, 682, 540, 682)
-    y = 658
+    page_width, _ = A4
+    left_margin = 17 * mm
+    right_margin = 17 * mm
+    usable_width = page_width - left_margin - right_margin
+
+    styles = {
+        'university': ParagraphStyle(
+            'KrsUniversity', fontName='Helvetica-Bold', fontSize=13,
+            leading=16, alignment=TA_CENTER, spaceAfter=4 * mm,
+        ),
+        'title': ParagraphStyle(
+            'KrsTitle', fontName='Helvetica-Bold', fontSize=14,
+            leading=17, alignment=TA_CENTER, spaceAfter=1.5 * mm,
+        ),
+        'subtitle': ParagraphStyle(
+            'KrsSubtitle', fontName='Helvetica', fontSize=10.5,
+            leading=13, alignment=TA_CENTER, spaceAfter=7 * mm,
+        ),
+        'meta_label': ParagraphStyle(
+            'KrsMetaLabel', fontName='Helvetica', fontSize=9,
+            leading=12, alignment=TA_LEFT,
+        ),
+        'meta_value': ParagraphStyle(
+            'KrsMetaValue', fontName='Helvetica', fontSize=9,
+            leading=12, alignment=TA_LEFT,
+        ),
+        'cell': ParagraphStyle(
+            'KrsCell', fontName='Helvetica', fontSize=7.1,
+            leading=8.6, alignment=TA_LEFT,
+        ),
+        'cell_center': ParagraphStyle(
+            'KrsCellCenter', fontName='Helvetica', fontSize=7.1,
+            leading=8.6, alignment=TA_CENTER,
+        ),
+        'header_cell': ParagraphStyle(
+            'KrsHeaderCell', fontName='Helvetica-Bold', fontSize=7.1,
+            leading=8.5, alignment=TA_CENTER,
+        ),
+        'summary': ParagraphStyle(
+            'KrsSummary', fontName='Helvetica', fontSize=9,
+            leading=12,
+        ),
+        'sign_label': ParagraphStyle(
+            'KrsSignLabel', fontName='Helvetica', fontSize=9,
+            leading=12, alignment=TA_CENTER,
+        ),
+        'sign_name': ParagraphStyle(
+            'KrsSignName', fontName='Helvetica-Bold', fontSize=8.5,
+            leading=10.5, alignment=TA_CENTER,
+        ),
+        'footnote': ParagraphStyle(
+            'KrsFootnote', fontName='Helvetica', fontSize=6.4,
+            leading=8, textColor=colors.HexColor('#53616a'),
+        ),
+    }
+
+    story = [
+        Paragraph('UNIVERSITAS MUHAMMADIYAH PROF. DR. HAMKA', styles['university']),
+        Paragraph('KRS MAHASISWA', styles['title']),
+        Paragraph(escape(academic_term or f'Semester {semester}'), styles['subtitle']),
+    ]
+
+    identity_rows = [
+        [_paragraph('NIM', styles['meta_label']), _paragraph(':', styles['meta_label']), _paragraph(student_nim, styles['meta_value'])],
+        [_paragraph('Nama', styles['meta_label']), _paragraph(':', styles['meta_label']), _paragraph(student_name, styles['meta_value'])],
+        [_paragraph('Fakultas', styles['meta_label']), _paragraph(':', styles['meta_label']), _paragraph(faculty_name, styles['meta_value'])],
+        [_paragraph('Prog. Studi', styles['meta_label']), _paragraph(':', styles['meta_label']), _paragraph(program_study, styles['meta_value'])],
+    ]
+    identity = Table(identity_rows, colWidths=[25 * mm, 5 * mm, usable_width - 30 * mm], hAlign='LEFT')
+    identity.setStyle(TableStyle([
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 0),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 2),
+        ('TOPPADDING', (0, 0), (-1, -1), 1.4),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 1.4),
+    ]))
+    story.extend([identity, Spacer(1, 6 * mm)])
+
+    headers = ['NO', 'Kode', 'Mata Kuliah', 'Kelas', 'Jadwal Kuliah', 'Ruang', 'SKS', 'Pengajar']
+    table_data = [[Paragraph(escape(label), styles['header_cell']) for label in headers]]
     total_sks = 0
-    for course in courses:
-        sks = int(course.get('sks', 0))
-        total_sks += sks
-        pdf.drawString(72, y, f"{course.get('code', '')} - {course.get('name', '')} ({sks} SKS)")
-        y -= 18
-        if y < 110:
-            pdf.showPage()
-            y = 770
-    pdf.drawString(72, 96, f'Total SKS: {total_sks}')
-    pdf.drawString(72, 80, f'Verifikasi: {verification_url}')
+    for index, course in enumerate(courses, start=1):
+        credits = int(course.get('sks') or 0)
+        total_sks += credits
+        day = str(course.get('day') or '').strip()
+        start_time = str(course.get('start_time') or '').strip()
+        end_time = str(course.get('end_time') or '').strip()
+        if day and start_time and end_time:
+            schedule = f'{day} {start_time}-{end_time}'
+        else:
+            schedule = course.get('schedule') or course.get('time') or '-'
+        lecturer = course.get('lecturer_name') or course.get('lecturer') or '-'
+        table_data.append([
+            _paragraph(index, styles['cell_center']),
+            _paragraph(course.get('code') or '-', styles['cell_center']),
+            _paragraph(course.get('name') or '-', styles['cell']),
+            _paragraph(course.get('class_name') or '-', styles['cell_center']),
+            _paragraph(schedule, styles['cell_center']),
+            _paragraph(course.get('room') or '-', styles['cell_center']),
+            _paragraph(credits, styles['cell_center']),
+            _paragraph(lecturer, styles['cell']),
+        ])
+
+    column_widths = [
+        7 * mm, 17 * mm, 34 * mm, 12 * mm,
+        26 * mm, 14 * mm, 9 * mm,
+        usable_width - (7 + 17 + 34 + 12 + 26 + 14 + 9) * mm,
+    ]
+    course_table = Table(
+        table_data,
+        colWidths=column_widths,
+        repeatRows=1,
+        hAlign='LEFT',
+        splitByRow=1,
+    )
+    course_table.setStyle(TableStyle([
+        ('GRID', (0, 0), (-1, -1), 0.65, colors.black),
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#eef2f4')),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('ALIGN', (0, 0), (1, -1), 'CENTER'),
+        ('ALIGN', (3, 0), (6, -1), 'CENTER'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 3.2),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 3.2),
+        ('TOPPADDING', (0, 0), (-1, -1), 4.2),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 4.2),
+    ]))
+    story.append(course_table)
+    story.append(Spacer(1, 5 * mm))
+
+    summary_rows = [
+        [Paragraph(f'Jumlah Mata Kuliah&nbsp;&nbsp;&nbsp;&nbsp;: &nbsp;{len(courses)}', styles['summary'])],
+        [Paragraph(f'Jumlah SKS Mata Kuliah&nbsp;&nbsp;: &nbsp;{total_sks}', styles['summary'])],
+    ]
+    summary = Table(summary_rows, colWidths=[usable_width], hAlign='LEFT')
+    summary.setStyle(TableStyle([
+        ('LEFTPADDING', (0, 0), (-1, -1), 0),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 0),
+        ('TOPPADDING', (0, 0), (-1, -1), 1.5),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 1.5),
+    ]))
+    story.append(summary)
+    story.append(Spacer(1, 10 * mm))
+
+    advisor_display = advisor_name or 'Belum ditetapkan'
+    if advisor_nim:
+        advisor_display = f'{advisor_display}<br/><font size="7">NIP: {escape(str(advisor_nim))}</font>'
+    student_display = f'{escape(student_name)}<br/><font size="7">NIM: {escape(student_nim)}</font>'
+    signing_data = [[
+        Paragraph('Dosen PA', styles['sign_label']),
+        Paragraph(f'{escape(issue_date) if issue_date else "Jakarta"}<br/>Mahasiswa yang bersangkutan', styles['sign_label']),
+    ], ['', ''], [
+        Paragraph(advisor_display, styles['sign_name']),
+        Paragraph(student_display, styles['sign_name']),
+    ]]
+    signing = Table(signing_data, colWidths=[usable_width / 2, usable_width / 2], rowHeights=[17, 24, None])
+    signing.setStyle(TableStyle([
+        ('VALIGN', (0, 0), (-1, -1), 'BOTTOM'),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 8),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 8),
+        ('TOPPADDING', (0, 0), (-1, -1), 2),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+        ('LINEABOVE', (0, 2), (-1, 2), 0.4, colors.HexColor('#687780')),
+    ]))
+    story.append(signing)
 
     qr = qrcode.make(verification_url)
     qr_buffer = io.BytesIO()
     qr.save(qr_buffer, format='PNG')
     qr_buffer.seek(0)
-    from reportlab.lib.utils import ImageReader
-    pdf.drawImage(ImageReader(qr_buffer), 450, 60, width=90, height=90, preserveAspectRatio=True, mask='auto')
-    pdf.save()
+    qr_image = ImageReader(qr_buffer)
+
+    def draw_footer(pdf_canvas, document):
+        pdf_canvas.saveState()
+        pdf_canvas.setStrokeColor(colors.HexColor('#c9d2d8'))
+        pdf_canvas.setLineWidth(0.45)
+        pdf_canvas.line(left_margin, 17 * mm, page_width - right_margin, 17 * mm)
+        pdf_canvas.setFont('Helvetica', 6.4)
+        pdf_canvas.setFillColor(colors.HexColor('#53616a'))
+        pdf_canvas.drawString(left_margin, 12.5 * mm, f'CourseRecom | Ref. KRS #{plan_id}')
+        pdf_canvas.drawString(left_margin, 8.8 * mm, 'Verifikasi dokumen melalui QR code atau tautan resmi pada area ini.')
+        pdf_canvas.drawRightString(page_width - right_margin, 8.8 * mm, f'Halaman {document.page}')
+        pdf_canvas.drawImage(qr_image, page_width - right_margin - 13 * mm, 2.5 * mm, width=11 * mm, height=11 * mm, preserveAspectRatio=True, mask='auto')
+        pdf_canvas.restoreState()
+
+    document = SimpleDocTemplate(
+        buffer,
+        pagesize=A4,
+        rightMargin=right_margin,
+        leftMargin=left_margin,
+        topMargin=15 * mm,
+        bottomMargin=23 * mm,
+        title=f'KRS Resmi {student_nim}',
+        author='CourseRecom - Universitas Muhammadiyah Prof. Dr. Hamka',
+        subject=f'KRS semester {semester} mahasiswa {student_nim}',
+    )
+    document.build(story, onFirstPage=draw_footer, onLaterPages=draw_footer)
 
     content = buffer.getvalue()
     return content, hashlib.sha256(content).hexdigest()
