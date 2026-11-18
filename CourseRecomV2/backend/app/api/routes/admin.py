@@ -1031,15 +1031,21 @@ def update_room(
         raise HTTPException(status_code=404, detail='Ruang tidak ditemukan.')
     if payload.is_active and payload.capacity is None:
         raise HTTPException(status_code=422, detail='Isi kapasitas ruang sebelum mengaktifkan ruang.')
+    room_classes = db.query(CourseClass).filter(CourseClass.room == code).all()
     if not payload.is_active:
-        open_classes = db.query(CourseClass).filter(
-            CourseClass.room == code,
-            CourseClass.is_open.is_(True),
-        ).count()
+        open_classes = sum(1 for item in room_classes if item.is_open)
         if open_classes:
             raise HTTPException(
                 status_code=409,
                 detail=f'Ruang masih dipakai {open_classes} kelas terbuka. Tutup kelas atau pindahkan jadwal sebelum menonaktifkan ruang.',
+            )
+    if payload.capacity is not None:
+        oversized = [item for item in room_classes if item.capacity > payload.capacity]
+        if oversized:
+            max_class_capacity = max(item.capacity for item in oversized)
+            raise HTTPException(
+                status_code=409,
+                detail=f'Kapasitas ruang tidak boleh kurang dari kuota kelas yang sudah dibuat ({max_class_capacity} kursi).',
             )
     old = {
         'capacity': room.capacity,
@@ -1186,6 +1192,8 @@ def create_class(payload: CourseClassMutation, db: Session = Depends(get_db), cu
             raise ValueError(f'Ruang {payload.room} belum terdaftar.')
         if not room.is_active:
             raise ValueError(f'Ruang {payload.room} belum diaktifkan Admin setelah verifikasi fisik.')
+        if room.capacity is not None and payload.capacity > room.capacity:
+            raise ValueError(f'Kapasitas kelas ({payload.capacity}) melebihi kapasitas fisik ruang {payload.room} ({room.capacity} kursi).')
         if payload.lecturer_id is not None:
             lecturer = db.query(User).filter(
                 User.id == payload.lecturer_id,
@@ -1266,6 +1274,11 @@ def update_class(class_id: int, payload: CourseClassMutation, db: Session = Depe
     room_map = {room.code: room for room in locked_rooms}
     if payload.room not in room_map or not room_map[payload.room].is_active:
         raise HTTPException(status_code=409, detail=f'Ruang {payload.room} belum tersedia/aktif.')
+    if room_map[payload.room].capacity is not None and payload.capacity > room_map[payload.room].capacity:
+        raise HTTPException(
+            status_code=409,
+            detail=f'Kapasitas kelas ({payload.capacity}) melebihi kapasitas fisik ruang {payload.room} ({room_map[payload.room].capacity} kursi).',
+        )
     if payload.lecturer_id is not None:
         lecturer = db.query(User).filter(
             User.id == payload.lecturer_id,
