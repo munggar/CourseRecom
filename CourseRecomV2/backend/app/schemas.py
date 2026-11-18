@@ -390,17 +390,35 @@ class StudyPlanOverride(BaseModel):
 
 
 
+class RoomMutation(BaseModel):
+    code: str = Field(min_length=5, max_length=10, pattern=r'^FT[234]\\d{2}$')
+    capacity: int | None = Field(default=None, ge=1, le=1000)
+    room_type: str = Field(default='Ruang kuliah', min_length=2, max_length=40)
+    is_active: bool = False
+    notes: str = Field(default='', max_length=1000)
+
+    @field_validator('code')
+    @classmethod
+    def normalize_room_code(cls, value: str) -> str:
+        return value.strip().upper()
+
+
 class CourseClassMutation(BaseModel):
     course_code: str = Field(min_length=2, max_length=20)
     class_name: str = Field(min_length=1, max_length=40)
     lecturer_id: int | None = None
-    room: str = Field(min_length=1, max_length=40)
-    day: str = Field(min_length=1, max_length=20)
-    start_time: str = Field(pattern=r'^([01]\d|2[0-3]):[0-5]\d$')
-    end_time: str = Field(pattern=r'^([01]\d|2[0-3]):[0-5]\d$')
+    room: str = Field(min_length=5, max_length=10, pattern=r'^FT[234]\\d{2}$')
+    day: Literal['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu']
+    start_time: str = Field(pattern=r'^([01]\\d|2[0-3]):[0-5]\\d$')
+    end_time: str | None = Field(default=None, pattern=r'^([01]\\d|2[0-3]):[0-5]\\d$')
     capacity: int = Field(ge=1, le=10000)
     semester: str = Field(min_length=1, max_length=2)
     is_open: bool = True
+
+    @field_validator('room')
+    @classmethod
+    def normalize_class_room(cls, value: str) -> str:
+        return value.strip().upper()
 
     @field_validator('semester')
     @classmethod
@@ -409,6 +427,7 @@ class CourseClassMutation(BaseModel):
         if not normalized.isdigit() or not 1 <= int(normalized) <= 14:
             raise ValueError('Semester kelas harus berupa angka 1 sampai 14.')
         return str(int(normalized))
+
 
 class KprsMutation(BaseModel):
     study_plan_id: int = Field(gt=0)
