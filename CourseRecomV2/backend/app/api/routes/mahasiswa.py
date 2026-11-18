@@ -374,6 +374,21 @@ def confirm_khs(
     if payload.ipk is None:
         current_user.ipk = latest_attempt_gpa(cleaned_courses)
     current_user.kuota_sks = get_sks_quota(current_user.ipk, db)
+    write_audit(
+        db,
+        current_user,
+        'khs_confirmed',
+        'khs_document',
+        document.id,
+        {'status': 'pending'},
+        {
+            'status': 'confirmed',
+            'program_study': submitted_program,
+            'semester': latest_semester,
+            'course_count': len(cleaned_courses),
+            'ipk': current_user.ipk,
+        },
+    )
     db.commit()
     db.refresh(document)
     return {'status': 'confirmed', 'document': _serialize_document(document)}
@@ -679,6 +694,8 @@ def update_my_study_plan(
     if plan.status not in {'draft', 'revision_requested'}:
         raise HTTPException(status_code=409, detail='KRS yang sedang menunggu persetujuan tidak dapat diubah.')
 
+    previous_status = plan.status
+    previous_courses = json.loads(plan.courses_json)
     try:
         courses = validate_course_selection(db, current_user, payload.course_codes, plan.semester)
         lock_capacity_courses(db, [course['code'] for course in courses])
@@ -692,6 +709,22 @@ def update_my_study_plan(
     plan.courses_json = json.dumps(courses, ensure_ascii=False)
     plan.status = 'draft'
     plan.updated_at = utc_now_naive()
+    write_audit(
+        db,
+        current_user,
+        'study_plan_draft_updated',
+        'study_plan',
+        plan.id,
+        {
+            'status': previous_status,
+            'course_codes': [item.get('code') for item in previous_courses],
+        },
+        {
+            'status': 'draft',
+            'course_codes': [item['code'] for item in courses],
+            'total_sks': sum(int(item.get('sks', 0)) for item in courses),
+        },
+    )
     db.commit()
     db.refresh(plan)
     return _serialize_study_plan(plan)
@@ -841,9 +874,23 @@ def resubmit_my_study_plan(
     except (KeyError, TypeError, json.JSONDecodeError, ValueError) as exc:
         db.rollback()
         raise HTTPException(status_code=422, detail=f'KRS tidak lagi valid: {exc}') from exc
+    previous_status = plan.status
     plan.status = 'pending'
     plan.advisor_note = ''
     plan.updated_at = utc_now_naive()
+    write_audit(
+        db,
+        current_user,
+        'study_plan_resubmitted',
+        'study_plan',
+        plan.id,
+        {'status': previous_status},
+        {
+            'status': 'pending',
+            'semester': plan.semester,
+            'course_codes': [item['code'] for item in courses],
+        },
+    )
     db.commit()
     db.refresh(plan)
     return _serialize_study_plan(plan)
@@ -865,6 +912,16 @@ def delete_my_study_plan(
             status_code=409,
             detail='Rencana studi yang sudah memiliki catatan revisi Dosen PA tidak dapat dihapus agar riwayat evaluasi tetap tersimpan. Perbarui mata kuliah lalu ajukan kembali.',
         )
+    course_codes = [item.get('code') for item in json.loads(plan.courses_json)]
+    write_audit(
+        db,
+        current_user,
+        'study_plan_deleted',
+        'study_plan',
+        plan.id,
+        {'semester': plan.semester, 'status': plan.status, 'course_codes': course_codes},
+        None,
+    )
     db.query(KrsDocument).filter(KrsDocument.study_plan_id == plan.id).delete(synchronize_session=False)
     db.delete(plan)
     db.commit()
@@ -1011,6 +1068,21 @@ def submit_study_plan(
     )
     db.add(plan)
     try:
+        db.flush()
+        write_audit(
+            db,
+            current_user,
+            'study_plan_submitted',
+            'study_plan',
+            plan.id,
+            None,
+            {
+                'status': 'pending',
+                'semester': plan.semester,
+                'course_codes': [item['code'] for item in courses],
+                'total_sks': sum(int(item.get('sks', 0)) for item in courses),
+            },
+        )
         db.commit()
     except IntegrityError as exc:
         db.rollback()
