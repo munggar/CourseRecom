@@ -3413,14 +3413,19 @@ function App() {
     if (view === 'akun-dosen' && user.role === 'admin') {
       return (
         <div className="card">
-          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+          <div className="class-section-heading">
             <div>
               <h2>Akun Dosen PA</h2>
-              <p className="muted">Tambah, ubah, dan hapus akun dosen pembimbing akademik.</p>
+              <p className="muted">Kelola akun login dosen dan cocokkan dengan direktori profil dosen FTII.</p>
             </div>
-            <button className="btn primary" type="button" onClick={() => setLecturerFormVisible((visible) => !visible)}>
-              {lecturerFormVisible ? 'Batal' : 'Daftarkan akun dosen PA'}
-            </button>
+            <div className="export-actions">
+              <button className="btn outline" type="button" disabled={exportBusy === 'lecturers'} onClick={() => downloadAdminExport('lecturers')}>
+                {exportBusy === 'lecturers' ? 'Mengekspor...' : 'Ekspor Data Dosen'}
+              </button>
+              <button className="btn primary" type="button" onClick={() => setLecturerFormVisible((visible) => !visible)}>
+                {lecturerFormVisible ? 'Batal' : 'Daftarkan akun dosen PA'}
+              </button>
+            </div>
           </div>
           {lecturerFormVisible && (
             <form className="form-grid" onSubmit={registerLecturer} style={{ margin: '16px 0' }}>
@@ -3475,6 +3480,28 @@ function App() {
               </tbody>
             </table>
           </div>
+          <section className="lecturer-directory-section">
+            <h3>Direktori Profil Dosen FTII</h3>
+            <p className="muted">Data berasal dari profil resmi FTII. Status akun terhubung otomatis bila NIDN pada direktori sama dengan NIP/ID akun dosen; entri direktori bukan berarti akun login sudah dibuat.</p>
+            <div className="table-wrap">
+              <table className="table">
+                <thead><tr><th>NIDN</th><th>Nama</th><th>Program Studi</th><th>Bidang Keahlian</th><th>Status Akun</th><th>Sumber</th></tr></thead>
+                <tbody>
+                  {lecturerDirectory.map((entry) => (
+                    <tr key={entry.id}>
+                      <td>{entry.nidn || 'Tidak dipublikasikan'}</td>
+                      <td>{entry.full_name}</td>
+                      <td>{entry.program_study}</td>
+                      <td>{entry.expertise || 'Tidak dicantumkan'}</td>
+                      <td><span className={entry.linked_user_id ? 'class-status-open' : 'class-status-closed'}>{entry.linked_user_id ? `Akun: ${entry.account_nip}` : 'Belum ada akun terhubung'}</span></td>
+                      <td><a href={entry.profile_url} target="_blank" rel="noreferrer">Profil resmi</a></td>
+                    </tr>
+                  ))}
+                  {!lecturerDirectory.length && <tr><td colSpan="6" className="muted">Direktori dosen belum dimuat.</td></tr>}
+                </tbody>
+              </table>
+            </div>
+          </section>
         </div>
       );
     }
@@ -3669,6 +3696,14 @@ function App() {
           <h3>Manajemen Data</h3>
           <p>Kelola seluruh data kurikulum, prasyarat, dan keterangan. Rekomendasi mahasiswa menggunakan katalog aktif di halaman ini.</p>
           <p className="muted">Kuota total mata kuliah adalah batas agregat seluruh kelasnya. Setiap kelas paralel juga memiliki batas kursi sendiri; pengajuan harus memenuhi kedua batas tersebut.</p>
+          <div className="export-actions admin-reference-exports">
+            <button className="btn outline" type="button" disabled={exportBusy === 'lecturers'} onClick={() => downloadAdminExport('lecturers')}>
+              {exportBusy === 'lecturers' ? 'Mengekspor...' : 'Ekspor Data Dosen'}
+            </button>
+            <button className="btn outline" type="button" disabled={exportBusy === 'rooms'} onClick={() => downloadAdminExport('rooms')}>
+              {exportBusy === 'rooms' ? 'Mengekspor...' : 'Ekspor Data Ruangan'}
+            </button>
+          </div>
           <section style={{ marginTop: 20 }}>
             <h3>Periode dan Batas Akademik</h3>
             <div className="course-edit-grid">
