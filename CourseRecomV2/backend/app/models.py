@@ -103,6 +103,26 @@ class StudyPlan(Base):
     reviewer_id = Column(Integer, ForeignKey('users.id'), nullable=True)
     created_at = Column(DateTime, nullable=False)
     updated_at = Column(DateTime, nullable=False)
+    advisor_feedback = relationship('AdvisorFeedback', back_populates='study_plan', cascade='all, delete-orphan', order_by='AdvisorFeedback.created_at')
+
+
+class AdvisorFeedback(Base):
+    __tablename__ = 'advisor_feedback'
+    __table_args__ = (
+        Index('ix_advisor_feedback_student_semester', 'student_id', 'semester'),
+        Index('ix_advisor_feedback_study_plan', 'study_plan_id'),
+    )
+    id = Column(Integer, primary_key=True, index=True)
+    student_id = Column(Integer, ForeignKey('users.id'), nullable=False, index=True)
+    study_plan_id = Column(Integer, ForeignKey('study_plans.id'), nullable=False)
+    reviewer_id = Column(Integer, ForeignKey('users.id'), nullable=False)
+    semester = Column(Integer, nullable=False)
+    affected_course_codes_json = Column(Text, nullable=False, default='[]')
+    reason_category = Column(String(40), nullable=False, default='general')
+    note = Column(Text, nullable=False)
+    feedback_type = Column(String(30), nullable=False, default='revision_requested')
+    created_at = Column(DateTime, nullable=False)
+    study_plan = relationship('StudyPlan', back_populates='advisor_feedback')
 
 
 class RecommendationModelVersion(Base):
