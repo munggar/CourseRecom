@@ -691,6 +691,12 @@ def test_teacher_reviews_submitted_study_plan_with_guidance_note():
         student_plans = client.get('/api/mahasiswa/rencana-studi', headers=student_headers)
         assert student_plans.status_code == 200
         assert student_plans.json()[0]['advisor_feedback'][0]['course_code'] == 'TST401'
+        deletion_attempt = client.delete(
+            f'/api/mahasiswa/rencana-studi/{plan_id}',
+            headers=student_headers,
+        )
+        assert deletion_attempt.status_code == 409
+        assert 'riwayat evaluasi' in deletion_attempt.json()['detail'].lower()
 
         replacement = client.patch(
             f'/api/mahasiswa/rencana-studi/{plan_id}',
