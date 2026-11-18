@@ -573,7 +573,16 @@ function App() {
       try {
         const plans = await apiRequest('/mahasiswa/rencana-studi', { suppressLoader: true });
         setStudyPlans(plans);
-        if (plans.some((plan) => (
+        const revisionPlan = plans.find((plan) => (
+          plan.status === 'revision_requested'
+          && plan.semester === recommendationResult.target_semester
+        ));
+        if (revisionPlan) {
+          const rejectedCodes = new Set(
+            (revisionPlan.advisor_feedback || []).flatMap((feedback) => feedback.affected_course_codes || [])
+          );
+          setDraftCourses((revisionPlan.courses || []).filter((course) => !rejectedCodes.has(course.code)));
+        } else if (plans.some((plan) => (
           plan.status === 'approved'
           && plan.semester === recommendationResult.target_semester
         ))) {
@@ -1632,13 +1641,33 @@ function App() {
     setStudyPlanBusy(true);
     setActionMessage('');
     try {
-      const plan = await apiRequest('/mahasiswa/rencana-studi', {
-        method: 'POST',
-        body: JSON.stringify({ course_codes: draftCourses.map((course) => course.code) }),
-      });
-      setStudyPlans((previousPlans) => [plan, ...previousPlans]);
+      const courseCodes = draftCourses.map((course) => course.code);
+      const revisionPlan = studyPlans.find((plan) => (
+        plan.status === 'revision_requested'
+        && plan.semester === recommendationResult.target_semester
+      ));
+      let plan;
+      if (revisionPlan) {
+        await apiRequest(`/mahasiswa/rencana-studi/${revisionPlan.id}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ course_codes: courseCodes }),
+        });
+        plan = await apiRequest(`/mahasiswa/rencana-studi/${revisionPlan.id}/submit`, {
+          method: 'POST',
+        });
+        setStudyPlans((previousPlans) => previousPlans.map((item) => (
+          item.id === revisionPlan.id ? { ...plan, advisor_feedback: revisionPlan.advisor_feedback || [] } : item
+        )));
+        setActionMessage('Revisi KRS berhasil diajukan ulang ke dosen PA. Catatan sebelumnya tetap tersimpan.');
+      } else {
+        plan = await apiRequest('/mahasiswa/rencana-studi', {
+          method: 'POST',
+          body: JSON.stringify({ course_codes: courseCodes }),
+        });
+        setStudyPlans((previousPlans) => [plan, ...previousPlans]);
+        setActionMessage('Rencana studi berhasil diajukan ke dosen PA.');
+      }
       setDraftCourses([]);
-      setActionMessage('Rencana studi berhasil diajukan ke dosen PA.');
     } catch (error) {
       setActionMessage(error.message || 'Pengajuan rencana studi gagal.');
     } finally {
