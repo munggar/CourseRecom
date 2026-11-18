@@ -1962,11 +1962,29 @@ function App() {
         }
       }
       const classSelections = Object.fromEntries(draftCourses.filter((course) => course.class_id).map((course) => [course.code, Number(course.class_id)]));
-      const plan = await apiRequest('/mahasiswa/rencana-studi', {
-        method: 'POST',
-        body: JSON.stringify({ course_codes: draftCourses.map((course) => course.code), class_selections: classSelections }),
-      });
-      setStudyPlans((previousPlans) => [plan, ...previousPlans]);
+      const planPayload = {
+        course_codes: draftCourses.map((course) => course.code),
+        class_selections: classSelections,
+      };
+      const revisionPlan = studyPlans.find((item) => (
+        item.status === 'revision_requested'
+        && item.semester === recommendationResult.target_semester
+      ));
+      let plan;
+      if (revisionPlan) {
+        await apiRequest(`/mahasiswa/rencana-studi/${revisionPlan.id}`, {
+          method: 'PATCH',
+          body: JSON.stringify(planPayload),
+        });
+        plan = await apiRequest(`/mahasiswa/rencana-studi/${revisionPlan.id}/submit`, { method: 'POST' });
+        setStudyPlans((previousPlans) => [plan, ...previousPlans.filter((item) => item.id !== plan.id)]);
+      } else {
+        plan = await apiRequest('/mahasiswa/rencana-studi', {
+          method: 'POST',
+          body: JSON.stringify(planPayload),
+        });
+        setStudyPlans((previousPlans) => [plan, ...previousPlans]);
+      }
       setDraftCourses([]);
       setActionMessage('Rencana studi berhasil diajukan ke dosen PA.');
     } catch (error) {
@@ -1976,6 +1994,17 @@ function App() {
       setStudyPlanBusy(false);
     }
   };
+
+  useEffect(() => {
+    const revisionPlan = studyPlans.find((item) => (
+      item.status === 'revision_requested'
+      && item.semester === recommendationResult.target_semester
+      && Array.isArray(item.courses)
+    ));
+    if (revisionPlan?.courses?.length) {
+      setDraftCourses(revisionPlan.courses);
+    }
+  }, [studyPlans, recommendationResult.target_semester, setDraftCourses]);
 
   const reviewStudyPlan = async (planId, status) => {
     const advisorNote = (reviewNotes[planId] ?? '').trim();
@@ -2601,6 +2630,11 @@ function App() {
               </span>
               <span>Rencana studi semester {latestStudyPlan.semester}</span>
               {latestStudyPlan.advisor_note && <p><strong>Catatan dosen PA:</strong> {latestStudyPlan.advisor_note}</p>}
+              {latestStudyPlan.status === 'revision_requested' && (
+                <button type="button" className="btn primary" onClick={() => setView('rekomendasi')}>
+                  Perbaiki draft dan ajukan ulang
+                </button>
+              )}
               {latestStudyPlan.advisor_feedback?.length > 0 && (
                 <div className="history-document" style={{ marginTop: 10 }}>
                   <strong>{latestStudyPlan.status === 'revision_requested' ? 'Mata kuliah yang perlu diperbaiki' : 'Riwayat feedback dosen PA (digunakan model ML)'}</strong>
