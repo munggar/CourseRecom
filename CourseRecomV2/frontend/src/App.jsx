@@ -3617,7 +3617,7 @@ function App() {
                 </select>
                 <small className="muted">Hanya ruang berstatus aktif yang dapat dipakai untuk kelas.</small>
               </label>
-              <label><span>Hari</span><select required value={classForm.day} onChange={(event) => setClassForm((previous) => ({ ...previous, day: event.target.value, start_time: '', end_time: '' }))}>{['Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'].map((day) => <option key={day} value={day}>{day}</option>)}</select></label>
+              <label><span>Hari</span><select required value={classForm.day} onChange={(event) => setClassForm((previous) => ({ ...previous, day: event.target.value, start_time: '', end_time: '' }))}>{['Senin','Selasa','Rabu','Kamis','Jumat','Sabtu','Minggu'].map((day) => <option key={day} value={day}>{day}</option>)}</select></label>
               <label><span>Semester</span><input required type="number" min="1" max="14" step="1" value={classForm.semester} onChange={(event) => setClassForm((previous) => ({ ...previous, semester: event.target.value }))} /></label>
               <label><span>Jam mulai (slot tersedia)</span>
                 <select
