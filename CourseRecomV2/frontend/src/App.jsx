@@ -1095,19 +1095,34 @@ function App() {
   const submitKprs = async () => {
     const courses = kprsDraft.courses.split(',').map((code) => code.trim().toUpperCase()).filter(Boolean);
     if (!kprsDraft.planId || courses.length === 0 || kprsDraft.reason.trim().length < 10) {
-      setActionMessage('Pilih KRS approved, isi mata kuliah, dan alasan KPRS minimal 10 karakter.');
+      setActionMessage('Pilih KRS approved, isi kode mata kuliah, dan alasan minimal 10 karakter.');
       return;
     }
     try {
-      await apiRequest('/mahasiswa/kprs', {
-        method: 'POST',
-        body: JSON.stringify({ study_plan_id: Number(kprsDraft.planId), course_codes: courses, reason: kprsDraft.reason.trim() }),
-      });
+      const result = kprsDraft.requestId
+        ? await apiRequest(`/mahasiswa/kprs/${kprsDraft.requestId}`, {
+            method: 'PATCH',
+            body: JSON.stringify({ course_codes: courses, reason: kprsDraft.reason.trim() }),
+          })
+        : await apiRequest('/mahasiswa/kprs', {
+            method: 'POST',
+            body: JSON.stringify({ study_plan_id: Number(kprsDraft.planId), course_codes: courses, reason: kprsDraft.reason.trim() }),
+          });
       setKprsRequests(await apiRequest('/mahasiswa/kprs'));
-      setActionMessage('Pengajuan KPRS berhasil dikirim.');
+      setKprsDraft({ planId: '', courses: '', reason: '', requestId: null });
+      setActionMessage(kprsDraft.requestId ? 'Revisi KPRS berhasil diajukan kembali.' : 'Pengajuan KPRS berhasil dikirim.');
     } catch (error) {
       setActionMessage(error.message || 'Pengajuan KPRS gagal.');
     }
+  };
+
+  const editKprsRequest = (request) => {
+    setKprsDraft({
+      planId: String(request.study_plan_id),
+      courses: (request.after || []).map((course) => course.code).join(', '),
+      reason: request.reason || '',
+      requestId: request.id,
+    });
   };
 
   const cancelKprs = async (requestId) => {
@@ -1633,20 +1648,59 @@ function App() {
   };
 
   const reviewStudyPlan = async (planId, status) => {
-    const advisorNote = reviewNotes[planId] ?? '';
+    const advisorNote = (reviewNotes[planId] ?? '').trim();
+    const affectedCourseCodes = reviewCourseSelections[planId] || [];
+    const reasonCategory = reviewReasonCategories[planId] || 'general';
+    if (status === 'revision_requested' && advisorNote.length < 10) {
+      setActionMessage('Alasan revisi wajib diisi minimal 10 karakter.');
+      return;
+    }
+    if (status === 'revision_requested' && affectedCourseCodes.length === 0 && reasonCategory === 'general' && advisorNote.length < 20) {
+      setActionMessage('Untuk revisi umum, jelaskan alasan dengan lebih lengkap (minimal 20 karakter), atau tandai mata kuliah terkait.');
+      return;
+    }
     setStudyPlanBusy(true);
     setActionMessage('');
     try {
       const result = await apiRequest(`/dosen/rencana-studi/${planId}`, {
         method: 'PATCH',
-        body: JSON.stringify({ status, advisor_note: advisorNote }),
+        body: JSON.stringify({
+          status,
+          advisor_note: advisorNote,
+          affected_course_codes: status === 'revision_requested' ? affectedCourseCodes : [],
+          reason_category: status === 'revision_requested' ? reasonCategory : 'general',
+        }),
       });
       setStudyPlans((previousPlans) => previousPlans.map((plan) => (
         plan.id === planId
-          ? { ...plan, status: result.status, advisor_note: result.advisor_note, updated_at: result.updated_at }
+          ? {
+              ...plan,
+              status: result.status,
+              advisor_note: result.advisor_note,
+              updated_at: result.updated_at,
+              advisor_feedback: status === 'revision_requested'
+                ? [...(plan.advisor_feedback || []), {
+                    id: `pending-${Date.now()}`,
+                    note: advisorNote,
+                    affected_course_codes: affectedCourseCodes,
+                    reason_category: reasonCategory,
+                    created_at: result.updated_at,
+                  }]
+                : (plan.advisor_feedback || []),
+            }
           : plan
       )));
-      setActionMessage(status === 'approved' ? 'Rencana studi disetujui.' : 'Catatan revisi berhasil dikirim.');
+      setReviewNotes((previous) => ({ ...previous, [planId]: '' }));
+      setReviewCourseSelections((previous) => ({ ...previous, [planId]: [] }));
+      setActionMessage(status === 'approved' ? 'Rencana studi disetujui.' : 'Catatan revisi dan mata kuliah terkait berhasil dikirim.');
+      if (status === 'revision_requested') {
+        try {
+          const refreshed = await apiRequest('/dosen/rencana-studi', { suppressLoader: true });
+          setStudyPlans(refreshed);
+        } catch {
+          // The review already succeeded; refresh the history on next page load.
+        }
+      }
     } catch (error) {
       setActionMessage(error.message || 'Review rencana studi gagal disimpan.');
     } finally {
@@ -1655,9 +1709,9 @@ function App() {
   };
 
   const reviewKprs = async (requestId, status) => {
-    const note = kprsReviewNotes[requestId] ?? '';
-    if (!note.trim()) {
-      setActionMessage('Catatan keputusan KPRS wajib diisi.');
+    const note = (kprsReviewNotes[requestId] ?? '').trim();
+    if (status !== 'approved' && note.length < 10) {
+      setActionMessage('Alasan revisi atau penolakan KPRS wajib diisi minimal 10 karakter.');
       return;
     }
     setStudyPlanBusy(true);
@@ -1665,7 +1719,7 @@ function App() {
     try {
       const result = await apiRequest(`/dosen/kprs/${requestId}`, {
         method: 'PUT',
-        body: JSON.stringify({ status, note: note.trim() }),
+        body: JSON.stringify({ status, note }),
       });
       setMenteeKprsRequests((previous) => previous.map((request) => (
         request.id === requestId
