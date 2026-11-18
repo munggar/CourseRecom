@@ -1334,6 +1334,7 @@ function App() {
         ...advisors.filter((advisor) => advisor.nim !== lecturer.nim),
         lecturer,
       ]);
+      setLecturerDirectory(await apiRequest('/admin/lecturer-directory'));
       setLecturerForm({ nip: '', full_name: '', username: '', email: '', password: '', passwordConfirmation: '' });
       setLecturerFormVisible(false);
       setActionMessage('Akun dosen berhasil didaftarkan.');
@@ -1381,6 +1382,7 @@ function App() {
     try {
       await apiRequest(`/admin/lecturers/${encodeURIComponent(lecturer.nim)}`, { method: 'DELETE' });
       setAdminAdvisors((advisors) => advisors.filter((advisor) => advisor.nim !== lecturer.nim));
+      setLecturerDirectory(await apiRequest('/admin/lecturer-directory'));
       setMentees((students) => students.map((student) => student.advisor_nim === lecturer.nim ? { ...student, advisor_nim: null } : student));
       setActionMessage(`Akun dosen ${lecturer.full_name} berhasil dihapus.`);
     } catch (error) {
@@ -3557,7 +3559,7 @@ function App() {
           </div>
           <section className="class-form-card">
             <div className="class-section-heading"><div><span className="guide-role-tag admin">{editingClassId ? 'EDIT KELAS' : 'KELAS BARU'}</span><h3>{editingClassId ? 'Perbarui kelas paralel' : 'Buat kelas paralel'}</h3><p className="muted">Kelas yang dibuka akan muncul pada proses pemilihan kelas mahasiswa.</p></div>
-              {editingClassId && <button className="btn outline" type="button" onClick={() => { setEditingClassId(null); setClassForm({ course_code: '', class_name: '', lecturer_id: '', room: '', day: 'Senin', start_time: '08:00', end_time: '09:40', capacity: 40, semester: '1', is_open: true }); }}>Batal edit</button>}
+              {editingClassId && <button className="btn outline" type="button" onClick={() => { setEditingClassId(null); setClassForm({ course_code: '', class_name: '', lecturer_id: '', room: '', day: 'Senin', start_time: '', end_time: '', capacity: 40, semester: '1', is_open: true }); }}>Batal edit</button>}
             </div>
             <form className="class-form-grid" onSubmit={saveParallelClass}>
               <label><span>Mata kuliah aktif</span><select required value={classForm.course_code} onChange={(event) => setClassForm((previous) => ({ ...previous, course_code: event.target.value }))}><option value="">Pilih mata kuliah</option>{courseList.map((course) => <option key={course.code} value={course.code}>{course.code} · {course.name}</option>)}</select></label>
