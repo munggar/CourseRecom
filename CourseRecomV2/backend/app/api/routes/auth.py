@@ -13,6 +13,7 @@ from app.models import SystemSetting, User
 from app.schemas import AccountProfileResponse, AccountProfileUpdate, PasswordChange, StudentRegistration, TokenResponse, UserLogin, UserOut
 from app.services.validation import get_sks_quota
 from app.services.audit import write_audit
+from app.services.academic_interests import canonical_program_study, public_catalog, validate_student_program_and_interest
 
 router = APIRouter()
 
@@ -30,6 +31,11 @@ def _academic_year_context(db: Session) -> dict[str, int | str]:
     }
 
 
+@router.get('/auth/academic-catalog')
+def get_academic_catalog():
+    return public_catalog()
+
+
 @router.get('/auth/academic-year')
 def get_academic_year(db: Session = Depends(get_db)):
     return _academic_year_context(db)
@@ -37,6 +43,16 @@ def get_academic_year(db: Session = Depends(get_db)):
 
 @router.post('/auth/register', status_code=status.HTTP_201_CREATED, response_model=UserOut)
 def register_student(payload: StudentRegistration, db: Session = Depends(get_db)):
+    try:
+        program_study, interests = validate_student_program_and_interest(
+            payload.program_study,
+            payload.interests,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
     academic_year = _academic_year_context(db)
     if payload.angkatan and int(payload.angkatan) > academic_year['max_angkatan']:
         raise HTTPException(
@@ -53,7 +69,7 @@ def register_student(payload: StudentRegistration, db: Session = Depends(get_db)
         nim=payload.nim,
         full_name=payload.full_name,
         username=username,
-        program_study=payload.program_study.strip() or None,
+        program_study=program_study,
         angkatan=payload.angkatan.strip() or None,
         role='mahasiswa',
         password_hash=get_password_hash(payload.password),
@@ -61,7 +77,7 @@ def register_student(payload: StudentRegistration, db: Session = Depends(get_db)
         sks_lulus=0,
         sks_sisa=settings.total_curriculum_sks,
         kuota_sks=get_sks_quota(None),
-        interests='',
+        interests=interests,
         advisor_id=None,
     )
     db.add(student)
@@ -136,7 +152,20 @@ def update_account_profile(
     current_user.full_name = payload.full_name.strip()
     current_user.username = username
     current_user.email = payload.email.strip() if payload.email else None
-    current_user.program_study = payload.program_study.strip() if payload.program_study else None
+    if current_user.role == 'mahasiswa':
+        if payload.program_study and not current_user.program_study:
+            normalized_program = canonical_program_study(payload.program_study)
+            if not normalized_program:
+                raise HTTPException(status_code=422, detail='Program studi harus merupakan program FTII UHAMKA.')
+            current_user.program_study = normalized_program
+            current_user.interests = ''
+        elif payload.program_study and canonical_program_study(payload.program_study) != current_user.program_study:
+            raise HTTPException(
+                status_code=409,
+                detail='Perubahan Program Studi mahasiswa harus dilakukan melalui Admin Akademik agar histori kurikulum tetap konsisten.',
+            )
+    else:
+        current_user.program_study = payload.program_study.strip() if payload.program_study else None
     current_user.angkatan = payload.angkatan.strip() if payload.angkatan else None
     current_user.phone_number = payload.phone_number
     write_audit(db, current_user, 'profile_updated', 'user', current_user.id, None, {'password_changed': bool(payload.new_password)})
