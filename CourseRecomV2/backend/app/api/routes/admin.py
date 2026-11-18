@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.deps import get_db, require_roles
 from app.models import (
+    AdvisorCourseFeedback,
     Course,
     KhsDocument,
     RecommendationCache,
@@ -347,6 +348,10 @@ def delete_student(
         db.query(KprsRequest).filter(KprsRequest.student_id == student.id).delete(
             synchronize_session=False,
         )
+        db.query(AdvisorCourseFeedback).filter(
+            (AdvisorCourseFeedback.student_id == student.id)
+            | (AdvisorCourseFeedback.reviewer_id == student.id),
+        ).delete(synchronize_session=False)
         db.query(StudyPlan).filter(StudyPlan.reviewer_id == student.id).update(
         {'reviewer_id': None},
         synchronize_session=False,
