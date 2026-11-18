@@ -32,7 +32,7 @@ INTEREST_ALIASES = {
         'peminatan msi', 'sistem informasi', 'information systems', 'msi', 'mti',
     },
     'kecerdasan bisnis': {
-        'kecerdasan bisnis', 'peminatan kecerdasan bisnis', 'kb', 'data',
+        'kecerdasan bisnis', 'peminatan kecerdasan bisnis', 'kb',
         'ai/ml', 'ai', 'artificial intelligence', 'machine learning',
         'business intelligence', 'data analytics',
     },
@@ -414,7 +414,10 @@ def _peer_course_scores(
     peers: list[tuple[float, list[StudentRecord]]] = []
     for peer_records in peer_by_student.values():
         history = [record for record in peer_records if record.semester < target_semester]
-        next_semester = [record for record in peer_records if record.semester == target_semester]
+        next_semester = [
+            record for record in peer_records
+            if record.semester == target_semester and _passed(record)
+        ]
         if not history or not next_semester:
             continue
         similarity = _similarity(
