@@ -62,3 +62,14 @@ def test_ftii_program_interest_catalog_is_program_scoped():
         assert 'tidak sesuai' in str(exc)
     else:
         raise AssertionError('Interest dari prodi lain seharusnya ditolak.')
+
+
+def test_program_name_normalization_accepts_official_labels_and_abbreviations():
+    from app.services.program_interests import normalize_program_name, validate_program_interest
+
+    assert normalize_program_name('Program Studi: Sistem dan Teknologi Informasi (STI)') == 'Sistem dan Teknologi Informasi'
+    assert normalize_program_name('Prodi Teknik Informatika (TI)') == 'Teknik Informatika'
+    assert validate_program_interest('STI', 'Manajemen Sistem Informasi') == (
+        'Sistem dan Teknologi Informasi',
+        'Manajemen Teknologi Informasi',
+    )

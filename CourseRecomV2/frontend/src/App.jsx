@@ -115,7 +115,21 @@ const PROGRAM_INTERESTS = {
     note: 'Mengikuti tiga profil lulusan resmi TRM, bukan peminatan formal.',
   },
 };
-const PROGRAM_STUDY_OPTIONS = Object.keys(PROGRAM_INTERESTS);
+const canonicalProgramName = (value) => {
+  const normalized = String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
+  const aliases = {
+    sti: 'Sistem dan Teknologi Informasi',
+    'sistem informasi': 'Sistem dan Teknologi Informasi',
+    'sistem dan teknologi informasi': 'Sistem dan Teknologi Informasi',
+    ti: 'Teknik Informatika',
+    'teknik informatika': 'Teknik Informatika',
+    'teknik mesin': 'Teknik Mesin',
+    'teknik elektro': 'Teknik Elektro',
+    trm: 'Teknologi Rekayasa Mekatronika',
+    'teknologi rekayasa mekatronika': 'Teknologi Rekayasa Mekatronika',
+  };
+  return aliases[normalized] || value || '';
+};
 const RECOMMENDATION_FACTOR_LABELS = {
   similar_students: 'Similar Students',
   academic_history: 'Academic History',
@@ -321,8 +335,9 @@ function App() {
   const [authMode, setAuthMode] = useState('login');
   const [selectedRole, setSelectedRole] = useState('mahasiswa');
   const [form, setForm] = useState({ username: '', password: '' });
-  const [registrationForm, setRegistrationForm] = useState({ nim: '', username: '', full_name: '', program_study: 'Sistem dan Teknologi Informasi', interests: 'Manajemen Sistem Informasi', angkatan: '', password: '', passwordConfirmation: '' });
+  const [registrationForm, setRegistrationForm] = useState({ nim: '', username: '', full_name: '', program_study: 'Sistem dan Teknologi Informasi', interests: 'Manajemen Teknologi Informasi', angkatan: '', password: '', passwordConfirmation: '' });
   const [profile, setProfile] = useState(null);
+  const [programInterestCatalog, setProgramInterestCatalog] = useState(PROGRAM_INTERESTS);
   const [recommendationResult, setRecommendationResult] = useState(EMPTY_RECOMMENDATIONS);
   const recommendations = useMemo(
     () => recommendationResult.recommendations || [],
@@ -446,6 +461,27 @@ function App() {
   }, []);
   const [toasts, setToasts] = useState([]);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  useEffect(() => {
+    let active = true;
+    apiRequest('/auth/program-interests', { suppressLoader: true })
+      .then((catalog) => {
+        if (!active || !catalog || typeof catalog !== 'object') return;
+        setProgramInterestCatalog(catalog);
+        setRegistrationForm((previous) => {
+          if (
+            previous.program_study === 'Sistem dan Teknologi Informasi'
+            && previous.interests === 'Manajemen Sistem Informasi'
+            && catalog['Sistem dan Teknologi Informasi']?.options?.includes('Manajemen Teknologi Informasi')
+          ) {
+            return { ...previous, interests: 'Manajemen Teknologi Informasi' };
+          }
+          return previous;
+        });
+      })
+      .catch(() => {});
+    return () => { active = false; };
+  }, []);
+
   useEffect(() => {
     const handleExpiredSession = () => {
       setUser(null);
@@ -1469,33 +1505,80 @@ function App() {
   };
 
   const beginHistoryEdit = (document) => {
+    const ip_semesters = Object.fromEntries((document.semesters || []).map((item) => [String(item.semester), item.ip_semester ?? '']));
+    const currentIps = (document.semesters || []).map((item) => ip_semesters[String(item.semester)]);
+    const completeIps = currentIps.length > 0 && currentIps.every((value) => (
+      value !== '' && Number.isFinite(Number(value)) && Number(value) >= 0 && Number(value) <= 4
+    ));
+    const calculatedIpk = completeIps
+      ? (currentIps.reduce((sum, value) => sum + Number(value), 0) / currentIps.length).toFixed(2)
+      : document.metadata?.ipk ?? '';
     setHistoryEditId(document.id);
     setHistoryEditDraft({
-      ipk: document.metadata?.ipk ?? '',
+      ipk: calculatedIpk,
       courses: (document.courses || []).map((course) => ({ ...course })),
-      ip_semesters: Object.fromEntries((document.semesters || []).map((item) => [String(item.semester), item.ip_semester ?? ''])),
+      ip_semesters,
+    });
+  };
+
+  const updateHistoryIps = (document, semesterNumber, value) => {
+    setHistoryEditDraft((draft) => {
+      if (!draft) return draft;
+      const ip_semesters = { ...draft.ip_semesters, [String(semesterNumber)]: value };
+      const semesterValues = (document.semesters || []).map((item) => ip_semesters[String(item.semester)]);
+      const completeIps = semesterValues.length > 0 && semesterValues.every((item) => (
+        item !== '' && Number.isFinite(Number(item)) && Number(item) >= 0 && Number(item) <= 4
+      ));
+      return {
+        ...draft,
+        ip_semesters,
+        ipk: completeIps
+          ? (semesterValues.reduce((sum, item) => sum + Number(item), 0) / semesterValues.length).toFixed(2)
+          : draft.ipk,
+      };
     });
   };
 
   const saveHistoryEdit = async (document) => {
     if (!historyEditDraft) return;
+    const invalidCourse = historyEditDraft.courses.find((course) => (
+      course.numeric_grade !== '' && (
+        !Number.isFinite(Number(course.numeric_grade))
+        || Number(course.numeric_grade) < 0 || Number(course.numeric_grade) > 100
+      )
+    ));
+    if (invalidCourse) {
+      pushToast(`Nilai angka ${invalidCourse.code} harus diisi antara 0 sampai 100.`, 'error');
+      return;
+    }
+    const submittedIps = Object.fromEntries(
+      Object.entries(historyEditDraft.ip_semesters)
+        .filter(([, value]) => value !== '' && value !== null)
+        .map(([semester, value]) => [semester, Number(value)]),
+    );
+    if (Object.values(submittedIps).some((value) => !Number.isFinite(value) || value < 0 || value > 4)) {
+      pushToast('IPS harus berada di antara 0,00 sampai 4,00.', 'error');
+      return;
+    }
     setHistoryEditBusy(true);
     try {
       const response = await apiRequest(`/mahasiswa/khs/${document.id}/edit`, {
         method: 'PATCH',
         body: JSON.stringify({
           ipk: historyEditDraft.ipk === '' ? null : Number(historyEditDraft.ipk),
-          courses: historyEditDraft.courses.map((course) => ({
-            semester: Number(course.semester), code: course.code, numeric_grade: Number(course.numeric_grade),
-          })),
-          ip_semesters: historyEditDraft.ip_semesters,
+          courses: historyEditDraft.courses
+            .filter((course) => course.numeric_grade !== '' && course.numeric_grade !== null && course.numeric_grade !== undefined)
+            .map((course) => ({
+              semester: Number(course.semester), code: course.code, numeric_grade: Number(course.numeric_grade),
+            })),
+          ip_semesters: submittedIps,
         }),
       });
       setAcademicHistory((previous) => previous.map((item) => item.id === document.id ? response.document : item));
       setHistoryEditId(null);
       setHistoryEditDraft(null);
       await refreshStudentData();
-      pushToast('Nilai angka, IPK, dan IPS berhasil diperbarui.', 'success');
+      pushToast('Nilai angka, IPS, dan IPK yang dihitung dari rata-rata IPS berhasil diperbarui.', 'success');
     } catch (error) {
       pushToast(error.message || 'Perubahan riwayat KHS gagal disimpan.', 'error');
     } finally {
@@ -2560,7 +2643,8 @@ function App() {
                     <p className="muted">Nilai angka yang ditandai perkiraan bukan nilai asli pada KHS. Silakan edit jika memiliki nilai resmi.</p>
                   </div>
                   {!editing && <button className="btn outline" type="button" onClick={() => beginHistoryEdit(doc)}>Edit nilai & IPK</button>}</div>
-                  <label>IPK {editing ? <input type="number" min="0" max="4" step="0.01" value={historyEditDraft.ipk} onChange={(event) => setHistoryEditDraft((draft) => ({ ...draft, ipk: event.target.value }))} /> : <strong>{doc.metadata?.ipk ?? '—'}</strong>}</label>
+                  <label>IPK {editing ? <input type="number" min="0" max="4" step="0.01" value={historyEditDraft.ipk} readOnly={doc.semesters.length > 0 && doc.semesters.every((semester) => historyEditDraft.ip_semesters[String(semester.semester)] !== '' && Number.isFinite(Number(historyEditDraft.ip_semesters[String(semester.semester)])) && Number(historyEditDraft.ip_semesters[String(semester.semester)]) >= 0 && Number(historyEditDraft.ip_semesters[String(semester.semester)]) <= 4)} title="IPK dihitung otomatis dari rata-rata IPS seluruh semester." onChange={(event) => setHistoryEditDraft((draft) => ({ ...draft, ipk: event.target.value }))} /> : <strong>{doc.metadata?.ipk ?? '—'}</strong>}</label>
+                  {editing && <small className="muted">IPK dihitung otomatis dari rata-rata IPS. Perbarui IPS semester untuk memperbarui IPK.</small>}
                   {doc.semesters.map((semester) => (
                     <div key={semester.semester} className="history-semester">
                       <h4>Semester {semester.semester} · {semester.courses.length} mata kuliah</h4>
@@ -2579,7 +2663,7 @@ function App() {
                       <div className="semester-summary-item history-ips-result">
                         <strong>IPS Semester {semester.semester}</strong>
                         {editing
-                          ? <input aria-label={`Edit IPS semester ${semester.semester}`} type="number" min="0" max="4" step="0.01" value={historyEditDraft.ip_semesters[String(semester.semester)] ?? ''} onChange={(event) => setHistoryEditDraft((draft) => ({ ...draft, ip_semesters: { ...draft.ip_semesters, [String(semester.semester)]: event.target.value } }))} />
+                          ? <input aria-label={`Edit IPS semester ${semester.semester}`} type="number" min="0" max="4" step="0.01" value={historyEditDraft.ip_semesters[String(semester.semester)] ?? ''} onChange={(event) => updateHistoryIps(doc, semester.semester, event.target.value)} />
                           : <span>{semester.ip_semester ?? '—'}</span>}
                       </div>
                     </div>
@@ -2598,8 +2682,8 @@ function App() {
         <div className="card">
           <h3>Minat & Profil</h3>
           <p className="muted">Pilih satu bidang minat sesuai program studi. Pilihan ini memengaruhi skor kecocokan mata kuliah pada rekomendasi.</p>
-          <p className="muted">{PROGRAM_INTERESTS[user?.program_study]?.kind || 'Bidang minat'} · {PROGRAM_INTERESTS[user?.program_study]?.note || 'Pilihan bidang minat mahasiswa.'}</p>
-          <div className="interest-options">{(PROGRAM_INTERESTS[user?.program_study]?.options || INTEREST_OPTIONS).map((interest) => {
+          <p className="muted">{programInterestCatalog[canonicalProgramName(user?.program_study)]?.kind || 'Bidang minat'} · {programInterestCatalog[canonicalProgramName(user?.program_study)]?.note || 'Pilihan bidang minat mahasiswa.'}</p>
+          <div className="interest-options">{(programInterestCatalog[canonicalProgramName(user?.program_study)]?.options || INTEREST_OPTIONS).map((interest) => {
             const selected = canonicalizeInterests(profileDraft) === interest;
             return (
               <label className="interest-option" key={interest}>
@@ -3038,18 +3122,18 @@ function App() {
                     value={registrationForm.program_study}
                     onChange={(event) => {
                       const program_study = event.target.value;
-                      const options = PROGRAM_INTERESTS[program_study]?.options || [];
+                      const options = programInterestCatalog[program_study]?.options || [];
                       setRegistrationForm({ ...registrationForm, program_study, interests: options[0] || '' });
                     }}
                   >
                     <option value="">Pilih program studi</option>
-                    {PROGRAM_STUDY_OPTIONS.map((program) => <option key={program} value={program}>{program}</option>)}
+                    {Object.keys(programInterestCatalog).map((program) => <option key={program} value={program}>{program}</option>)}
                   </select>
                 </label>
                 <label>
-                  <span className="muted">{PROGRAM_INTERESTS[registrationForm.program_study]?.kind || 'Bidang minat'}</span>
+                  <span className="muted">{programInterestCatalog[registrationForm.program_study]?.kind || 'Bidang minat'}</span>
                   <select required value={registrationForm.interests} onChange={(event) => setRegistrationForm({ ...registrationForm, interests: event.target.value })}>
-                    {(PROGRAM_INTERESTS[registrationForm.program_study]?.options || []).map((interest) => <option key={interest} value={interest}>{interest}</option>)}
+                    {(programInterestCatalog[registrationForm.program_study]?.options || []).map((interest) => <option key={interest} value={interest}>{interest}</option>)}
                   </select>
                   <small className="muted">{registrationForm.program_study === 'Sistem dan Teknologi Informasi'
                     ? 'Mengikuti dua peminatan resmi STI: Manajemen Teknologi Informasi (MTI) dan Kecerdasan Bisnis (KB).'

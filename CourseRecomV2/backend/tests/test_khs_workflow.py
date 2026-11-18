@@ -9,10 +9,12 @@ from app.services.recommendation import _interest_matches, _similarity
 
 def test_two_student_interests_match_course_catalog_specializations():
     assert _interest_matches('Peminatan Manajemen SI', 'Manajemen Sistem Informasi')
-    assert _interest_matches('Kecerdasan Bisnis (KB)', 'Data')
+    assert _interest_matches('Kecerdasan Bisnis (KB)', 'Data Analytics')
+    assert not _interest_matches('Kecerdasan Bisnis (KB)', 'Data Scientist')
     assert _interest_matches('Manajemen & Sistem Informasi', 'Manajemen Sistem Informasi')
     assert _interest_matches('Peminatan Kecerdasan Bisnis', 'Kecerdasan Bisnis')
-    assert _interest_matches('Data', 'Kecerdasan Bisnis')
+    assert _interest_matches('Data Analytics', 'Kecerdasan Bisnis')
+    assert not _interest_matches('Data', 'Kecerdasan Bisnis')
     assert not _interest_matches('Peminatan Kecerdasan Bisnis', 'Manajemen Sistem Informasi')
     assert not _interest_matches('Peminatan Manajemen SI', 'Kecerdasan Bisnis')
 
@@ -47,7 +49,7 @@ def test_khs_preview_is_not_saved_until_confirmation_and_rules_filter_courses(mo
         password_hash=get_password_hash('test-password'),
         ipk=3.4,
         kuota_sks=22,
-        interests='Data',
+        interests='Software Engineer',
     )
     advisor = db.query(User).filter(User.nim == 'pa001', User.role == 'dosen').first()
     if advisor:
@@ -59,7 +61,7 @@ def test_khs_preview_is_not_saved_until_confirmation_and_rules_filter_courses(mo
         password_hash=get_password_hash('test-password'),
     )
     eligible = Course(
-        code='TST301', name='Kursus Layak', sks=3, semester=3, category='Data',
+        code='TST301', name='Kursus Layak', sks=3, semester=3, category='Software Engineering',
         prerequisite_codes='PRE001',
     )
     missing_prereq = Course(

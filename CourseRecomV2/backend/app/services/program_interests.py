@@ -4,6 +4,9 @@ Only STI labels are retained as the user's requested legacy choices. Other
 programs are explicitly described as academic-interest areas unless a formal
 specialization is confirmed by the program's published curriculum.
 """
+import re
+
+
 PROGRAM_INTERESTS = {
     "Sistem dan Teknologi Informasi": {
         "kind": "Peminatan resmi program studi",
@@ -49,6 +52,8 @@ def get_program_interest_catalog():
 
 def normalize_program_name(value: str) -> str:
     normalized = " ".join((value or "").strip().lower().split())
+    normalized = re.sub(r"^(?:program studi|prodi)\s*[:\-]?\s*", "", normalized)
+    normalized = re.sub(r"\s*\((?:sti|ti|trm)\)\s*$", "", normalized)
     aliases = {
         "sti": "Sistem dan Teknologi Informasi",
         "sistem informasi": "Sistem dan Teknologi Informasi",
@@ -67,7 +72,16 @@ def validate_program_interest(program_study: str, interest: str) -> tuple[str, s
     program = normalize_program_name(program_study)
     if not program:
         raise ValueError("Pilih salah satu program studi FTII UHAMKA.")
-    option = (interest or "").strip()
-    if option not in PROGRAM_INTERESTS[program]["options"]:
+    option = " ".join((interest or "").strip().split())
+    if program == "Sistem dan Teknologi Informasi" and option.casefold() == "manajemen sistem informasi":
+        option = "Manajemen Teknologi Informasi"
+    canonical = next(
+        (
+            item for item in PROGRAM_INTERESTS[program]["options"]
+            if item.casefold() == option.casefold()
+        ),
+        None,
+    )
+    if canonical is None:
         raise ValueError("Bidang minat tidak sesuai dengan program studi yang dipilih.")
-    return program, option
+    return program, canonical
