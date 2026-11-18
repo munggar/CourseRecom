@@ -2,6 +2,7 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'rea
 import {
   AlertCircle,
   BookOpenCheck,
+  BrainCircuit,
   CheckCircle2,
   FileClock,
   FileUp,
@@ -13,6 +14,7 @@ import {
   Menu,
   PieChart,
   Settings,
+  Sparkles,
   UserRound,
   UsersRound,
   X,
@@ -2242,9 +2244,66 @@ function App() {
                 <span>IPK {profile?.ipk ?? '—'} · {profile?.total_sks} SKS · Minat: {profile?.interests || 'Belum diisi'}</span>
               </div>
               {recommendationResult.model && (
-                <p className="muted model-caption">
-                  Model {recommendationResult.model.version} · {recommendationResult.model.method} · {recommendationResult.model.peer_count} mahasiswa serupa
-                </p>
+                <section className="ml-engine-panel" aria-label="Status mesin rekomendasi machine learning">
+                  <div className="ml-engine-header">
+                    <div className="ml-engine-icon"><BrainCircuit size={26} /></div>
+                    <div className="ml-engine-title">
+                      <span className="ml-brand-badge">MESIN REKOMENDASI MACHINE LEARNING</span>
+                      <h3>Model CourseRecom sedang menganalisis pilihan studimu</h3>
+                      <p>{recommendationResult.model.method}</p>
+                    </div>
+                    <span className="ml-engine-live"><i /> INFERENCE AKTIF</span>
+                  </div>
+                  <div className="ml-engine-mode">
+                    <strong>{recommendationResult.model.inference_mode_label || 'Hybrid recommender'}</strong>
+                    <span>
+                      {recommendationResult.model.inference_mode === 'collaborative_plus_content'
+                        ? 'Pola mahasiswa serupa tersedia dan digabungkan dengan analisis konten mata kuliah.'
+                        : 'Data pembanding belum cukup; sistem memakai content-based fallback dari data akademik dan katalog.'}
+                    </span>
+                  </div>
+                  <div className="ml-engine-metrics">
+                    <div><span>Mahasiswa serupa</span><strong>{recommendationResult.model.peer_count ?? 0}</strong></div>
+                    <div><span>Riwayat KHS tersedia</span><strong>{recommendationResult.model.available_history_records ?? 0}</strong></div>
+                    <div><span>Mahasiswa dalam dataset</span><strong>{recommendationResult.model.available_history_students ?? 0}</strong></div>
+                    <div><span>Versi evaluasi</span><strong>{recommendationResult.model.version || 'Belum tersimpan'}</strong></div>
+                  </div>
+                  <div className="ml-engine-pipeline" aria-label="Alur model rekomendasi">
+                    <span>Riwayat KHS</span><b>→</b><span>Nearest neighbors</span><b>→</b><span>Content scoring</span><b>→</b><span>Validasi kurikulum</span>
+                  </div>
+                  <div className="ml-evaluation">
+                    <div>
+                      <span>Precision@5</span>
+                      <strong>{recommendationResult.model.metrics?.precision_at_5 == null
+                        ? 'Belum dievaluasi'
+                        : (Number(recommendationResult.model.metrics.precision_at_5) * 100).toFixed(1) + '%'}</strong>
+                    </div>
+                    <div>
+                      <span>Recall@5</span>
+                      <strong>{recommendationResult.model.metrics?.recall_at_5 == null
+                        ? 'Belum dievaluasi'
+                        : (Number(recommendationResult.model.metrics.recall_at_5) * 100).toFixed(1) + '%'}</strong>
+                    </div>
+                    <div>
+                      <span>Sampel evaluasi</span>
+                      <strong>{recommendationResult.model.metrics?.evaluation_samples ?? '—'}</strong>
+                    </div>
+                    <div>
+                      <span>Status training/evaluasi</span>
+                      <strong>{recommendationResult.model.training_status === 'evaluated'
+                        ? 'Dievaluasi'
+                        : recommendationResult.model.training_status === 'insufficient_history'
+                          ? 'Data belum cukup'
+                          : 'Belum ada versi tersimpan'}</strong>
+                    </div>
+                  </div>
+                  <p className="ml-engine-footnote">
+                    {recommendationResult.model.trained_at
+                      ? 'Evaluasi terakhir: ' + new Date(recommendationResult.model.trained_at).toLocaleString('id-ID') + '. '
+                      : 'Belum ada catatan versi pelatihan/evaluasi yang tersimpan. '}
+                    Mesin rekomendasi tetap menghitung kecocokan berdasarkan data yang tersedia. Precision@5 dan Recall@5 hanya ditampilkan jika hasil evaluasinya tersedia.
+                  </p>
+                </section>
               )}
               {mandatoryRecommendations.length > 0 && (
                 <section className="mandatory-recommendations" aria-label="Mata kuliah wajib otomatis">
@@ -2277,8 +2336,12 @@ function App() {
                       <h4>{item.name}</h4>
                       <span className="muted">{item.code} · {item.sks} SKS · Semester {item.semester} · {item.category}</span>
                     </div>
-                    <strong className="score-badge">{item.score}%</strong>
+                    <strong className="score-badge">{item.score}% kecocokan</strong>
                   </div>
+                  <p className="ml-course-explanation">
+                    <Sparkles size={17} aria-hidden="true" />
+                    <span><strong>Dipilih oleh model Machine Learning CourseRecom.</strong> {item.recommendation_explanation || 'Skor menggabungkan riwayat akademik, kecocokan minat yang tersedia, prasyarat, dan kurikulum.'} Skor ini menunjukkan kecocokan rekomendasi, bukan probabilitas kelulusan.</span>
+                  </p>
                   {item.description && <p>{item.description}</p>}
                   {item.prerequisite_text && (
                     <p><strong>Prasyarat:</strong><br />{item.prerequisite_text.split('\n').map((line, index) => (
@@ -2486,7 +2549,29 @@ function App() {
     }
 
     if (view === 'tentang') {
-      return <div className="card"><h3>CourseRecom</h3><p>Deskripsi: aplikasi berbasis AI yang merekomendasikan mata kuliah pilihan dan semester berikutnya kepada mahasiswa.</p><h4>Masalah & Tujuan</h4><p>Masalah dan tujuan disiapkan dalam halaman ini sesuai proposal produk.</p><h4>Alur Aplikasi</h4><ol><li>Data Mahasiswa</li><li>Preprocessing</li><li>Model Rekomendasi</li><li>Validasi Aturan</li><li>Daftar Rekomendasi + Alasan</li><li>Dashboard Mahasiswa & Dosen PA</li></ol></div>;
+      return (
+        <div className="card">
+          <div className="ml-about-hero">
+            <span className="ml-brand-badge"><BrainCircuit size={16} /> POWERED BY MACHINE LEARNING</span>
+            <h2>CourseRecom — Rekomendasi Mata Kuliah Cerdas</h2>
+            <p>CourseRecom menggunakan pendekatan hybrid <strong>weighted nearest-neighbor collaborative filtering</strong> dan <strong>content-based recommendation</strong> untuk membantu mahasiswa menyusun pilihan studi berdasarkan data akademiknya.</p>
+          </div>
+          <h3>Bagaimana model bekerja?</h3>
+          <div className="ml-process-grid">
+            <article><span>01</span><strong>Riwayat akademik</strong><p>KHS dikonversi menjadi histori mata kuliah dan nilai yang dapat dibandingkan.</p></article>
+            <article><span>02</span><strong>Mahasiswa serupa</strong><p>Sistem membandingkan mata kuliah dan nilai untuk menemukan histori mahasiswa yang paling mirip.</p></article>
+            <article><span>03</span><strong>Skor rekomendasi</strong><p>Sinyal collaborative filtering digabungkan dengan minat, nilai prasyarat/IPK, dan kesesuaian kurikulum.</p></article>
+            <article><span>04</span><strong>Validasi akademik</strong><p>Hasil diperiksa kembali terhadap prasyarat, mata kuliah yang sudah lulus, dan batas SKS sebelum ditampilkan.</p></article>
+          </div>
+          <p className="ml-method-note">Jika data mahasiswa pembanding belum mencukupi, sistem menggunakan content-based fallback dan menandai aspek yang belum memiliki bukti. Skor kecocokan bukan probabilitas kelulusan.</p>
+          <h3>Manfaat untuk pengguna</h3>
+          <ul>
+            <li>Mahasiswa menerima rekomendasi yang mempertimbangkan riwayat akademik dan minat.</li>
+            <li>Dosen PA dapat melihat dasar rekomendasi untuk membantu proses bimbingan akademik.</li>
+            <li>Admin dapat mengelola kurikulum serta menjalankan pelatihan/evaluasi ulang model dari data yang tersedia.</li>
+          </ul>
+        </div>
+      );
     }
 
     if (view === 'panduan') {
@@ -2826,9 +2911,13 @@ function App() {
           </div>
         )}
         <div className="login-box">
-          <div style={{ textAlign: 'center', marginBottom: 16 }}>
-            <img src="/logo.png" alt="CourseRecom logo" style={{ width: 99, height: 99 }} />
-            <h2 style={{ marginTop: 10 }}>CourseRecom</h2>
+          <div className="login-brand-block">
+            <img src="/logo.png" alt="CourseRecom logo" style={{ width: 88, height: 88 }} />
+            <h2>CourseRecom</h2>
+            <span className="ml-brand-badge"><BrainCircuit size={16} /> POWERED BY MACHINE LEARNING</span>
+            <h3>Rencanakan Studi Lebih Cerdas</h3>
+            <p>Analisis kemiripan riwayat akademik, minat, nilai prasyarat, dan kurikulum untuk membantu menemukan rekomendasi mata kuliah yang lebih relevan.</p>
+            <div className="login-ml-tags"><span>Academic History</span><span>Similar Students</span><span>Smart Recommendation</span></div>
           </div>
           {authMode === 'register' ? (
             <>

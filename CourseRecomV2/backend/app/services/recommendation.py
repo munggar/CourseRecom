@@ -10,6 +10,8 @@ from app.models import Course, KhsDocument, RecommendationModelVersion, StudentR
 from app.services.time_utils import utc_now_naive
 from app.services.khs_parser import GRADE_POINTS
 from app.services.validation import get_sks_quota
+from datetime import timezone
+
 
 
 PASSING_GRADES = settings.get_passing_grades()
@@ -428,6 +430,73 @@ def _additional_prerequisite_blocks(
     return blocks
 
 
+def _course_recommendation_explanation(peer_course_count: int, peer_total: int) -> str:
+    if peer_total > 0:
+        if peer_course_count > 0:
+            return (
+                f"Model membandingkan riwayat KHS dengan {peer_total} mahasiswa serupa; "
+                f"{peer_course_count} di antaranya mengambil mata kuliah ini. "
+                "Skor juga menggabungkan sinyal akademik, minat yang tersedia, prasyarat, dan kurikulum."
+            )
+        return (
+            f"Model membandingkan riwayat KHS dengan {peer_total} mahasiswa serupa, "
+            "tetapi belum ada yang tercatat mengambil mata kuliah ini. "
+            "Skor tetap mempertimbangkan riwayat akademik, minat yang tersedia, prasyarat, dan kurikulum."
+        )
+    return (
+        "Belum ada kelompok mahasiswa pembanding yang memadai. Untuk mata kuliah ini, "
+        "sistem menggunakan content-based scoring dari riwayat akademik, minat yang tersedia, "
+        "prasyarat, dan kesesuaian kurikulum."
+    )
+
+
+def _build_model_runtime_info(
+    latest_model: RecommendationModelVersion | None,
+    peer_count: int,
+    weights: dict[str, float],
+    available_history_records: int,
+    available_history_students: int,
+) -> dict:
+    metrics = {}
+    if latest_model and latest_model.metrics:
+        try:
+            metrics = json.loads(latest_model.metrics)
+        except (TypeError, ValueError, json.JSONDecodeError):
+            metrics = {}
+
+    evaluation_status = (
+        metrics.get('evaluation_status', 'not_evaluated')
+        if latest_model else 'not_trained'
+    )
+    inference_mode = 'collaborative_plus_content' if peer_count else 'content_based_fallback'
+    return {
+        'name': 'CourseRecom Hybrid Course Recommender',
+        'version': latest_model.version if latest_model else None,
+        'method': (
+            latest_model.method if latest_model
+            else 'Weighted nearest-neighbor collaborative filtering + content-based fallback'
+        ),
+        'inference_mode': inference_mode,
+        'inference_mode_label': (
+            'Collaborative filtering + content-based'
+            if peer_count else 'Content-based fallback (data pembanding belum cukup)'
+        ),
+        'training_status': evaluation_status,
+        'training_dataset_size': latest_model.dataset_size if latest_model else None,
+        'dataset_size': latest_model.dataset_size if latest_model else available_history_records,
+        'available_history_records': available_history_records,
+        'available_history_students': available_history_students,
+        'trained_at': (
+            latest_model.trained_at.replace(tzinfo=timezone.utc).isoformat()
+            if latest_model and latest_model.trained_at else None
+        ),
+        'metrics': metrics or None,
+        'peer_count': peer_count,
+        'weights': weights,
+        'scoring_method': 'Evidence-normalized weighted score; unavailable factors are excluded and remaining weights are renormalized.',
+    }
+
+
 def build_recommendation_result(db: Session, student: User) -> dict:
     latest_document = (
         db.query(KhsDocument)
@@ -655,6 +724,13 @@ def build_recommendation_result(db: Session, student: User) -> dict:
             'available_factor_count': sum(value is not None for value in factor_values.values()),
             'peer_count': peer_count_for_course,
             'peer_total': peer_total,
+            'recommendation_mode': (
+                'collaborative_plus_content' if peer_total
+                else 'content_based_fallback'
+            ),
+            'recommendation_explanation': _course_recommendation_explanation(
+                peer_count_for_course, peer_total
+            ),
         }
         if blocks:
             rejected.append(item)
@@ -671,14 +747,24 @@ def build_recommendation_result(db: Session, student: User) -> dict:
         .order_by(RecommendationModelVersion.trained_at.desc())
         .first()
     )
-    model_info = {
-        'version': latest_model.version if latest_model else 'similarity-cold-start',
-        'method': latest_model.method if latest_model else 'Content-based + similarity-based collaborative filtering',
-        'dataset_size': latest_model.dataset_size if latest_model else len(records),
-        'peer_count': peer_count,
-        'weights': weights,
-        'scoring_method': 'Evidence-normalized weighted score; unavailable factors are excluded and remaining weights are renormalized.',
-    }
+    available_history_records = (
+        db.query(StudentRecord)
+        .filter(StudentRecord.semester.is_not(None))
+        .count()
+    )
+    available_history_students = (
+        db.query(StudentRecord.student_id)
+        .filter(StudentRecord.semester.is_not(None))
+        .distinct()
+        .count()
+    )
+    model_info = _build_model_runtime_info(
+        latest_model,
+        peer_count,
+        weights,
+        available_history_records,
+        available_history_students,
+    )
     all_codes = set(attempted)
     passed_count = len(passed_codes)
     failed_count = sum(
