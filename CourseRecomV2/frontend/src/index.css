@@ -602,3 +602,48 @@ footer { color: var(--muted); }
   .admin-donut { animation: none; transform: none; }
   .semester-chart-track span { transition: none; }
 }
+
+
+/* Compact two-column student recommendation layout */
+.recommendation-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: stretch;
+  gap: 14px;
+  margin: 12px 0 20px;
+}
+.recommendation-grid .recommendation-card {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  height: 100%;
+  margin: 0;
+  padding: 16px;
+}
+.recommendation-grid .recommendation-heading {
+  align-items: flex-start;
+}
+.recommendation-grid .recommendation-heading > div {
+  min-width: 0;
+}
+.recommendation-grid .recommendation-heading h4 {
+  overflow-wrap: anywhere;
+}
+.recommendation-grid .factor-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 10px 0;
+}
+.recommendation-grid .reason-list {
+  margin: 8px 0 14px;
+  padding-left: 19px;
+}
+.recommendation-grid .recommendation-card > .btn {
+  align-self: flex-start;
+  margin-top: auto;
+}
+.recommendation-grid-mandatory .mandatory-course-note {
+  margin: 10px 0 14px;
+}
+@media (max-width: 900px) {
+  .recommendation-grid { grid-template-columns: 1fr; }
+}
