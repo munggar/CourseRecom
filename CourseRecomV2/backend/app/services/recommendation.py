@@ -48,6 +48,155 @@ INTEREST_ALIASES = {
     },
 }
 
+INTEREST_TOPIC_MAP = {
+    'manajemen sistem informasi': {
+        'information_systems', 'application_development', 'database_management',
+        'it_infrastructure', 'enterprise_systems', 'it_governance', 'business_process',
+    },
+    'kecerdasan bisnis': {
+        'data_analytics', 'business_intelligence', 'artificial_intelligence',
+        'statistical_analysis', 'decision_support', 'data_mining', 'database_management',
+    },
+}
+
+COURSE_TOPIC_KEYWORDS = {
+    'information_systems': (
+        'sistem informasi', 'information system', 'information systems',
+    ),
+    'application_development': (
+        'mobile application', 'mobile app', 'aplikasi mobile', 'web application',
+        'pengembangan aplikasi', 'application development', 'software engineering',
+        'rekayasa perangkat lunak', 'pemrograman', 'programming', 'algoritma', 'coding',
+    ),
+    'database_management': (
+        'database', 'basis data', 'sql', 'data warehouse', 'sistem basis data',
+        'database management',
+    ),
+    'it_infrastructure': (
+        'infrastruktur teknologi informasi', 'infrastruktur ti', 'jaringan komputer',
+        'computer network', 'networking', 'cloud computing', 'arsitektur komputer',
+        'computer architecture', 'server administration',
+    ),
+    'enterprise_systems': (
+        'enterprise system', 'sistem enterprise', 'enterprise resource planning',
+        'erp', 'perencanaan sumber daya perusahaan',
+    ),
+    'it_governance': (
+        'tata kelola teknologi informasi', 'it governance', 'manajemen proyek ti',
+        'manajemen proyek teknologi informasi', 'audit sistem informasi',
+        'keamanan informasi', 'cybersecurity',
+    ),
+    'business_process': (
+        'proses bisnis', 'business process', 'sistem informasi manajemen',
+        'manajemen sistem informasi',
+    ),
+    'data_analytics': (
+        'analisis data', 'data analytics', 'data analysis', 'data science',
+        'analitika data', 'big data', 'visualisasi data', 'data visualization',
+    ),
+    'business_intelligence': (
+        'business intelligence', 'kecerdasan bisnis', 'dashboard', 'power bi',
+        'decision intelligence',
+    ),
+    'artificial_intelligence': (
+        'artificial intelligence', 'kecerdasan buatan', 'machine learning',
+        'deep learning', 'ai ml', 'neural network',
+    ),
+    'statistical_analysis': (
+        'statistik', 'statistics', 'statistical analysis', 'probabilitas', 'probability',
+    ),
+    'decision_support': (
+        'sistem pendukung keputusan', 'sistem penunjang keputusan',
+        'decision support system', 'decision support', 'dss',
+    ),
+    'data_mining': (
+        'data mining', 'text mining', 'sentiment analysis', 'analisis sentimen',
+        'pattern recognition', 'pengenalan pola',
+    ),
+}
+
+
+def _normalize_text(value: str) -> str:
+    return re.sub(r'[\W_]+', ' ', str(value or '').casefold()).strip()
+
+
+def _contains_phrase(text: str, phrase: str) -> bool:
+    normalized_text = _normalize_text(text)
+    normalized_phrase = _normalize_text(phrase)
+    return bool(normalized_phrase and f' {normalized_phrase} ' in f' {normalized_text} ')
+
+
+def _interest_groups(interests: str) -> set[str]:
+    selected = set()
+    for raw_interest in (interests or '').split(','):
+        normalized = _normalize_text(raw_interest)
+        if not normalized:
+            continue
+        for group, aliases in INTEREST_ALIASES.items():
+            normalized_aliases = {_normalize_text(alias) for alias in aliases | {group}}
+            if any(
+                normalized == alias or f' {alias} ' in f' {normalized} '
+                for alias in normalized_aliases if alias
+            ):
+                selected.add(group)
+    return selected
+
+
+def _interest_topic_score(course: Course, interests: str) -> tuple[float | None, str]:
+    selected_groups = _interest_groups(interests)
+    if not selected_groups:
+        return None, 'Peminatan mahasiswa belum dipilih atau belum dikenali.'
+
+    selected_topics = set().union(
+        *(INTEREST_TOPIC_MAP[group] for group in selected_groups)
+    )
+    course_text = ' '.join((
+        course.name or '',
+        course.category or '',
+        course.description or '',
+        course.prerequisite_text or '',
+    ))
+    course_topics = {
+        topic for topic, phrases in COURSE_TOPIC_KEYWORDS.items()
+        if any(_contains_phrase(course_text, phrase) for phrase in phrases)
+    }
+    if not course_topics:
+        return None, 'Kata kunci mata kuliah belum cukup untuk menilai kecocokan peminatan.'
+
+    matched_topics = course_topics & selected_topics
+    score = len(matched_topics) / len(course_topics)
+    if matched_topics:
+        detail = (
+            f'{len(matched_topics)} dari {len(course_topics)} topik mata kuliah '
+            'sesuai dengan peminatan yang dipilih.'
+        )
+    else:
+        detail = (
+            f'Topik terdeteksi ({len(course_topics)}) belum beririsan dengan peminatan yang dipilih.'
+        )
+    return score, detail
+
+
+def _score_with_available_factors(
+    factors: dict[str, float | None],
+    weights: dict[str, float],
+) -> tuple[float, float, dict[str, float]]:
+    available = {
+        key: value for key, value in factors.items()
+        if value is not None and key in weights
+    }
+    available_weight = sum(weights[key] for key in available)
+    if available_weight <= 0:
+        return 0.0, 0.0, {key: 0.0 for key in weights}
+
+    score = sum(weights[key] * float(value) for key, value in available.items())
+    effective_weights = {
+        key: round(weights[key] / available_weight * 100, 1) if key in available else 0.0
+        for key in weights
+    }
+    return round(score / available_weight * 100, 1), round(available_weight * 100, 1), effective_weights
+
+
 
 def _passed(record: StudentRecord) -> bool:
     return record.grade.upper() in PASSING_GRADES
@@ -64,122 +213,147 @@ def _catalog_code_for_record(code: str, catalog_codes: set[str]) -> str:
 
 
 def _course_identity(code: str, name: str | None = None) -> str:
-    normalized_name = re.sub(r'[\W_]+', ' ', (name or '').casefold()).strip()
-    if normalized_name:
-        return f'name:{normalized_name}'
-    return f'code:{code.strip().upper()}'
+    normalized_code = str(code or '').strip().upper()
+    if normalized_code:
+        return f'code:{normalized_code}'
+    normalized_name = _normalize_text(name or '')
+    return f'name:{normalized_name}'
+
+
+def _record_identity(
+    record: StudentRecord,
+    catalog_codes: set[str] | None = None,
+    catalog_name_to_code: dict[str, str] | None = None,
+) -> str:
+    code = str(record.course_code or '').strip().upper()
+    if catalog_codes:
+        normalized_code = _catalog_code_for_record(code, catalog_codes)
+        if normalized_code in catalog_codes:
+            return _course_identity(normalized_code)
+    normalized_name = _normalize_text(record.course_name or '')
+    if catalog_name_to_code and normalized_name in catalog_name_to_code:
+        return _course_identity(catalog_name_to_code[normalized_name])
+    return _course_identity(code, record.course_name)
 
 
 def _record_grade_value(record: StudentRecord) -> float:
     if record.grade_point is not None:
-        return record.grade_point
-    return GRADE_POINTS.get(record.grade.upper(), 0.0)
+        return float(record.grade_point)
+    return float(GRADE_POINTS.get(str(record.grade or '').upper(), 0.0))
 
 
-def _similarity(student_records: list[StudentRecord], peer_records: list[StudentRecord]) -> float:
-    student_grades: dict[str, str] = {}
-    peer_grades: dict[str, str] = {}
-    for records, grades in (
-        (student_records, student_grades),
-        (peer_records, peer_grades),
-    ):
-        for record in records:
-            identity = _course_identity(record.course_code, record.course_name)
-            previous_grade = grades.get(identity)
-            if (
-                previous_grade is None
-                or _record_grade_value(record) > GRADE_POINTS.get(previous_grade, 0.0)
-            ):
-                grades[identity] = record.grade.upper()
+def _latest_course_grades(
+    records: list[StudentRecord],
+    catalog_codes: set[str] | None = None,
+    catalog_name_to_code: dict[str, str] | None = None,
+) -> dict[str, str]:
+    latest: dict[str, StudentRecord] = {}
+    for record in records:
+        identity = _record_identity(record, catalog_codes, catalog_name_to_code)
+        previous = latest.get(identity)
+        if previous is None or (
+            int(record.semester or 0), int(record.id or 0)
+        ) > (
+            int(previous.semester or 0), int(previous.id or 0)
+        ):
+            latest[identity] = record
+    return {
+        identity: str(record.grade or '').upper()
+        for identity, record in latest.items()
+        if record.grade
+    }
 
+
+def _similarity(
+    student_records: list[StudentRecord],
+    peer_records: list[StudentRecord],
+    catalog_codes: set[str] | None = None,
+    catalog_name_to_code: dict[str, str] | None = None,
+) -> float:
+    student_grades = _latest_course_grades(
+        student_records, catalog_codes, catalog_name_to_code
+    )
+    peer_grades = _latest_course_grades(
+        peer_records, catalog_codes, catalog_name_to_code
+    )
     student_codes = set(student_grades)
     peer_codes = set(peer_grades)
     if not student_codes or not peer_codes:
         return 0.0
+
     union = student_codes | peer_codes
     jaccard = len(student_codes & peer_codes) / len(union)
-
-    common = {
-        code for code in student_grades.keys() & peer_grades.keys()
-        if student_grades[code] and peer_grades[code]
-    }
+    common = student_codes.keys() & peer_codes.keys()
     grade_similarity = (
         sum(student_grades[code] == peer_grades[code] for code in common) / len(common)
-        if common
-        else 0.0
-    )
-    return 0.8 * jaccard + 0.2 * grade_similarity
-
-
-def _interest_matches(category: str, interests: str) -> bool:
-    def normalize(value: str) -> str:
-        return re.sub(r'[\W_]+', ' ', value.casefold()).strip()
-
-    def groups_for(values: list[str]) -> set[str]:
-        groups = set()
-        for value in values:
-            normalized_value = normalize(value)
-            for group, aliases in INTEREST_ALIASES.items():
-                normalized_aliases = {normalize(alias) for alias in aliases | {group}}
-                if any(
-                    normalized_value == alias
-                    or (
-                        len(alias) > 3
-                        and f' {alias} ' in f' {normalized_value} '
-                    )
-                    for alias in normalized_aliases
-                ):
-                    groups.add(group)
-        return groups
-
-    selected_interests = groups_for([tag.strip() for tag in interests.split(',') if tag.strip()])
-    matching_interests = groups_for([category.strip()])
-    return bool(selected_interests.intersection(matching_interests))
-
-
-def _peer_course_scores(
+        if common elsdef _peer_course_scores(
     db: Session,
     student: User,
     target_semester: int,
     student_records: list[StudentRecord],
+    catalog_courses: list[Course] | None = None,
 ) -> tuple[dict[str, float], dict[str, tuple[int, int]], int]:
+    catalog_courses = catalog_courses or []
+    catalog_codes = {course.code.strip().upper() for course in catalog_courses}
+    name_to_codes: dict[str, set[str]] = defaultdict(set)
+    for course in catalog_courses:
+        normalized_name = _normalize_text(course.name)
+        if normalized_name:
+            name_to_codes[normalized_name].add(course.code.strip().upper())
+    catalog_name_to_code = {
+        name: next(iter(codes))
+        for name, codes in name_to_codes.items()
+        if len(codes) == 1
+    }
+
     all_records = db.query(StudentRecord).filter(StudentRecord.semester.is_not(None)).all()
     peer_by_student: dict[int, list[StudentRecord]] = defaultdict(list)
     for record in all_records:
         if record.student_id != student.id:
             peer_by_student[record.student_id].append(record)
 
-    peers: list[tuple[float, list[StudentRecord], list[StudentRecord]]] = []
+    student_history = [
+        record for record in student_records
+        if record.semester is None or record.semester < target_semester
+    ]
+    peers: list[tuple[float, list[StudentRecord]]] = []
     for records in peer_by_student.values():
         history = [record for record in records if record.semester < target_semester]
         next_semester = [record for record in records if record.semester == target_semester]
         if not history or not next_semester:
             continue
-        score = _similarity(student_records, history)
+        score = _similarity(
+            student_history, history, catalog_codes, catalog_name_to_code
+        )
         if score > 0:
-            peers.append((score, history, next_semester))
+            peers.append((score, next_semester))
 
     peers.sort(key=lambda item: item[0], reverse=True)
     peers = peers[:20]
     total_similarity = sum(peer[0] for peer in peers)
     weighted_scores: dict[str, float] = defaultdict(float)
     counts: dict[str, list[int]] = defaultdict(lambda: [0, 0])
-    for similarity, _, courses in peers:
+    for similarity, courses in peers:
         unique_courses = {
-            _course_identity(record.course_code, record.course_name): record
+            _record_identity(record, catalog_codes, catalog_name_to_code)
             for record in courses
         }
         for identity in unique_courses:
             weighted_scores[identity] += similarity
             counts[identity][0] += 1
-        for code in counts:
-            counts[code][1] = len(peers)
+
+    peer_total = len(peers)
+    for count in counts.values():
+        count[1] = peer_total
 
     normalized = {
         code: score / total_similarity
         for code, score in weighted_scores.items()
     } if total_similarity else {}
-    return normalized, {code: (count[0], count[1]) for code, count in counts.items()}, len(peers)
+    return normalized, {
+        code: (count[0], count[1]) for code, count in counts.items()
+    }, peer_total
+
 
 
 def _additional_prerequisite_blocks(
@@ -252,6 +426,10 @@ def build_recommendation_result(db: Session, student: User) -> dict:
     profile_ipk = profile_data.get('ipk')
     if profile_ipk is None:
         profile_ipk = student.ipk
+    try:
+        profile_ipk = float(profile_ipk) if profile_ipk is not None else None
+    except (TypeError, ValueError):
+        profile_ipk = None
     kuota_sks = get_sks_quota(profile_ipk, db)
     catalog_courses = (
         db.query(Course)
@@ -281,7 +459,7 @@ def build_recommendation_result(db: Session, student: User) -> dict:
 
     weights = settings.get_recommendation_weights()
     similarities, cohort_counts, peer_count = _peer_course_scores(
-        db, student, target_semester, records
+        db, student, target_semester, records, catalog_courses
     )
     target_courses = [
         course for course in catalog_courses
@@ -308,8 +486,7 @@ def build_recommendation_result(db: Session, student: User) -> dict:
                 passing_attempts,
                 key=lambda record: (record.semester or 0, record.id or 0),
             )
-            if latest_passing_attempt.grade_point is not None:
-                grades_by_code[code] = latest_passing_attempt.grade_point
+            grades_by_code[code] = _record_grade_value(latest_passing_attempt)
 
     semester_antara = [
         {
@@ -356,7 +533,7 @@ def build_recommendation_result(db: Session, student: User) -> dict:
         reasons.append(f'Sesuai kurikulum semester {target_semester}')
 
         course_identity = _course_identity(course.code, course.name)
-        similar_score = similarities.get(course_identity, 0.0)
+        similar_score = similarities.get(course_identity) if peer_count else None
         peer_count_for_course, peer_total = cohort_counts.get(
             course_identity,
             (0, peer_count),
@@ -366,34 +543,68 @@ def build_recommendation_result(db: Session, student: User) -> dict:
                 f'{peer_count_for_course} dari {peer_total} mahasiswa serupa mengambil mata kuliah ini'
             )
         else:
-            reasons.append('Data mahasiswa serupa belum tersedia; skor kolaboratif dinetralkan')
+            reasons.append('Belum cukup data mahasiswa serupa untuk menghitung aspek kolaboratif')
 
-        if _interest_matches(course.category, student.interests or ''):
-            interest_score = 1.0
-            reasons.append(f'Sesuai minat {course.category}')
-        else:
-            interest_score = 0.0
+        interest_score, interest_detail = _interest_topic_score(
+            course, student.interests or ''
+        )
+        if interest_score is not None and interest_score > 0:
+            reasons.append(interest_detail)
 
         relevant_points = [
-            grades_by_code[code] for code in prereqs if code in grades_by_code and code in passed_codes
+            grades_by_code[code] for code in prereqs
+            if code in grades_by_code and code in passed_codes
         ]
-        academic_score = (
-            sum(relevant_points) / (4 * len(relevant_points))
-            if relevant_points
-            else min(max((student.ipk or 0) / 4, 0), 1)
-        )
         if relevant_points:
-            reasons.append('Performa mata kuliah prasyarat dipertimbangkan')
+            academic_score = sum(relevant_points) / (4 * len(relevant_points))
+            academic_detail = (
+                f'Rata-rata nilai {len(relevant_points)} mata kuliah prasyarat '
+                f'{sum(relevant_points) / len(relevant_points):.2f} dari 4.00.'
+            )
+            reasons.append('Nilai mata kuliah prasyarat yang sudah lulus dipertimbangkan')
+        elif profile_ipk is not None:
+            academic_score = min(max(profile_ipk / 4, 0), 1)
+            academic_detail = f'IPK pada KHS terbaru {profile_ipk:.2f} dari 4.00.'
+        else:
+            academic_score = None
+            academic_detail = 'IPK KHS terbaru belum tersedia untuk menghitung aspek akademik.'
 
-        frequency_score = min(peer_count_for_course / peer_total, 1.0) if peer_total else 0.0
-        factors = {
+        frequency_score = (
+            peer_count_for_course / peer_total if peer_total else None
+        )
+        if peer_total:
+            course_pattern_detail = (
+                f'{peer_count_for_course} dari {peer_total} mahasiswa serupa mengambil mata kuliah ini.'
+            )
+        else:
+            course_pattern_detail = 'Belum ada kelompok mahasiswa pembanding yang cukup.'
+
+        factor_values = {
             'similar_students': similar_score,
             'academic_history': academic_score,
             'interest': interest_score,
             'curriculum': 1.0,
             'course_pattern': frequency_score,
         }
-        score = round(100 * sum(weights[key] * factors[key] for key in weights), 1)
+        score, score_coverage, effective_weights = _score_with_available_factors(
+            factor_values, weights
+        )
+        factors = {
+            key: round(value * 100, 1) if value is not None else None
+            for key, value in factor_values.items()
+        }
+        factor_details = {
+            'similar_students': (
+                f'Kemiripan riwayat akademik dipakai untuk memberi bobot suara; '
+                f'{peer_total} mahasiswa pembanding tersedia.'
+                if peer_total else
+                'Belum cukup riwayat mahasiswa lain untuk membentuk kelompok pembanding.'
+            ),
+            'academic_history': academic_detail,
+            'interest': interest_detail,
+            'curriculum': f'Mata kuliah tersedia pada semester target {target_semester}.',
+            'course_pattern': course_pattern_detail,
+        }
         item = {
             'code': course.code,
             'name': course.name,
@@ -407,7 +618,11 @@ def build_recommendation_result(db: Session, student: User) -> dict:
             'category': course.category,
             'prerequisite_text': course.prerequisite_text,
             'semester': target_semester,
-            'factors': {key: round(value * 100, 1) for key, value in factors.items()},
+            'factors': factors,
+            'factor_details': factor_details,
+            'factor_weights': effective_weights,
+            'score_coverage': score_coverage,
+            'available_factor_count': sum(value is not None for value in factor_values.values()),
             'peer_count': peer_count_for_course,
             'peer_total': peer_total,
         }
@@ -432,6 +647,7 @@ def build_recommendation_result(db: Session, student: User) -> dict:
         'dataset_size': latest_model.dataset_size if latest_model else len(records),
         'peer_count': peer_count,
         'weights': weights,
+        'scoring_method': 'Evidence-normalized weighted score; unavailable factors are excluded and remaining weights are renormalized.',
     }
     all_codes = set(attempted)
     passed_count = len(passed_codes)
