@@ -213,6 +213,14 @@ function App() {
     () => recommendationResult.recommendations || [],
     [recommendationResult.recommendations],
   );
+  const mandatoryRecommendations = useMemo(
+    () => recommendations.filter(isMandatoryCourse),
+    [recommendations],
+  );
+  const optionalRecommendations = useMemo(
+    () => recommendations.filter((item) => !isMandatoryCourse(item)),
+    [recommendations],
+  );
   const rejectedRecommendations = recommendationResult.rejected || [];
   const [academicHistory, setAcademicHistory] = useState([]);
   const [curriculumCourses, setCurriculumCourses] = useState([]);
@@ -2096,9 +2104,9 @@ function App() {
             </section>
           )}
           <h3>Rekomendasi Semester {recommendationResult.target_semester ?? 'Berikutnya'}</h3>
-          {recommendations.length ? (
+          {optionalRecommendations.length ? (
             <div className="recommendation-list">
-              {recommendations.slice(0, 5).map((item) => (
+              {optionalRecommendations.slice(0, 5).map((item) => (
                 <div key={item.code} className="rec-item">
                   <strong>{item.name}</strong>
                   <div className="bar" aria-label={`Skor rekomendasi ${item.score}%`}><span style={{ width: `${item.score}%` }} /></div>
@@ -2106,7 +2114,7 @@ function App() {
                 </div>
               ))}
             </div>
-          ) : <p className="muted">{recommendationResult.message || 'Belum ada kandidat yang lolos aturan akademik.'}</p>}
+          ) : <p className="muted">Belum ada rekomendasi mata kuliah pilihan yang lolos aturan akademik.</p>}
           <button type="button" className="btn outline" onClick={() => setView('rekomendasi')}>Lihat rekomendasi dan alasannya</button>
           <div style={{ marginTop: 18 }}>
             <strong>Draft KRS:</strong> {draftCourses.length} mata kuliah • {totalDraftSks} / {kuotaSks} SKS
@@ -2134,8 +2142,27 @@ function App() {
                   Model {recommendationResult.model.version} · {recommendationResult.model.method} · {recommendationResult.model.peer_count} mahasiswa serupa
                 </p>
               )}
-              <h3>Kandidat yang lolos aturan akademik</h3>
-              {recommendations.length ? recommendations.map((item) => (
+              {mandatoryRecommendations.length > 0 && (
+                <section className="mandatory-recommendations" aria-label="Mata kuliah wajib otomatis">
+                  <h3>Mata kuliah wajib (otomatis ditambahkan)</h3>
+                  <p className="muted">Mata kuliah berikut otomatis dimasukkan ke Draft KRS oleh sistem. Kamu tidak perlu memilihnya secara manual.</p>
+                  {mandatoryRecommendations.map((item) => (
+                    <article className="recommendation-card recommendation-card-mandatory" key={item.code} aria-disabled="true">
+                      <div className="recommendation-heading">
+                        <div>
+                          <h4>{item.name}</h4>
+                          <span className="muted">{item.code} · {item.sks} SKS · Semester {item.semester} · {item.category}</span>
+                        </div>
+                        <span className="mandatory-status">WAJIB · OTOMATIS</span>
+                      </div>
+                      <p className="mandatory-course-note">Mata kuliah wajib sudah ditambahkan ke Draft KRS dan tidak dapat dipilih atau dihapus secara manual.</p>
+                      <button className="btn mandatory-disabled" type="button" disabled>Otomatis masuk Draft KRS</button>
+                    </article>
+                  ))}
+                </section>
+              )}
+              <h3>Rekomendasi mata kuliah pilihan</h3>
+              {optionalRecommendations.length ? optionalRecommendations.map((item) => (
                 <article className="recommendation-card" key={item.code}>
                   <div className="recommendation-heading">
                     <div>
@@ -2161,17 +2188,15 @@ function App() {
                   <button
                     className="btn primary"
                     type="button"
-                    disabled={isMandatoryCourse(item) || Boolean(approvedStudyPlan) || draftCourses.some((course) => course.code === item.code)}
+                    disabled={Boolean(approvedStudyPlan) || draftCourses.some((course) => course.code === item.code)}
                     onClick={() => addToDraft(item)}
                   >
-                    {isMandatoryCourse(item)
-                      ? 'Otomatis masuk draft (wajib)'
-                      : approvedStudyPlan
+                    {approvedStudyPlan
                       ? 'KRS sudah disetujui'
                       : draftCourses.some((course) => course.code === item.code) ? 'Sudah di draft' : 'Tambah ke Draft KRS'}
                   </button>
                 </article>
-              )) : <p className="muted">Tidak ada mata kuliah semester target yang lolos aturan. Periksa riwayat KHS dan kurikulum.</p>}
+              )) : <p className="muted">Belum ada mata kuliah pilihan yang lolos aturan akademik untuk semester target ini.</p>}
               {recommendationResult.semester_antara?.length > 0 && (
                 <section className="rejected-section">
                   <h3>Wajib diulang di Semester Antara</h3>
@@ -2207,15 +2232,18 @@ function App() {
             {draftCourses.length === 0 ? (
               <p className="muted">Belum ada mata kuliah yang dipilih.</p>
             ) : (
-              <ul>
-                {draftCourses.map((course) => (
-                  <li key={course.code} style={{ marginBottom: 8 }}>
-                    {course.code} — {course.name} ({course.sks} SKS)
-                  <button type="button" className="btn outline" style={{ marginLeft: 8 }} disabled={Boolean(approvedStudyPlan) || isMandatoryCourse(course)} onClick={() => removeFromDraft(course.code)}>
-                    {isMandatoryCourse(course) ? 'Wajib' : 'Hapus'}
-                    </button>
-                  </li>
-                ))}
+              <ul className="draft-course-list">
+                {draftCourses.map((course) => {
+                  const mandatory = isMandatoryCourse(course);
+                  return (
+                    <li key={course.code} className={mandatory ? 'draft-course-item draft-course-item-mandatory' : 'draft-course-item'}>
+                      <span>{course.code} — {course.name} ({course.sks} SKS)</span>
+                      {mandatory
+                        ? <span className="mandatory-status">WAJIB · OTOMATIS</span>
+                        : <button type="button" className="btn outline" style={{ marginLeft: 8 }} disabled={Boolean(approvedStudyPlan)} onClick={() => removeFromDraft(course.code)}>Hapus</button>}
+                    </li>
+                  );
+                })}
               </ul>
             )}
             {draftCourses.length > 0 && (
