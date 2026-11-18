@@ -9,8 +9,8 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.deps import get_db, require_roles
-from app.models import Course, KhsDocument, KrsDocument, OfficialKrsDocument, StudentRecord, StudyPlan, User, KprsRequest
-from app.schemas import KhsConfirm, ProfileUpdate, RecommendationItem, StudyPlanSubmit, StudyPlanUpdate, KprsMutation
+from app.models import AdvisorFeedback, Course, KhsDocument, KrsDocument, OfficialKrsDocument, StudentRecord, StudyPlan, User, KprsRequest
+from app.schemas import KhsConfirm, KprsMutation, KprsRevision, ProfileUpdate, RecommendationItem, StudyPlanSubmit, StudyPlanUpdate
 from app.services.khs_parser import (
     GRADE_POINTS,
     estimate_numeric_grade,
@@ -28,6 +28,7 @@ from app.services.capacity import (
     lock_capacity_courses,
 )
 from app.services.validation import assert_kprs_period_open, assert_krs_period_open, get_sks_quota
+from app.services.academic_interests import canonical_interest
 from app.services.official_krs import (
     build_official_krs_pdf,
     build_verification_url,
@@ -497,9 +498,15 @@ def update_profile(
     current_user: User = Depends(require_roles('mahasiswa')),
     db: Session = Depends(get_db),
 ):
-    current_user.interests = payload.interests
+    selected_interest = canonical_interest(current_user.program_study, payload.interests)
+    if not selected_interest:
+        raise HTTPException(
+            status_code=422,
+            detail='Bidang minat tidak sesuai dengan Program Studi mahasiswa.',
+        )
+    current_user.interests = selected_interest
     db.commit()
-    return {'status': 'updated', 'interests': payload.interests}
+    return {'status': 'updated', 'interests': selected_interest}
 
 
 @router.get('/mahasiswa/rekomendasi')
@@ -517,6 +524,17 @@ def _serialize_study_plan(plan: StudyPlan) -> dict:
         'courses': json.loads(plan.courses_json),
         'status': plan.status,
         'advisor_note': plan.advisor_note,
+        'advisor_feedback': [
+            {
+                'id': feedback.id,
+                'note': feedback.note,
+                'affected_course_codes': json.loads(feedback.affected_course_codes_json),
+                'reason_category': feedback.reason_category,
+                'feedback_type': feedback.feedback_type,
+                'created_at': feedback.created_at.isoformat(),
+            }
+            for feedback in plan.advisor_feedback
+        ],
         'created_at': plan.created_at.isoformat(),
         'updated_at': plan.updated_at.isoformat(),
     }
@@ -609,9 +627,9 @@ def submit_kprs(payload: KprsMutation, current_user: User = Depends(require_role
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     if db.query(KprsRequest).filter(
         KprsRequest.student_id == current_user.id,
-        KprsRequest.status == 'pending',
+        KprsRequest.status.in_(['pending', 'revision_requested']),
     ).first():
-        raise HTTPException(status_code=409, detail='Masih ada pengajuan KPRS aktif.')
+        raise HTTPException(status_code=409, detail='Masih ada pengajuan KPRS aktif. Selesaikan atau revisi pengajuan yang ada terlebih dahulu.')
     before = json.loads(original.courses_json)
     codes = [code.strip().upper() for code in payload.course_codes]
     if {item.get('code') for item in before} == set(codes):
@@ -659,6 +677,84 @@ def list_kprs(current_user: User = Depends(require_roles('mahasiswa')), db: Sess
     } for item in db.query(KprsRequest).filter(KprsRequest.student_id == current_user.id).order_by(KprsRequest.created_at.desc()).all()]
 
 
+@router.patch('/mahasiswa/kprs/{request_id}')
+def revise_kprs(
+    request_id: int,
+    payload: KprsRevision,
+    current_user: User = Depends(require_roles('mahasiswa')),
+    db: Session = Depends(get_db),
+):
+    begin_capacity_transaction(db)
+    request = db.query(KprsRequest).filter(
+        KprsRequest.id == request_id,
+        KprsRequest.student_id == current_user.id,
+        KprsRequest.status == 'revision_requested',
+    ).with_for_update().first()
+    if not request:
+        raise HTTPException(status_code=404, detail='Pengajuan KPRS yang perlu revisi tidak ditemukan.')
+    original = db.query(StudyPlan).filter(
+        StudyPlan.id == request.study_plan_id,
+        StudyPlan.student_id == current_user.id,
+        StudyPlan.status == 'approved',
+    ).with_for_update().first()
+    if not original:
+        raise HTTPException(status_code=409, detail='KRS asal tidak lagi berstatus approved.')
+    try:
+        assert_kprs_period_open(db)
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    before = json.loads(request.before_json)
+    codes = payload.course_codes
+    if {item.get('code') for item in before} == set(codes):
+        raise HTTPException(status_code=422, detail='Perubahan KPRS harus berbeda dari KRS sebelumnya.')
+    try:
+        courses = validate_course_selection(db, current_user, codes, original.semester)
+        lock_capacity_courses(db, [course['code'] for course in courses])
+        assert_course_capacity(
+            db,
+            courses,
+            exclude_plan_id=original.id,
+            exclude_kprs_request_id=request.id,
+        )
+    except CapacityError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    old_status = request.status
+    request.after_json = json.dumps(courses, ensure_ascii=False)
+    request.reason = payload.reason
+    request.status = 'pending'
+    request.reviewer_note = ''
+    request.reviewer_id = None
+    request.updated_at = utc_now_naive()
+    write_audit(
+        db,
+        current_user,
+        'kprs_resubmitted',
+        'kprs_request',
+        request.id,
+        {'status': old_status},
+        {'status': 'pending', 'reason': request.reason},
+    )
+    db.commit()
+    db.refresh(request)
+    return {
+        'id': request.id,
+        'study_plan_id': request.study_plan_id,
+        'before': before,
+        'after': courses,
+        'reason': request.reason,
+        'status': request.status,
+        'reviewer_note': request.reviewer_note,
+        'updated_at': request.updated_at.isoformat(),
+    }
+
+
 @router.delete('/mahasiswa/kprs/{request_id}', status_code=status.HTTP_204_NO_CONTENT)
 def cancel_kprs(
     request_id: int,
@@ -669,10 +765,10 @@ def cancel_kprs(
     request = db.query(KprsRequest).filter(
         KprsRequest.id == request_id,
         KprsRequest.student_id == current_user.id,
-        KprsRequest.status == 'pending',
+        KprsRequest.status.in_(['pending', 'revision_requested']),
     ).with_for_update().first()
     if not request:
-        raise HTTPException(status_code=404, detail='Pengajuan KPRS pending tidak ditemukan.')
+        raise HTTPException(status_code=404, detail='Pengajuan KPRS aktif tidak ditemukan.')
     request.status = 'cancelled'
     request.updated_at = utc_now_naive()
     write_audit(
@@ -681,7 +777,7 @@ def cancel_kprs(
         'kprs_cancelled',
         'kprs_request',
         request.id,
-        {'status': 'pending'},
+        {'status': request.status},
         {'status': 'cancelled'},
     )
     db.commit()
