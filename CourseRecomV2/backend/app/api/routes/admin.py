@@ -1054,8 +1054,8 @@ def create_room(
         raise HTTPException(status_code=422, detail='Catatan verifikasi fisik minimal 10 karakter sebelum ruang diaktifkan.')
     room = Room(
         code=code,
-        floor=int(code[2]),
-        room_number=code[3:],
+        floor=int(code[2]) if code[2].isdigit() else None,
+        room_number=code[3:] if code[2].isdigit() else code[-1:],
         capacity=payload.capacity,
         room_type=payload.room_type.strip(),
         is_active=payload.is_active,
@@ -1151,7 +1151,7 @@ def export_rooms(
         schedule.append([
             section.room, f'{section.course_code} - {course.name if course else ""}',
             section.class_name, section.semester, section.day, section.start_time,
-            section.end_time, course.sks if course else '', lecturer.full_name if lecturer else '',
+            section.end_time, course.sks if course else '', section.lecturer_name or (lecturer.full_name if lecturer else ''),
             'Dibuka' if section.is_open else 'Ditutup',
         ])
     for sheet in workbook.worksheets:
@@ -1172,6 +1172,7 @@ def schedule_options(
     room_code: str = Query(..., min_length=5, max_length=10),
     day: str = Query(...),
     lecturer_id: int | None = Query(None),
+    lecturer_name: str | None = Query(None, max_length=180),
     exclude_class_id: int | None = Query(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_roles('admin')),
@@ -1186,6 +1187,7 @@ def schedule_options(
             room_code=room_code,
             day=day,
             lecturer_id=lecturer_id,
+            lecturer_name=lecturer_name,
             exclude_class_id=exclude_class_id,
         )
     except ValueError as exc:
@@ -1212,7 +1214,7 @@ def list_classes(db: Session = Depends(get_db), current_user: User = Depends(req
             'course_name': course.name if course else '',
             'class_name': item.class_name,
             'lecturer_id': item.lecturer_id,
-            'lecturer_name': lecturer.full_name if lecturer else '',
+            'lecturer_name': item.lecturer_name or (lecturer.full_name if lecturer else ''),
             'room': item.room,
             'day': item.day,
             'start_time': item.start_time,
@@ -1241,24 +1243,26 @@ def create_class(payload: CourseClassMutation, db: Session = Depends(get_db), cu
         CourseClass.semester == payload.semester,
     ).first():
         raise HTTPException(status_code=409, detail='Nama kelas paralel sudah digunakan untuk mata kuliah dan semester ini.')
+
     try:
-        # Lock resources in the same order as the update route to serialize
-        # simultaneous bookings of a room or lecturer.
+        # Lock resources to serialize simultaneous bookings.
         room = db.query(Room).filter(Room.code == payload.room).with_for_update().first()
         if not room:
             raise ValueError(f'Ruang {payload.room} belum terdaftar.')
         if not room.is_active:
-            raise ValueError(f'Ruang {payload.room} belum diaktifkan Admin setelah verifikasi fisik.')
+            raise ValueError(f'Ruang {payload.room} belum diaktifkan Admin setelah verifikasi.')
         if room.capacity is not None and payload.capacity > room.capacity:
             raise ValueError(f'Kapasitas kelas ({payload.capacity}) melebihi kapasitas fisik ruang {payload.room} ({room.capacity} kursi).')
+        linked_lecturer = None
         if payload.lecturer_id is not None:
-            lecturer = db.query(User).filter(
+            linked_lecturer = db.query(User).filter(
                 User.id == payload.lecturer_id,
                 User.role == 'dosen',
                 User.is_active.is_(True),
             ).with_for_update().first()
-            if not lecturer:
+            if not linked_lecturer:
                 raise ValueError('Dosen pengampu tidak valid atau nonaktif.')
+        lecturer_display_name = (payload.lecturer_name or (linked_lecturer.full_name if linked_lecturer else '')).strip()
         end_time = validate_class_schedule(
             db,
             course_code=course.code,
@@ -1266,6 +1270,7 @@ def create_class(payload: CourseClassMutation, db: Session = Depends(get_db), cu
             day=payload.day,
             start_time=payload.start_time,
             lecturer_id=payload.lecturer_id,
+            lecturer_name=lecturer_display_name or None,
         )
     except ValueError as exc:
         db.rollback()
@@ -1279,6 +1284,7 @@ def create_class(payload: CourseClassMutation, db: Session = Depends(get_db), cu
         course_code=course.code,
         class_name=payload.class_name.strip(),
         lecturer_id=payload.lecturer_id,
+        lecturer_name=lecturer_display_name or None,
         room=payload.room,
         day=payload.day,
         start_time=payload.start_time,
@@ -1290,14 +1296,10 @@ def create_class(payload: CourseClassMutation, db: Session = Depends(get_db), cu
     db.add(item)
     db.flush()
     write_audit(
-        db,
-        current_user,
-        'class_created',
-        'course_class',
-        item.id,
-        None,
+        db, current_user, 'class_created', 'course_class', item.id, None,
         {
             **payload.model_dump(),
+            'lecturer_name': item.lecturer_name,
             'end_time': end_time,
             'duration_minutes': course.sks * 50,
             'sks': course.sks,
@@ -1307,6 +1309,7 @@ def create_class(payload: CourseClassMutation, db: Session = Depends(get_db), cu
     db.refresh(item)
     return {
         'id': item.id, 'course_code': item.course_code, 'class_name': item.class_name,
+        'lecturer_id': item.lecturer_id, 'lecturer_name': item.lecturer_name,
         'room': item.room, 'day': item.day, 'start_time': item.start_time,
         'end_time': item.end_time, 'is_open': item.is_open,
     }
@@ -1319,13 +1322,7 @@ def update_class(class_id: int, payload: CourseClassMutation, db: Session = Depe
         raise HTTPException(status_code=404, detail='Kelas tidak ditemukan.')
 
     begin_capacity_transaction(db)
-    lock_capacity_courses(
-        db,
-        [item.course_code, payload.course_code.upper()],
-        [class_id],
-    )
-    # Lock old/new rooms in a stable sorted order, then lock the selected
-    # lecturer. This prevents concurrent assignments from slipping through.
+    lock_capacity_courses(db, [item.course_code, payload.course_code.upper()], [class_id])
     room_codes = sorted({item.room.strip().upper(), payload.room.strip().upper()})
     locked_rooms = db.query(Room).filter(Room.code.in_(room_codes)).order_by(Room.code).with_for_update().all()
     room_map = {room.code: room for room in locked_rooms}
@@ -1336,13 +1333,14 @@ def update_class(class_id: int, payload: CourseClassMutation, db: Session = Depe
             status_code=409,
             detail=f'Kapasitas kelas ({payload.capacity}) melebihi kapasitas fisik ruang {payload.room} ({room_map[payload.room].capacity} kursi).',
         )
+    linked_lecturer = None
     if payload.lecturer_id is not None:
-        lecturer = db.query(User).filter(
+        linked_lecturer = db.query(User).filter(
             User.id == payload.lecturer_id,
             User.role == 'dosen',
             User.is_active.is_(True),
         ).with_for_update().first()
-        if not lecturer:
+        if not linked_lecturer:
             raise HTTPException(status_code=422, detail='Dosen pengampu tidak valid atau nonaktif.')
     item = db.query(CourseClass).filter(CourseClass.id == class_id).with_for_update().first()
     if not item:
@@ -1365,8 +1363,14 @@ def update_class(class_id: int, payload: CourseClassMutation, db: Session = Depe
     occupied = class_occupancy(db, item.id)
     if payload.capacity < occupied:
         raise HTTPException(status_code=409, detail=f'Kapasitas kelas tidak dapat dikurangi di bawah {occupied} kursi yang sudah terpakai.')
-
-    old = {column: getattr(item, column) for column in ('course_code', 'class_name', 'lecturer_id', 'room', 'day', 'start_time', 'end_time', 'capacity', 'semester', 'is_open')}
+    lecturer_display_name = (payload.lecturer_name or (linked_lecturer.full_name if linked_lecturer else '')).strip()
+    old = {
+        column: getattr(item, column)
+        for column in (
+            'course_code', 'class_name', 'lecturer_id', 'lecturer_name', 'room',
+            'day', 'start_time', 'end_time', 'capacity', 'semester', 'is_open',
+        )
+    }
     try:
         end_time = validate_class_schedule(
             db,
@@ -1375,6 +1379,7 @@ def update_class(class_id: int, payload: CourseClassMutation, db: Session = Depe
             day=payload.day,
             start_time=payload.start_time,
             lecturer_id=payload.lecturer_id,
+            lecturer_name=lecturer_display_name or None,
             exclude_class_id=class_id,
         )
     except ValueError as exc:
@@ -1390,6 +1395,7 @@ def update_class(class_id: int, payload: CourseClassMutation, db: Session = Depe
     new_values.update({
         'course_code': payload.course_code.strip().upper(),
         'class_name': payload.class_name.strip(),
+        'lecturer_name': lecturer_display_name or None,
         'room': payload.room.strip().upper(),
         'day': payload.day.strip(),
         'start_time': payload.start_time,
@@ -1397,7 +1403,7 @@ def update_class(class_id: int, payload: CourseClassMutation, db: Session = Depe
         'semester': str(payload.semester).strip(),
     })
     protected_fields = (
-        'course_code', 'class_name', 'lecturer_id', 'room', 'day',
+        'course_code', 'class_name', 'lecturer_id', 'lecturer_name', 'room', 'day',
         'start_time', 'end_time', 'semester', 'is_open',
     )
     changed_fields = [field for field in protected_fields if old[field] != new_values[field]]
@@ -1422,6 +1428,7 @@ def update_class(class_id: int, payload: CourseClassMutation, db: Session = Depe
         'id': item.id, 'course_code': item.course_code, 'is_open': item.is_open,
         'occupied': occupied, 'capacity': item.capacity, 'room': item.room,
         'day': item.day, 'start_time': item.start_time, 'end_time': item.end_time,
+        'lecturer_name': item.lecturer_name,
     }
 
 
