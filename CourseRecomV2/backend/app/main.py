@@ -1,3 +1,5 @@
+import asyncio
+import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
@@ -14,15 +16,33 @@ from app.config import settings
 from app.database import ensure_schema
 from app.seed import seed_data
 
+logger = logging.getLogger("courserecom.startup")
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    ensure_schema()
-    seed_data()
-    yield
+    logger.info("startup.begin environment=%s", settings.environment)
+    try:
+        logger.info("startup.schema.begin")
+        await asyncio.to_thread(ensure_schema)
+        logger.info("startup.schema.complete")
+        logger.info("startup.seed.begin")
+        await asyncio.to_thread(seed_data)
+        logger.info("startup.seed.complete")
+    except Exception:
+        logger.exception("startup.failed")
+        raise
+    app.state.ready = True
+    logger.info("startup.ready")
+    try:
+        yield
+    finally:
+        app.state.ready = False
+        logger.info("shutdown.complete")
 
 
 app = FastAPI(title='CourseRecom', version='1.0.0', lifespan=lifespan)
+app.state.ready = False
 frontend_origin = urlsplit(settings.frontend_url)
 allowed_origins = {settings.frontend_url.rstrip('/')}
 for preview_port in ('4173', '5173'):
@@ -43,7 +63,7 @@ if frontend_origin.hostname in {'localhost', '127.0.0.1'}:
 app.add_middleware(
     CORSMiddleware,
     allow_origins=sorted(allowed_origins),
-    allow_origin_regex=r'https?://(localhost|127\.0\.0\.1)(:\d+)?',
+    allow_origin_regex=r'https?://(localhost|127\\.0\\.0\\.1)(:\\d+)?',
     allow_credentials=True,
     allow_methods=['*'],
     allow_headers=['*'],
@@ -56,6 +76,9 @@ app.include_router(admin_router, prefix='/api')
 
 @app.get('/api/health')
 def health():
+    if not app.state.ready:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=503, detail='Application is starting')
     return {'status': 'ok', 'app': 'CourseRecom'}
 
 
