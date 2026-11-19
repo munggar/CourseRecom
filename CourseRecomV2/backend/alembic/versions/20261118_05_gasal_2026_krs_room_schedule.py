@@ -52,7 +52,7 @@ EXTRA_LECTURERS = [
         'program': 'Teknik Elektro (FTII UHAMKA)',
         'education': 'S1 Teknik Elektro, Universitas Mercu Buana (1993–1998); gelar S.T., M.Pd., M.T. tercantum pada sumber UHAMKA',
         'expertise': 'Telekomunikasi nirkabel; antena; teknik elektro',
-        'email': None,
+        'email': 'emilia_roza@uhamka.ac.id',
         'url': 'https://ft.uhamka.ac.id/telekomunikasi-nirkabel-dan-antena/',
         'notes': 'NIDN 0330097402 tercantum pada dokumen skripsi repositori UHAMKA; profil KK FTII mencantumkan Emilia Roza sebagai anggota kelompok Telekomunikasi Nirkabel dan Antena. KRS contoh 19 November 2026 mencantumkan dosen ini untuk Pengembangan Talenta.',
         'type': 'official_ftii_profile',
@@ -96,7 +96,15 @@ EXTRA_LECTURERS = [
 # no timetable on the supplied KRS examples. They must not be given a fake
 # date, time or room; those fields stay empty until an official timetable exists.
 COURSES = [
-    ('03035975', 'Keterampilan Retorika dan Presentasi Publik', 2, 7, 'Pengayaan', '7', '7P', 'Firman Noor Hasan, S.Kom., M.TI.', 'KRS Arifan Fadli 19 November 2026 lists Firman Noor Hasan; an earlier KRS for Adil Muslim Saputra lists Faldy Irwiensyah for the same course code. Teacher assignment requires academic-office confirmation.'),
+    ('03045008', 'Kemuhammadiyahan', 2, 5, 'MKWU / AIK', '5', None, None, 'Contoh KRS 19 November 2026: kelas 5A dan 5B.'),
+    ('03045104', 'Keterampilan Berbicara Bahasa Jepang', 2, 5, 'Pengayaan / Bahasa', '5', None, None, 'Contoh KRS 19 November 2026: kelas 5A.'),
+    ('03045097', 'Keterampilan Berbahasa Jepang', 2, 5, 'Pengayaan / Bahasa', '5', None, None, 'Contoh KRS 19 November 2026: kelas 5A.'),
+    ('03045016', 'Manajemen Proyek dan Perubahan', 3, 5, 'Manajemen & Sistem Informasi', '5', None, None, 'Contoh KRS 19 November 2026: kelas 5A.'),
+    ('03045051', 'Mobile Application', 2, 5, 'Inti Teknologi & Pemrograman', '5', None, None, 'Contoh KRS 19 November 2026: kelas 5A.'),
+    ('03045050', 'Pengembangan Sistem Informasi Manajemen', 3, 5, 'Manajemen & Sistem Informasi', '5', None, None, 'Contoh KRS 19 November 2026: kelas 5A dan 5B.'),
+    ('03045053', 'Perancangan Infrastruktur Teknologi Informasi', 2, 5, 'Inti Teknologi & Pemrograman', '5', None, None, 'Contoh KRS 19 November 2026: kelas 5A.'),
+    ('03045052', 'Praktikum Mobile Application', 1, 5, 'Inti Teknologi & Pemrograman', '5', None, None, 'KRS 19 November 2026 mencatat FTTI2; KRS 15 September 2026 sebelumnya menggunakan FTTI1.'),
+    ('03035975', 'Keterampilan Retorika dan Presentasi Publik', 2, 7, 'Pengayaan', '7', '7P', None, 'KRS Arifan Fadli 19 November 2026 lists Firman Noor Hasan; an earlier KRS for Adil Muslim Saputra lists Faldy Irwiensyah for the same course code. Teacher assignment remains unverified; no schedule, room or time supplied.'),
     ('03035989', 'Kewirausahaan Terstruktur', 3, 7, 'Pengayaan / Kewirausahaan', '7', '7P', 'Faldy Irwiensyah, S.Kom., M.TI.', 'KRS examples list 7P and Faldy Irwiensyah; no day, time or room is supplied.'),
     ('03035984', 'Pengembangan Profesi', 2, 7, 'Pengayaan', '7', '7P', 'Yos Nofendri, S.Pd., M.Sc. Eng.', 'KRS examples list 7P and Yos Nofendri; no day, time or room is supplied.'),
     ('03035983', 'Pengembangan Talenta', 3, 7, 'Pengayaan', '7', '7P', 'Emilia Roza, S.T., M.Pd., M.T.', 'Latest KRS screenshot 19 November 2026 lists 7P and Emilia Roza; no day, time or room is supplied.'),
@@ -225,7 +233,7 @@ def upgrade():
         if bind.execute(sa.select(course_table.c.code).where(course_table.c.code == code)).first():
             bind.execute(course_table.update().where(course_table.c.code == code).values(
                 name=name, sks=sks, semester=semester, available_semesters=available,
-                category=category, capacity=35, is_active=True,
+                category=category, is_active=True,
                 default_class_name=class_name,
                 default_lecturer_name=lecturer_name,
                 description=description,
@@ -240,11 +248,8 @@ def upgrade():
                 default_lecturer_name=lecturer_name,
             ))
 
-    # Existing scheduled catalog rows are set to a capacity that fits the
-    # confirmed rooms. Other academic metadata is left untouched.
-    existing_codes = [row[0] for row in SCHEDULES]
-    for code in set(existing_codes):
-        bind.execute(course_table.update().where(course_table.c.code == code).values(capacity=35, is_active=True))
+    # Existing course capacities are intentionally preserved; each scheduled class
+    # receives its own 35-seat cap, constrained by the assigned room.
 
     if 'lecturer_directory' in tables:
         directory = sa.table(
