@@ -16,7 +16,7 @@ from app.config import settings
 from app.database import ensure_schema
 from app.seed import seed_data
 
-logger = logging.getLogger("courserecom.startup")
+logger = logging.getLogger("uvicorn.error")
 logger.setLevel(logging.INFO)
 
 
