@@ -117,7 +117,8 @@ def list_parallel_classes(
             'course_name': course.name,
             'class_name': section.class_name,
             'lecturer_id': section.lecturer_id,
-            'lecturer_name': lecturer.full_name if lecturer else 'Belum ditentukan',
+            'lecturer_name': section.lecturer_name or (lecturer.full_name if lecturer else 'Belum ditentukan'),
+            'campus': 'Ps-Rebo FT',
             'room': section.room,
             'day': section.day,
             'start_time': section.start_time,
@@ -1243,7 +1244,7 @@ def download_official_krs(
     ).first()
     courses = json.loads(plan.courses_json)
     canonical = json.dumps({
-        'format_version': 2,
+        'format_version': 3,
         'plan_id': plan.id,
         'student_id': current_user.id,
         'status': plan.status,
@@ -1381,7 +1382,7 @@ def _official_krs_is_current(plan: StudyPlan, issued: OfficialKrsDocument, paylo
     ):
         return False
     canonical = json.dumps({
-        'format_version': 2,
+        'format_version': 3,
         'plan_id': plan.id,
         'student_id': plan.student_id,
         'status': plan.status,

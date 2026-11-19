@@ -39,6 +39,7 @@ def test_official_krs_pdf_has_hmac_verified_qr_token():
             'start_time': '08:00',
             'end_time': '10:30',
             'room': 'FT301',
+            'campus': 'Ps-Rebo FT',
             'lecturer_name': 'Dosen Contoh, M.Kom.',
         }],
         'http://localhost/api/krs/verify/' + token,
@@ -56,7 +57,7 @@ def test_official_krs_pdf_has_hmac_verified_qr_token():
     assert verify_token(token + 'tampered') is None
     assert content.startswith(b'%PDF')
     assert hashlib.sha256(content).hexdigest() == content_hash
-    pdf_text = '\\n'.join(page.extract_text() or '' for page in PdfReader(BytesIO(content)).pages)
+    pdf_text = ' '.join(' '.join(page.extract_text() or '' for page in PdfReader(BytesIO(content)).pages).split())
     for label in (
         'UNIVERSITAS MUHAMMADIYAH PROF. DR. HAMKA',
         'KRS MAHASISWA',
@@ -64,6 +65,8 @@ def test_official_krs_pdf_has_hmac_verified_qr_token():
         'Sistem dan Teknologi Informasi',
         'Mata Kuliah',
         'Jadwal Kuliah',
+        'Kampus',
+        'Ps-Rebo FT',
         'Pengajar',
         'Pengujian Sistem',
         'Dosen Pembimbing',
@@ -127,7 +130,7 @@ def test_old_official_krs_is_rejected_after_plan_changes():
     db.add(plan)
     db.flush()
     canonical = json.dumps({
-        'format_version': 2,
+        'format_version': 3,
         'plan_id': plan.id,
         'student_id': student.id,
         'status': plan.status,

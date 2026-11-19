@@ -537,8 +537,8 @@ function App() {
   const [classBusy, setClassBusy] = useState(false);
   const [editingClassId, setEditingClassId] = useState(null);
   const [classForm, setClassForm] = useState({
-    course_code: '', class_name: '', lecturer_id: '', room: '', day: 'Senin',
-    start_time: '', end_time: '', capacity: 40, semester: '1', is_open: true,
+    course_code: '', class_name: '', lecturer_id: '', lecturer_name: '', room: '', day: 'Senin',
+    start_time: '', end_time: '', capacity: 35, semester: '1', is_open: true,
   });
   const [guideSearch, setGuideSearch] = useState('');
   const [kprsClassSelections, setKprsClassSelections] = useState({});
@@ -624,6 +624,7 @@ function App() {
       day: classForm.day,
     });
     if (classForm.lecturer_id) parameters.set('lecturer_id', String(classForm.lecturer_id));
+    if (classForm.lecturer_name) parameters.set('lecturer_name', classForm.lecturer_name);
     if (editingClassId) parameters.set('exclude_class_id', String(editingClassId));
     apiRequest(`/admin/schedule-options?${parameters.toString()}`, { suppressLoader: true })
       .then((result) => {
@@ -644,7 +645,7 @@ function App() {
       })
       .finally(() => { if (active) setScheduleSlotBusy(false); });
     return () => { active = false; };
-  }, [user?.role, view, classForm.course_code, classForm.room, classForm.day, classForm.lecturer_id, editingClassId, pushToast]);
+  }, [user?.role, view, classForm.course_code, classForm.room, classForm.day, classForm.lecturer_id, classForm.lecturer_name, editingClassId, pushToast]);
 
   useEffect(() => {
     if (!officialKrsPreviewUrl) return undefined;
@@ -1677,8 +1678,8 @@ function App() {
       const wasEditing = Boolean(editingClassId);
       setEditingClassId(null);
       setClassForm({
-        course_code: '', class_name: '', lecturer_id: '', room: '', day: 'Senin',
-        start_time: '', end_time: '', capacity: 40, semester: '1', is_open: true,
+        course_code: '', class_name: '', lecturer_id: '', lecturer_name: '', room: '', day: 'Senin',
+        start_time: '', end_time: '', capacity: 35, semester: '1', is_open: true,
       });
       setActionMessage(wasEditing ? 'Kelas paralel berhasil diperbarui.' : 'Kelas paralel berhasil ditambahkan.');
     } catch (error) {
@@ -1694,6 +1695,7 @@ function App() {
       course_code: section.course_code,
       class_name: section.class_name,
       lecturer_id: section.lecturer_id ?? '',
+      lecturer_name: section.lecturer_name || '',
       room: section.room,
       day: section.day,
       start_time: section.start_time,
@@ -1726,12 +1728,12 @@ function App() {
       if (course.code !== courseCode) return course;
       if (!section) return {
         ...course, class_id: null, class_name: null, lecturer_id: null,
-        lecturer_name: '', room: '', day: '', start_time: '', end_time: '', schedule: '',
+        lecturer_name: '', room: '', campus: '', day: '', start_time: '', end_time: '', schedule: '',
       };
       return {
         ...course, class_id: section.class_id, class_name: section.class_name,
         lecturer_id: section.lecturer_id, lecturer_name: section.lecturer_name,
-        room: section.room, day: section.day, start_time: section.start_time,
+        room: section.room, campus: section.campus || 'Ps-Rebo FT', day: section.day, start_time: section.start_time,
         end_time: section.end_time, schedule: `${section.day}, ${section.start_time}-${section.end_time}`,
       };
     });
@@ -3607,12 +3609,35 @@ function App() {
             <form className="class-form-grid" onSubmit={saveParallelClass}>
               <label><span>Mata kuliah aktif</span><select required value={classForm.course_code} onChange={(event) => setClassForm((previous) => ({ ...previous, course_code: event.target.value }))}><option value="">Pilih mata kuliah</option>{courseList.map((course) => <option key={course.code} value={course.code}>{course.code} · {course.name}</option>)}</select></label>
               <label><span>Nama kelas</span><input required maxLength="40" placeholder="A / B / Reguler 1" value={classForm.class_name} onChange={(event) => setClassForm((previous) => ({ ...previous, class_name: event.target.value }))} /></label>
-              <label><span>Dosen pengampu</span><select value={classForm.lecturer_id} onChange={(event) => setClassForm((previous) => ({ ...previous, lecturer_id: event.target.value }))}><option value="">Belum ditentukan</option>{adminAdvisors.filter((lecturer) => lecturer.is_active !== false).map((lecturer) => <option key={lecturer.id} value={lecturer.id}>{lecturer.full_name} · {lecturer.nim}</option>)}</select></label>
+              <label><span>Dosen pengampu</span>
+                <select
+                  value={classForm.lecturer_name || ''}
+                  onChange={(event) => {
+                    const selectedProfile = lecturerDirectory.find((entry) => entry.full_name === event.target.value);
+                    const linkedAccount = selectedProfile?.linked_user_id
+                      ? adminAdvisors.find((account) => Number(account.id) === Number(selectedProfile.linked_user_id))
+                      : null;
+                    setClassForm((previous) => ({
+                      ...previous,
+                      lecturer_name: event.target.value,
+                      lecturer_id: linkedAccount?.is_active !== false && linkedAccount ? String(linkedAccount.id) : '',
+                    }));
+                  }}
+                >
+                  <option value="">Belum ditentukan</option>
+                  {lecturerDirectory.map((entry) => (
+                    <option key={entry.id} value={entry.full_name}>
+                      {entry.full_name} · {entry.program_study}
+                    </option>
+                  ))}
+                </select>
+                <small className="muted">Pilih nama pada direktori dosen. Akun login tidak wajib untuk menyimpan nama pengajar; pemetaan akun hanya dilakukan jika tersedia.</small>
+              </label>
               <label><span>Ruang aktif</span>
                 <select required value={classForm.room} onChange={(event) => setClassForm((previous) => ({ ...previous, room: event.target.value, start_time: '', end_time: '' }))}>
                   <option value="">Pilih ruang yang sudah diverifikasi</option>
                   {roomList.filter((room) => room.is_active).map((room) => (
-                    <option key={room.code} value={room.code}>{room.code} · Lantai {room.floor} · {room.capacity} kursi</option>
+                    <option key={room.code} value={room.code}>{room.code} · {room.floor ? `Lantai ${room.floor}` : 'Laboratorium'} · {room.capacity} kursi</option>
                   ))}
                 </select>
                 <small className="muted">Hanya ruang berstatus aktif yang dapat dipakai untuk kelas.</small>
@@ -3676,7 +3701,7 @@ function App() {
               </button>
             </div>
             <form className="room-form-grid" onSubmit={saveRoom}>
-              <label><span>Kode Ruang</span><input required pattern="FT[234][0-9]{2}" title="Format FT2xx, FT3xx, atau FT4xx" placeholder="FT401" maxLength="5" value={roomForm.code} disabled={Boolean(editingRoomCode)} onChange={(event) => setRoomForm((previous) => ({ ...previous, code: event.target.value.toUpperCase().replace(/[^FT0-9]/g, '').slice(0, 5) }))} /></label>
+              <label><span>Kode Ruang</span><input required pattern="(FT[234][0-9]{2}|FTTI[12])" title="Format FT2xx, FT3xx, FT4xx, FTTI1, atau FTTI2" placeholder="FT401 / FTTI2" maxLength="10" value={roomForm.code} disabled={Boolean(editingRoomCode)} onChange={(event) => setRoomForm((previous) => ({ ...previous, code: event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10) }))} /></label>
               <label><span>Kapasitas resmi</span><input type="number" min="1" max="1000" value={roomForm.capacity} onChange={(event) => setRoomForm((previous) => ({ ...previous, capacity: event.target.value }))} placeholder="Isi setelah verifikasi" /></label>
               <label><span>Tipe ruang</span><select value={roomForm.room_type} onChange={(event) => setRoomForm((previous) => ({ ...previous, room_type: event.target.value }))}>{['Ruang kuliah','Laboratorium','Ruang praktik','Studio'].map((type) => <option key={type} value={type}>{type}</option>)}</select></label>
               <label className="class-open-toggle"><input type="checkbox" checked={roomForm.is_active} onChange={(event) => setRoomForm((previous) => ({ ...previous, is_active: event.target.checked }))} /> Aktif dan boleh dipakai untuk penjadwalan</label>

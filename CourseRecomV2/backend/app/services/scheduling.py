@@ -28,8 +28,8 @@ def duration_for_sks(sks: int) -> int:
 
 def validate_room_code(room_code: str) -> str:
     normalized = str(room_code or '').strip().upper()
-    if not re.fullmatch(r'FT[234]\d{2}', normalized):
-        raise ValueError('Kode ruang harus mengikuti format FT2xx, FT3xx, atau FT4xx (contoh: FT401).')
+    if not re.fullmatch(r'(?:FT[234]\d{2}|FTTI[12])', normalized):
+        raise ValueError('Kode ruang harus mengikuti format FT2xx, FT3xx, FT4xx, atau kode laboratorium FTTI1/FTTI2.')
     return normalized
 
 
@@ -50,6 +50,7 @@ def _find_conflict(
     end_minutes: int,
     room_code: str,
     lecturer_id: int | None,
+    lecturer_name: str | None = None,
     exclude_class_id: int | None = None,
 ) -> dict | None:
     query = db.query(CourseClass).filter(
@@ -65,7 +66,9 @@ def _find_conflict(
             continue
         if other.room.strip().upper() == room_code.upper():
             return {'type': 'room', 'class_id': other.id, 'room': other.room, 'start_time': other.start_time, 'end_time': other.end_time}
-        if lecturer_id is not None and other.lecturer_id == lecturer_id:
+        same_id = lecturer_id is not None and other.lecturer_id == lecturer_id
+        same_name = bool(lecturer_name and other.lecturer_name and other.lecturer_name.strip().casefold() == lecturer_name.strip().casefold())
+        if same_id or same_name:
             return {'type': 'lecturer', 'class_id': other.id, 'start_time': other.start_time, 'end_time': other.end_time}
     return None
 
@@ -78,12 +81,13 @@ def validate_class_schedule(
     day: str,
     start_time: str,
     lecturer_id: int | None,
+    lecturer_name: str | None = None,
     exclude_class_id: int | None = None,
 ) -> str:
     room_code = validate_room_code(room_code)
     room_is_available(db, room_code)
     if day not in ALLOWED_DAYS:
-        raise ValueError('Hari perkuliahan hanya Senin sampai Sabtu.')
+        raise ValueError('Hari perkuliahan harus Senin sampai Minggu.')
     course = db.query(Course).filter(Course.code == course_code.upper(), Course.is_active.is_(True)).first()
     if not course:
         raise ValueError('Mata kuliah tidak ditemukan atau tidak aktif.')
@@ -98,7 +102,7 @@ def validate_class_schedule(
     if start_minutes % SLOT_STEP_MINUTES != 0:
         raise ValueError('Jam mulai harus mengikuti kelipatan 10 menit.')
     conflict = _find_conflict(
-        db, day, start_minutes, end_minutes, room_code, lecturer_id, exclude_class_id,
+        db, day, start_minutes, end_minutes, room_code, lecturer_id, lecturer_name, exclude_class_id,
     )
     if conflict:
         if conflict['type'] == 'room':
@@ -120,6 +124,7 @@ def build_available_start_times(
     room_code: str,
     day: str,
     lecturer_id: int | None,
+    lecturer_name: str | None = None,
     exclude_class_id: int | None = None,
 ) -> list[dict]:
     normalized_room = validate_room_code(room_code)
@@ -128,14 +133,14 @@ def build_available_start_times(
     if not course:
         raise ValueError('Pilih mata kuliah aktif terlebih dahulu.')
     if day not in ALLOWED_DAYS:
-        raise ValueError('Pilih hari perkuliahan Senin sampai Sabtu.')
+        raise ValueError('Pilih hari perkuliahan Senin sampai Minggu.')
     duration = duration_for_sks(course.sks)
     last_start = DAY_END_MINUTES - duration
     slots = []
     for start_minutes in range(DAY_START_MINUTES, last_start + 1, SLOT_STEP_MINUTES):
         end_minutes = start_minutes + duration
         conflict = _find_conflict(
-            db, day, start_minutes, end_minutes, normalized_room, lecturer_id, exclude_class_id,
+            db, day, start_minutes, end_minutes, normalized_room, lecturer_id, lecturer_name, exclude_class_id,
         )
         if conflict is None:
             slots.append({

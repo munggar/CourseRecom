@@ -735,3 +735,93 @@ def test_admin_can_manually_link_lecturer_directory_profile_to_account():
         db.query(User).filter(User.id.in_([first_account_id, second_account_id])).delete(synchronize_session=False)
         db.commit()
         db.close()
+
+
+def test_admin_supports_ftti_lab_and_detects_manual_lecturer_overlap():
+    suffix = uuid4().hex[:8].upper()
+    room_class = f'FT3{int(suffix[:2], 16) % 90 + 10}'
+    code_three = f'LAB{suffix}A'
+    code_two = f'LAB{suffix}B'
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    db = SessionLocal()
+    first_course = Course(
+        code=code_three, name='Mata Kuliah Laboratorium 3 SKS', sks=3,
+        semester=5, available_semesters='5', category='Praktik',
+        capacity=35, is_active=True,
+    )
+    second_course = Course(
+        code=code_two, name='Mata Kuliah Laboratorium 2 SKS', sks=2,
+        semester=5, available_semesters='5', category='Praktik',
+        capacity=35, is_active=True,
+    )
+    db.add_all([first_course, second_course])
+    db.commit()
+    db.close()
+
+    created_classes = []
+    created_rooms = []
+    try:
+        created = client.post('/api/admin/rooms', headers=ADMIN_HEADERS, json={
+            'code': room_class,
+            'capacity': 35,
+            'room_type': 'Ruang kuliah',
+            'is_active': True,
+            'notes': 'Sudah diverifikasi untuk tes jadwal.',
+        })
+        assert created.status_code == 201, created.text
+        created_rooms.append(room_class)
+
+        db = SessionLocal()
+        lab_room = db.query(Room).filter(Room.code == 'FTTI1').one()
+        assert lab_room.is_active is True
+        assert lab_room.capacity == 35
+        db.close()
+
+        lab_class = client.post('/api/admin/classes', headers=ADMIN_HEADERS, json={
+            'course_code': code_three,
+            'class_name': 'LAB-A',
+            'lecturer_id': None,
+            'lecturer_name': 'Dosen Uji Tanpa Akun',
+            'room': 'FTTI1',
+            'day': 'Senin',
+            'start_time': '07:00',
+            'capacity': 30,
+            'semester': '5',
+            'is_open': True,
+        })
+        assert lab_class.status_code == 201, lab_class.text
+        assert lab_class.json()['end_time'] == '09:30'
+        created_classes.append(lab_class.json()['id'])
+
+        overlap = client.post('/api/admin/classes', headers=ADMIN_HEADERS, json={
+            'course_code': code_two,
+            'class_name': 'LAB-B',
+            'lecturer_id': None,
+            'lecturer_name': 'dosen uji tanpa akun',
+            'room': room_class,
+            'day': 'Senin',
+            'start_time': '08:00',
+            'capacity': 30,
+            'semester': '5',
+            'is_open': True,
+        })
+        assert overlap.status_code == 409
+        assert 'Dosen pengampu' in overlap.json()['detail']
+    finally:
+        db = SessionLocal()
+        if created_classes:
+            db.query(AuditLog).filter(
+                AuditLog.entity_type == 'course_class',
+                AuditLog.entity_id.in_([str(item) for item in created_classes]),
+            ).delete(synchronize_session=False)
+            db.query(CourseClass).filter(CourseClass.id.in_(created_classes)).delete(synchronize_session=False)
+        for room_code in created_rooms:
+            db.query(AuditLog).filter(
+                AuditLog.entity_type == 'room',
+                AuditLog.entity_id == room_code,
+            ).delete(synchronize_session=False)
+        if created_rooms:
+            db.query(Room).filter(Room.code.in_(created_rooms)).delete(synchronize_session=False)
+        db.query(Course).filter(Course.code.in_([code_three, code_two])).delete(synchronize_session=False)
+        db.commit()
+        db.close()
