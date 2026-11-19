@@ -38,6 +38,8 @@ class Course(Base):
     available_semesters = Column(String(40), nullable=True)
     category = Column(String(60), nullable=False)
     description = Column(Text, nullable=True)
+    default_class_name = Column(String(40), nullable=True)
+    default_lecturer_name = Column(String(180), nullable=True)
     prerequisite_text = Column(Text, nullable=True)
     day = Column(String(20), nullable=True)
     time = Column(String(60), nullable=True)
