@@ -225,6 +225,7 @@ def upgrade():
         sa.column('category', sa.String(60)),
         sa.column('description', sa.Text),
         sa.column('capacity', sa.Integer),
+        sa.column('prerequisite_codes', sa.String(255)),
         sa.column('is_active', sa.Boolean),
         sa.column('default_class_name', sa.String(40)),
         sa.column('default_lecturer_name', sa.String(180)),
