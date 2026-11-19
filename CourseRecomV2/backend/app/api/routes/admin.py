@@ -1144,14 +1144,14 @@ def export_rooms(
             room.source_url or '', room.notes or '',
         ])
     schedule = workbook.create_sheet('Jadwal Kelas')
-    schedule.append(['Kode Ruang', 'Mata Kuliah', 'Nama Kelas', 'Semester', 'Hari', 'Jam Mulai', 'Jam Selesai', 'SKS', 'Dosen', 'Status'])
+    schedule.append(['Kode Ruang', 'Mata Kuliah', 'Nama Kelas', 'Semester', 'Hari', 'Jam Mulai', 'Jam Selesai', 'Kampus', 'SKS', 'Dosen', 'Status'])
     for section in db.query(CourseClass).order_by(CourseClass.room, CourseClass.day, CourseClass.start_time).all():
         course = db.query(Course).filter(Course.code == section.course_code).first()
         lecturer = db.query(User).filter(User.id == section.lecturer_id, User.role == 'dosen').first() if section.lecturer_id else None
         schedule.append([
             section.room, f'{section.course_code} - {course.name if course else ""}',
             section.class_name, section.semester, section.day, section.start_time,
-            section.end_time, course.sks if course else '', section.lecturer_name or (lecturer.full_name if lecturer else ''),
+            section.end_time, 'Ps-Rebo FT', course.sks if course else '', section.lecturer_name or (lecturer.full_name if lecturer else ''),
             'Dibuka' if section.is_open else 'Ditutup',
         ])
     for sheet in workbook.worksheets:
