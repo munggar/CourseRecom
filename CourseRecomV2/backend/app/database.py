@@ -1,3 +1,4 @@
+import logging
 from pathlib import Path
 from threading import Lock
 
@@ -28,6 +29,7 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 _schema_lock = Lock()
 _schema_ready = False
+logger = logging.getLogger('uvicorn.error')
 
 
 def ensure_schema() -> None:
@@ -37,8 +39,10 @@ def ensure_schema() -> None:
     with _schema_lock:
         if _schema_ready:
             return
+        logger.info('schema.config.begin')
         config_path = Path(__file__).resolve().parent.parent / 'alembic.ini'
         config = Config(str(config_path))
+        logger.info('schema.config.loaded path=%s', config_path)
         config.set_main_option(
             'sqlalchemy.url',
             settings.database_url.replace('%', '%%'),
@@ -47,7 +51,9 @@ def ensure_schema() -> None:
             'script_location',
             str(Path(__file__).resolve().parent.parent / 'alembic'),
         )
+        logger.info('schema.alembic_upgrade.begin')
         command.upgrade(config, 'head')
+        logger.info('schema.alembic_upgrade.complete')
         _schema_ready = True
 
 
