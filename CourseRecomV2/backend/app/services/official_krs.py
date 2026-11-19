@@ -190,7 +190,7 @@ def build_official_krs_pdf(
     ]))
     story.extend([identity, Spacer(1, 6 * mm)])
 
-    headers = ['NO', 'Kode', 'Mata Kuliah', 'Kelas', 'Jadwal Kuliah', 'Ruang', 'SKS', 'Pengajar']
+    headers = ['NO', 'Kode', 'Mata Kuliah', 'Kelas', 'Jadwal Kuliah', 'Ruang', 'Kampus', 'SKS', 'Pengajar']
     table_data = [[Paragraph(escape(label), styles['header_cell']) for label in headers]]
     total_sks = 0
     for index, course in enumerate(courses, start=1):
@@ -211,14 +211,15 @@ def build_official_krs_pdf(
             _paragraph(course.get('class_name') or '-', styles['cell_center']),
             _paragraph(schedule, styles['cell_center']),
             _paragraph(course.get('room') or '-', styles['cell_center']),
+            Paragraph(escape(str(course.get('campus') or '')), styles['cell_center']),
             _paragraph(credits, styles['cell_center']),
             _paragraph(lecturer, styles['cell']),
         ])
 
     column_widths = [
-        7 * mm, 17 * mm, 34 * mm, 12 * mm,
-        26 * mm, 14 * mm, 9 * mm,
-        usable_width - (7 + 17 + 34 + 12 + 26 + 14 + 9) * mm,
+        7 * mm, 17 * mm, 31 * mm, 11 * mm,
+        25 * mm, 12 * mm, 15 * mm, 8 * mm,
+        usable_width - (7 + 17 + 31 + 11 + 25 + 12 + 15 + 8) * mm,
     ]
     course_table = Table(
         table_data,
@@ -232,7 +233,7 @@ def build_official_krs_pdf(
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#eef2f4')),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ('ALIGN', (0, 0), (1, -1), 'CENTER'),
-        ('ALIGN', (3, 0), (6, -1), 'CENTER'),
+        ('ALIGN', (3, 0), (7, -1), 'CENTER'),
         ('LEFTPADDING', (0, 0), (-1, -1), 3.2),
         ('RIGHTPADDING', (0, 0), (-1, -1), 3.2),
         ('TOPPADDING', (0, 0), (-1, -1), 4.2),
