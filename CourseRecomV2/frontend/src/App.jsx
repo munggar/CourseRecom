@@ -1728,12 +1728,12 @@ function App() {
       if (course.code !== courseCode) return course;
       if (!section) return {
         ...course, class_id: null, class_name: null, lecturer_id: null,
-        lecturer_name: '', room: '', day: '', start_time: '', end_time: '', schedule: '',
+        lecturer_name: '', room: '', campus: '', day: '', start_time: '', end_time: '', schedule: '',
       };
       return {
         ...course, class_id: section.class_id, class_name: section.class_name,
         lecturer_id: section.lecturer_id, lecturer_name: section.lecturer_name,
-        room: section.room, day: section.day, start_time: section.start_time,
+        room: section.room, campus: section.campus || 'Ps-Rebo FT', day: section.day, start_time: section.start_time,
         end_time: section.end_time, schedule: `${section.day}, ${section.start_time}-${section.end_time}`,
       };
     });
