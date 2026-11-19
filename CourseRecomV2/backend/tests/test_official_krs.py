@@ -158,6 +158,23 @@ def test_old_official_krs_is_rejected_after_plan_changes():
     plan_id = plan.id
     student_id = student.id
     db.commit()
+
+    client = TestClient(app)
+    browser_page = client.get(
+        f'/api/krs/verify/{token}',
+        headers={'Accept': 'text/html'},
+    )
+    assert browser_page.status_code == 200
+    assert browser_page.headers['content-type'].startswith('text/html')
+    assert 'Dokumen KRS terverifikasi' in browser_page.text
+    assert 'DOKUMEN VALID' in browser_page.text
+    assert 'Salin kode verifikasi' in browser_page.text
+    assert 'documentHash' in browser_page.text
+
+    api_response = client.get(f'/api/krs/verify/{token}')
+    assert api_response.status_code == 200
+    assert api_response.json()['valid'] is True
+
     plan.courses_json = json.dumps([
         {'code': 'QR102', 'name': 'Mata Kuliah Pengganti', 'sks': 3},
     ])
@@ -168,6 +185,13 @@ def test_old_official_krs_is_rejected_after_plan_changes():
     try:
         verification = client.get(f'/api/krs/verify/{token}')
         assert verification.status_code == 404
+        invalid_browser = client.get(
+            f'/api/krs/verify/{token}',
+            headers={'Accept': 'text/html'},
+        )
+        assert invalid_browser.status_code == 404
+        assert invalid_browser.headers['content-type'].startswith('text/html')
+        assert 'Dokumen KRS tidak valid' in invalid_browser.text
         document_verification = client.post(
             f'/api/krs/verify/{token}/document',
             files={'document': ('KRS.pdf', content, 'application/pdf')},

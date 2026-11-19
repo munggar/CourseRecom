@@ -1,10 +1,11 @@
 import hashlib
+import html
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import PurePath
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile, status
-from fastapi.responses import Response
+from fastapi.responses import HTMLResponse, Response
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -1323,27 +1324,95 @@ def download_official_krs(
     })
 
 
+def _krs_verification_html(*, valid: bool, title: str, message: str, plan_id: int | None = None, semester: int | None = None, issued_at: str = '', document_hash: str = '') -> HTMLResponse:
+    safe_title = html.escape(title)
+    safe_message = html.escape(message)
+    details = ''
+    if valid:
+        details = f"""
+        <section class="details">
+          <div><small>Nomor KRS</small><strong>#{html.escape(str(plan_id))}</strong></div>
+          <div><small>Semester</small><strong>Semester ke-{html.escape(str(semester))}</strong></div>
+          <div class="wide"><small>Waktu diterbitkan</small><strong>{html.escape(issued_at)}</strong></div>
+        </section>
+        <section class="hash">
+          <div class="hash-title">Sidik digital dokumen <span>SHA-256 · VALID</span></div>
+          <code id="documentHash">{html.escape(document_hash)}</code>
+          <button type="button" onclick="copyHash()">Salin kode verifikasi</button>
+          <p id="copyFeedback" aria-live="polite"></p>
+        </section>
+        """
+    page = f"""<!doctype html>
+<html lang="id"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0b625e"><meta name="description" content="Verifikasi dokumen KRS UHAMKA melalui CourseRecom">
+<title>{safe_title} · CourseRecom</title>
+<style>
+:root{{color-scheme:light;--ink:#173746;--muted:#627984;--line:#dce7eb;--teal:#0b716b}}
+*{{box-sizing:border-box}}body{{margin:0;min-height:100vh;padding:24px 14px calc(24px + env(safe-area-inset-bottom));display:grid;place-items:center;background:radial-gradient(circle at top,#e0f1ef,#f3f7f8 65%);color:var(--ink);font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif}}
+.shell{{width:min(100%,540px)}}.brand{{display:flex;align-items:center;gap:11px;margin:0 0 16px 2px}}.mark{{width:43px;height:43px;border-radius:13px;display:grid;place-items:center;background:#0b625e;color:white;font-size:21px;font-weight:800}}.brand strong{{display:block;font-size:15px}}.brand small{{display:block;color:var(--muted);font-size:12px;margin-top:3px}}
+.card{{overflow:hidden;background:white;border:1px solid var(--line);border-radius:21px;box-shadow:0 18px 55px #173a4a12}}.stripe{{height:7px;background:{'#15966d' if valid else '#bd4141'}}}.body{{padding:clamp(22px,6vw,36px)}}.icon{{width:64px;height:64px;border-radius:50%;display:grid;place-items:center;margin-bottom:19px;background:{'#e5f6ee' if valid else '#fff0ef'};color:{'#16835d' if valid else '#b33a3a'};font-size:34px;font-weight:800}}.eyebrow{{font-size:11px;letter-spacing:.13em;color:var(--muted);font-weight:800;text-transform:uppercase}}h1{{margin:8px 0 10px;font-size:clamp(24px,6vw,31px);line-height:1.18;letter-spacing:-.03em}}.message{{margin:0;color:var(--muted);font-size:15px;line-height:1.65}}.notice{{display:flex;gap:10px;margin-top:21px;padding:13px;border-radius:12px;border:1px solid {('#cde9dc' if valid else '#f0d6d4')};background:{('#f2faf6' if valid else '#fff7f6')};color:{('#28664f' if valid else '#8f3939')};font-size:13px;line-height:1.5}}.notice b{{display:block;margin-bottom:2px}}.details{{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:20px}}.details div{{min-width:0;padding:13px;border:1px solid var(--line);border-radius:11px;background:#fbfdfe}}.details .wide{{grid-column:1/-1}}small{{color:var(--muted)}}.details strong{{display:block;margin-top:5px;font-size:14px;overflow-wrap:anywhere}}.hash{{margin-top:12px;padding:14px;border:1px solid var(--line);border-radius:12px;background:#f8fbfc}}.hash-title{{font-size:12px;font-weight:750;margin-bottom:9px}}.hash-title span{{float:right;color:#16835d;font-size:10px}}code{{display:block;overflow-wrap:anywhere;word-break:break-word;background:#edf3f5;padding:11px;border-radius:8px;font-size:11px;line-height:1.6;color:#284956}}button{{min-height:42px;margin-top:11px;padding:0 15px;border:0;border-radius:9px;background:var(--teal);color:white;font-weight:700;cursor:pointer}}button:focus-visible{{outline:3px solid #eca83f;outline-offset:3px}}#copyFeedback{{min-height:15px;font-size:11px;color:var(--muted);margin:5px 0 0}}footer{{padding:16px 22px;border-top:1px solid var(--line);text-align:center;color:var(--muted);font-size:11px;line-height:1.6}}
+@media(max-width:420px){{.body{{padding:23px 18px}}.details{{grid-template-columns:1fr}}.details .wide{{grid-column:auto}}.hash-title span{{float:none;display:block;margin-top:4px}}}}
+</style></head>
+<body><main class="shell">
+<header class="brand"><div class="mark">C</div><div><strong>CourseRecom</strong><small>Universitas Muhammadiyah Prof. Dr. HAMKA</small></div></header>
+<article class="card"><div class="stripe"></div><div class="body">
+<div class="icon">{'&#10003;' if valid else '&#33;'}</div>
+<div class="eyebrow">Pemeriksaan dokumen akademik</div><h1>{safe_title}</h1><p class="message">{safe_message}</p>
+<div class="notice"><span>{'&#128274;' if valid else '&#9888;'}</span><div><b>{'DOKUMEN VALID' if valid else 'DOKUMEN TIDAK VALID'}</b>{'Dokumen cocok dengan salinan resmi yang diterbitkan CourseRecom.' if valid else 'Jangan gunakan dokumen ini sebagai KRS resmi. Hubungi Bagian Akademik atau administrator.'}</div></div>
+{details}
+</div><footer>Halaman ini memeriksa status dan integritas dokumen KRS melalui CourseRecom.<br>Validasi QR tidak menampilkan data pribadi mahasiswa.</footer></article>
+</main>
+<script>
+async function copyHash(){{const value=document.getElementById('documentHash')?.textContent||'';const feedback=document.getElementById('copyFeedback');try{{if(navigator.clipboard&&window.isSecureContext)await navigator.clipboard.writeText(value);else{{const field=document.createElement('textarea');field.value=value;field.setAttribute('readonly','');field.style.position='fixed';field.style.opacity='0';document.body.appendChild(field);field.select();const ok=document.execCommand('copy');field.remove();if(!ok)throw new Error('copy failed')}}feedback.textContent='Kode SHA-256 berhasil disalin.'}}catch(_){{feedback.textContent='Salin kode secara manual dari kolom di atas.'}}}}
+</script></body></html>"""
+    return HTMLResponse(page, status_code=200 if valid else 404)
+
+
 @router.get('/krs/verify/{token}')
-def verify_official_krs(token: str, db: Session = Depends(get_db)):
+def verify_official_krs(token: str, request: Request, db: Session = Depends(get_db)):
+    wants_html = 'text/html' in request.headers.get('accept', '').lower()
+
+    def invalid_response(message: str):
+        if wants_html:
+            return _krs_verification_html(valid=False, title='Dokumen KRS tidak valid', message=message)
+        raise HTTPException(status_code=404, detail=message)
+
     payload = verify_token(token)
     if payload is None:
-        raise HTTPException(status_code=404, detail='Kode verifikasi tidak valid.')
+        return invalid_response('Kode verifikasi tidak ditemukan atau sudah diubah.')
     plan = db.query(StudyPlan).filter(StudyPlan.id == payload['plan']).first()
     issued = db.query(OfficialKrsDocument).filter(
         OfficialKrsDocument.study_plan_id == payload['plan'],
         OfficialKrsDocument.verification_token == token,
     ).first()
     if not plan or plan.status != 'approved' or not issued or plan.student_id != payload['student']:
-        raise HTTPException(status_code=404, detail='Dokumen KRS tidak valid atau sudah tidak aktif.')
+        return invalid_response('Dokumen tidak ditemukan, belum disetujui, atau sudah tidak aktif.')
     if not _official_krs_is_current(plan, issued, payload):
-        raise HTTPException(status_code=404, detail='Dokumen KRS sudah tidak merupakan versi terbaru.')
-    return {
-        'valid': True,
-        'plan_id': plan.id,
-        'status': plan.status,
-        'document_sha256': issued.sha256,
-        'issued_at': issued.issued_at.isoformat(),
-    }
+        return invalid_response('Dokumen ini bukan versi KRS terbaru sehingga tidak dapat dinyatakan valid.')
+
+    if not wants_html:
+        return {
+            'valid': True,
+            'plan_id': plan.id,
+            'status': plan.status,
+            'document_sha256': issued.sha256,
+            'issued_at': issued.issued_at.isoformat(),
+        }
+
+    issued_at = issued.issued_at
+    if issued_at.tzinfo is None:
+        issued_at = issued_at.replace(tzinfo=timezone.utc)
+    issued_at_wib = issued_at.astimezone(WIB).strftime('%d %B %Y, %H.%M WIB')
+    return _krs_verification_html(
+        valid=True,
+        title='Dokumen KRS terverifikasi',
+        message='Kode QR dan sidik digital dokumen cocok dengan KRS yang tercatat pada sistem.',
+        plan_id=plan.id,
+        semester=plan.semester,
+        issued_at=issued_at_wib,
+        document_hash=issued.sha256,
+    )
 
 
 @router.post('/krs/verify/{token}/document')

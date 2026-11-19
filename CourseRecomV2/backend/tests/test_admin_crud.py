@@ -1,6 +1,9 @@
 import json
 from datetime import datetime, timezone
+from io import BytesIO
 from uuid import uuid4
+
+from openpyxl import Workbook, load_workbook
 
 from fastapi.testclient import TestClient
 
@@ -825,3 +828,143 @@ def test_admin_supports_ftti_lab_and_detects_manual_lecturer_overlap():
         db.query(Course).filter(Course.code.in_([code_three, code_two])).delete(synchronize_session=False)
         db.commit()
         db.close()
+
+
+
+def _class_import_workbook(rows):
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = 'Impor Kelas'
+    sheet.append([
+        'Kode Mata Kuliah', 'Nama Kelas', 'Nama Dosen (opsional)',
+        'Kode Ruang', 'Hari', 'Jam Mulai (HH:MM)', 'Kapasitas',
+        'Semester', 'Buka Kelas (Ya/Tidak)',
+    ])
+    for row in rows:
+        sheet.append(row)
+    output = BytesIO()
+    workbook.save(output)
+    return output.getvalue()
+
+
+def _create_import_fixture(suffix):
+    course_a = f'XLS{suffix}A'
+    course_b = f'XLS{suffix}B'
+    room_code = f'FT3{int(suffix[:2], 16) % 90 + 10}'
+    db = SessionLocal()
+    db.add_all([
+        Course(code=course_a, name='Mata Kuliah Impor A', sks=2, semester=1,
+               available_semesters='1', category='Pilihan', capacity=35, is_active=True),
+        Course(code=course_b, name='Mata Kuliah Impor B', sks=2, semester=1,
+               available_semesters='1', category='Pilihan', capacity=35, is_active=True),
+    ])
+    db.commit()
+    db.close()
+    created = client.post('/api/admin/rooms', headers=ADMIN_HEADERS, json={
+        'code': room_code, 'capacity': 35, 'room_type': 'Ruang kuliah',
+        'is_active': True, 'notes': 'Ruang impor Excel untuk pengujian.',
+    })
+    assert created.status_code == 201, created.text
+    return course_a, course_b, room_code
+
+
+def _cleanup_import_fixture(courses, room_code, created_class_ids=None):
+    db = SessionLocal()
+    ids = created_class_ids or []
+    if ids:
+        db.query(AuditLog).filter(
+            AuditLog.entity_type == 'course_class',
+            AuditLog.entity_id.in_([str(item) for item in ids]),
+        ).delete(synchronize_session=False)
+        db.query(CourseClass).filter(CourseClass.id.in_(ids)).delete(synchronize_session=False)
+    db.query(AuditLog).filter(
+        AuditLog.entity_type == 'room', AuditLog.entity_id == room_code,
+    ).delete(synchronize_session=False)
+    db.query(Room).filter(Room.code == room_code).delete(synchronize_session=False)
+    db.query(Course).filter(Course.code.in_(courses)).delete(synchronize_session=False)
+    db.commit()
+    db.close()
+
+
+def test_class_import_template_and_valid_excel_batch():
+    suffix = uuid4().hex[:8].upper()
+    course_a, course_b, room_code = _create_import_fixture(suffix)
+    created_ids = []
+    try:
+        template = client.get('/api/admin/classes/template', headers=ADMIN_HEADERS)
+        assert template.status_code == 200
+        assert template.headers['content-type'].startswith('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        template_workbook = load_workbook(BytesIO(template.content), read_only=True, data_only=True)
+        assert 'Impor Kelas' in template_workbook.sheetnames
+        assert list(next(template_workbook['Impor Kelas'].iter_rows(min_row=1, max_row=1, values_only=True))) == [
+            'Kode Mata Kuliah', 'Nama Kelas', 'Nama Dosen (opsional)', 'Kode Ruang',
+            'Hari', 'Jam Mulai (HH:MM)', 'Kapasitas', 'Semester', 'Buka Kelas (Ya/Tidak)',
+        ]
+        template_workbook.close()
+
+        payload = _class_import_workbook([
+            [course_a, 'A', 'Dosen Uji Impor Excel', room_code, 'Senin', '07:00', 35, 1, 'Ya'],
+            [course_b, 'B', 'Dosen Uji Impor Excel', room_code, 'Senin', '08:40', 35, 1, 'Tidak'],
+        ])
+        imported = client.post(
+            '/api/admin/classes/import', headers=ADMIN_HEADERS,
+            files={'file': ('kelas.xlsx', payload, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')},
+        )
+        assert imported.status_code == 201, imported.text
+        assert imported.json()['created_count'] == 2
+        created_ids.extend(item['id'] for item in imported.json()['classes'])
+        db = SessionLocal()
+        saved = db.query(CourseClass).filter(CourseClass.id.in_(created_ids)).order_by(CourseClass.start_time).all()
+        assert [item.end_time for item in saved] == ['08:40', '10:20']
+        assert all(item.lecturer_name == 'Dosen Uji Impor Excel' for item in saved)
+        assert saved[0].is_open is True and saved[1].is_open is False
+        db.close()
+    finally:
+        _cleanup_import_fixture([course_a, course_b], room_code, created_ids)
+
+
+def test_class_import_is_atomic_when_a_row_has_room_overlap():
+    suffix = uuid4().hex[:8].upper()
+    course_a, course_b, room_code = _create_import_fixture(suffix)
+    try:
+        payload = _class_import_workbook([
+            [course_a, 'A', 'Dosen Uji Bentrok', room_code, 'Selasa', '07:00', 35, 1, 'Ya'],
+            [course_b, 'B', 'Dosen Lain', room_code, 'Selasa', '08:00', 35, 1, 'Ya'],
+        ])
+        imported = client.post(
+            '/api/admin/classes/import', headers=ADMIN_HEADERS,
+            files={'file': ('kelas-bentrok.xlsx', payload, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')},
+        )
+        assert imported.status_code == 422, imported.text
+        detail = imported.json()['detail']
+        assert 'tidak ada kelas yang disimpan' in detail['message'].lower()
+        assert detail['errors'][0]['baris'] == 3
+        db = SessionLocal()
+        assert db.query(CourseClass).filter(CourseClass.course_code.in_([course_a, course_b])).count() == 0
+        db.close()
+    finally:
+        _cleanup_import_fixture([course_a, course_b], room_code)
+
+
+def test_class_import_rejects_non_xlsx_and_unknown_rooms():
+    rejected = client.post(
+        '/api/admin/classes/import', headers=ADMIN_HEADERS,
+        files={'file': ('kelas.csv', b'kode_mk,nama_kelas', 'text/csv')},
+    )
+    assert rejected.status_code == 415
+    suffix = uuid4().hex[:8].upper()
+    course_a, course_b, room_code = _create_import_fixture(suffix)
+    try:
+        payload = _class_import_workbook([
+            [course_a, 'A', 'Dosen Uji', 'FT299', 'Rabu', '07:00', 30, 1, 'Ya'],
+        ])
+        imported = client.post(
+            '/api/admin/classes/import', headers=ADMIN_HEADERS,
+            files={'file': ('kelas-ruang-tidak-ada.xlsx', payload, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')},
+        )
+        assert imported.status_code == 422
+        db = SessionLocal()
+        assert db.query(CourseClass).filter(CourseClass.course_code == course_a).count() == 0
+        db.close()
+    finally:
+        _cleanup_import_fixture([course_a, course_b], room_code)
