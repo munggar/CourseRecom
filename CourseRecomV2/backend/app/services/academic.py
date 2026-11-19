@@ -141,7 +141,15 @@ def validate_course_selection(
         else:
             if code in selections:
                 raise ValueError(f'Kelas paralel untuk {code} tidak terdaftar pada semester {semester}.')
-            item.update({'class_id': None, 'class_name': None, 'lecturer_name': '', 'room': '', 'campus': '', 'schedule': f'{course.day} {course.time}'.strip()})
+            item.update({
+                'class_id': None,
+                'class_name': course.default_class_name or None,
+                'lecturer_id': None,
+                'lecturer_name': course.default_lecturer_name or '',
+                'room': '',
+                'campus': '',
+                'schedule': f'{course.day} {course.time}'.strip(),
+            })
             effective_day = course.day or ''
             effective_time = course.time or ''
 
