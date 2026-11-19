@@ -81,6 +81,25 @@ def test_fresh_migration_is_repeatable_and_creates_constraints(tmp_path):
         for index in inspector.get_indexes('study_plans')
     )
     assert inspector.get_foreign_keys('student_records')
+    assert {'lecturer_name'} <= {
+        column['name'] for column in inspector.get_columns('course_classes')
+    }
+    assert {'default_class_name', 'default_lecturer_name'} <= {
+        column['name'] for column in inspector.get_columns('courses')
+    }
+    with engine.connect() as connection:
+        seeded_rooms = connection.execute(text(
+            "SELECT code, capacity, is_active FROM rooms WHERE code IN ('FT301', 'FT401', 'FTTI1', 'FTTI2') ORDER BY code"
+        )).all()
+        assert len(seeded_rooms) == 4
+        assert all(row[1] == 35 and row[2] for row in seeded_rooms)
+        assert connection.execute(text(
+            "SELECT COUNT(*) FROM course_classes WHERE course_code IN "
+            "('03045008','03045104','03045097','03045016','03045051','03045050','03045053','03045052','03045037')"
+        )).scalar_one() == 11
+        assert connection.execute(text(
+            "SELECT COUNT(*) FROM courses WHERE code IN ('03035975','03035989','03035984','03035983')"
+        )).scalar_one() == 4
     engine.dispose()
 
 
