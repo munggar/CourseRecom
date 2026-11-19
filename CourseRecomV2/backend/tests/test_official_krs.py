@@ -130,7 +130,7 @@ def test_old_official_krs_is_rejected_after_plan_changes():
     db.add(plan)
     db.flush()
     canonical = json.dumps({
-        'format_version': 2,
+        'format_version': 3,
         'plan_id': plan.id,
         'student_id': student.id,
         'status': plan.status,
