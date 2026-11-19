@@ -140,7 +140,7 @@ def build_available_start_times(
     for start_minutes in range(DAY_START_MINUTES, last_start + 1, SLOT_STEP_MINUTES):
         end_minutes = start_minutes + duration
         conflict = _find_conflict(
-            db, day, start_minutes, end_minutes, normalized_room, lecturer_id, exclude_class_id,
+            db, day, start_minutes, end_minutes, normalized_room, lecturer_id, lecturer_name, exclude_class_id,
         )
         if conflict is None:
             slots.append({
