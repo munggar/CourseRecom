@@ -128,7 +128,8 @@ def validate_course_selection(
                 'class_id': section.id,
                 'class_name': section.class_name,
                 'lecturer_id': section.lecturer_id,
-                'lecturer_name': lecturer.full_name if lecturer else '',
+                'lecturer_name': section.lecturer_name or (lecturer.full_name if lecturer else ''),
+                'campus': 'Ps-Rebo FT',
                 'room': section.room,
                 'day': section.day,
                 'start_time': section.start_time,
@@ -140,7 +141,7 @@ def validate_course_selection(
         else:
             if code in selections:
                 raise ValueError(f'Kelas paralel untuk {code} tidak terdaftar pada semester {semester}.')
-            item.update({'class_id': None, 'class_name': None, 'room': '', 'schedule': f'{course.day} {course.time}'.strip()})
+            item.update({'class_id': None, 'class_name': None, 'lecturer_name': '', 'room': '', 'campus': '', 'schedule': f'{course.day} {course.time}'.strip()})
             effective_day = course.day or ''
             effective_time = course.time or ''
 
