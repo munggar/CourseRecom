@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import Response
 from openpyxl import Workbook as ExcelWorkbook, load_workbook
 from openpyxl.worksheet.datavalidation import DataValidation
-from openpyxl.styles import Font, PatternFill
+from openpyxl.styles import Alignment, Font, PatternFill
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -1297,7 +1297,7 @@ def download_class_import_template(
     for cell in worksheet[1]:
         cell.font = Font(bold=True, color='FFFFFF')
         cell.fill = PatternFill('solid', fgColor='075E59')
-        cell.alignment = __import__('openpyxl').styles.Alignment(
+        cell.alignment = Alignment(
             horizontal='center', vertical='center', wrap_text=True,
         )
     for row in range(2, 202):
