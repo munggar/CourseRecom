@@ -614,6 +614,16 @@ function App() {
   }, []);
   const [toasts, setToasts] = useState([]);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const pushToast = useCallback((message, type = toastTypeFor(message)) => {
+    setToasts((previous) => [...previous.slice(-4), { id: `${Date.now()}-${Math.random()}`, message, type }]);
+  }, []);
+  const deferToast = useCallback((message, type) => {
+    const timeout = window.setTimeout(() => pushToast(message, type), 0);
+    return () => window.clearTimeout(timeout);
+  }, [pushToast]);
+  const dismissToast = useCallback((id) => {
+    setToasts((previous) => previous.filter((toast) => toast.id !== id));
+  }, []);
   useEffect(() => {
     if (user?.role !== 'admin' || view !== 'kelas') return undefined;
     if (!classForm.course_code || !classForm.room || !classForm.day) {
@@ -723,16 +733,6 @@ function App() {
     return () => { cancelled = true; };
   }, []);
 
-  const pushToast = useCallback((message, type = toastTypeFor(message)) => {
-    setToasts((previous) => [...previous.slice(-4), { id: `${Date.now()}-${Math.random()}`, message, type }]);
-  }, []);
-  const deferToast = useCallback((message, type) => {
-    const timeout = window.setTimeout(() => pushToast(message, type), 0);
-    return () => window.clearTimeout(timeout);
-  }, [pushToast]);
-  const dismissToast = useCallback((id) => {
-    setToasts((previous) => previous.filter((toast) => toast.id !== id));
-  }, []);
   const [storedDraftCourses, setDraftCourses] = useState(() => {
     try {
       const savedDraft = localStorage.getItem('courseRecomDraft');
