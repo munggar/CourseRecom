@@ -1,41 +1,50 @@
-const CACHE_NAME = 'courserecom-v2';
-const APP_SHELL = ['/', '/logo.svg', '/logo.png', '/manifest.webmanifest'];
+const CACHE_NAME = 'courserecom-v3';
+const APP_SHELL = ['/', '/logo.svg', '/manifest.webmanifest'];
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL)));
+  event.waitUntil(
+    caches.open(CACHE_NAME).then(async (cache) => {
+      await Promise.allSettled(APP_SHELL.map((url) => cache.add(url)));
+    })
+  );
   self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
-  event.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)))));
-  self.clients.claim();
+  event.waitUntil(
+    caches.keys()
+      .then((keys) => Promise.all(
+        keys.filter((key) => key.startsWith('courserecom-') && key !== CACHE_NAME)
+          .map((key) => caches.delete(key))
+      ))
+      .then(() => self.clients.claim())
+  );
 });
 
 self.addEventListener('fetch', (event) => {
-  if (event.request.method !== 'GET') return;
-  const requestUrl = new URL(event.request.url);
+  const request = event.request;
+  if (request.method !== 'GET') return;
+
+  const requestUrl = new URL(request.url);
   if (requestUrl.origin !== self.location.origin || requestUrl.pathname.startsWith('/api/')) return;
 
-  if (event.request.mode === 'navigate') {
-    event.respondWith(
-      fetch(event.request)
-        .then(async (response) => {
-          if (response.ok) {
-            await caches.open(CACHE_NAME).then((cache) => cache.put('/', response.clone()));
-          }
-          return response;
-        })
-        .catch(() => caches.match('/'))
-    );
-    return;
-  }
-
+  // Always prefer the deployed version. Cache is only an offline fallback.
   event.respondWith(
-    caches.match(event.request).then((response) => response || fetch(event.request).then(async (networkResponse) => {
-      if (networkResponse.ok) {
-        await caches.open(CACHE_NAME).then((cache) => cache.put(event.request, networkResponse.clone()));
-      }
-      return networkResponse;
-    }))
+    fetch(request)
+      .then(async (response) => {
+        if (response.ok && response.type === 'basic') {
+          const cache = await caches.open(CACHE_NAME);
+          await cache.put(request, response.clone());
+        }
+        return response;
+      })
+      .catch(async () => {
+        const cached = await caches.match(request);
+        if (cached) return cached;
+        if (request.mode === 'navigate') {
+          return (await caches.match('/')) || Response.error();
+        }
+        return Response.error();
+      })
   );
 });
