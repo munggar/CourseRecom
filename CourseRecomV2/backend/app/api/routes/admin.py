@@ -5,7 +5,8 @@ from io import BytesIO
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import Response
-from openpyxl import Workbook as ExcelWorkbook
+from openpyxl import Workbook as ExcelWorkbook, load_workbook
+from openpyxl.worksheet.datavalidation import DataValidation
 from openpyxl.styles import Font, PatternFill
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -1226,6 +1227,361 @@ def list_classes(db: Session = Depends(get_db), current_user: User = Depends(req
             'is_open': item.is_open,
         })
     return results
+
+
+CLASS_IMPORT_HEADERS = [
+    'Kode Mata Kuliah',
+    'Nama Kelas',
+    'Nama Dosen (opsional)',
+    'Kode Ruang',
+    'Hari',
+    'Jam Mulai (HH:MM)',
+    'Kapasitas',
+    'Semester',
+    'Buka Kelas (Ya/Tidak)',
+]
+
+
+def _class_import_time(value) -> str:
+    if isinstance(value, datetime):
+        return value.strftime('%H:%M')
+    if hasattr(value, 'hour') and hasattr(value, 'minute'):
+        return f'{value.hour:02d}:{value.minute:02d}'
+    if isinstance(value, (int, float)) and 0 <= float(value) < 1:
+        total_minutes = round(float(value) * 24 * 60)
+        return f'{total_minutes // 60:02d}:{total_minutes % 60:02d}'
+    raw = str(value or '').strip().upper()
+    for pattern in ('%H:%M', '%H.%M', '%I:%M %p', '%I.%M %p'):
+        try:
+            return datetime.strptime(raw, pattern).strftime('%H:%M')
+        except ValueError:
+            continue
+    raise ValueError('Jam mulai harus ditulis HH:MM, misalnya 07:50.')
+
+
+def _class_import_boolean(value) -> bool:
+    if value is None or str(value).strip() == '':
+        return True
+    normalized = str(value).strip().casefold()
+    if normalized in {'ya', 'yes', 'true', '1', 'buka', 'aktif'}:
+        return True
+    if normalized in {'tidak', 'no', 'false', '0', 'tutup', 'nonaktif'}:
+        return False
+    raise ValueError('Kolom Buka Kelas hanya menerima Ya atau Tidak.')
+
+
+def _class_import_number(value, label: str, minimum: int, maximum: int) -> int:
+    try:
+        number = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f'{label} harus berupa angka.') from exc
+    if not number.is_integer() or not minimum <= int(number) <= maximum:
+        raise ValueError(f'{label} harus berupa bilangan bulat {minimum} sampai {maximum}.')
+    return int(number)
+
+
+@router.get('/admin/classes/template')
+def download_class_import_template(
+    current_user: User = Depends(require_roles('admin')),
+):
+    workbook = ExcelWorkbook()
+    worksheet = workbook.active
+    worksheet.title = 'Impor Kelas'
+    worksheet.append(CLASS_IMPORT_HEADERS)
+    worksheet.freeze_panes = 'A2'
+    worksheet.auto_filter.ref = 'A1:I1'
+    worksheet.row_dimensions[1].height = 34
+    widths = [22, 18, 38, 16, 14, 21, 14, 12, 22]
+    for index, width in enumerate(widths, start=1):
+        worksheet.column_dimensions[chr(64 + index)].width = width
+    for cell in worksheet[1]:
+        cell.font = Font(bold=True, color='FFFFFF')
+        cell.fill = PatternFill('solid', fgColor='075E59')
+        cell.alignment = __import__('openpyxl').styles.Alignment(
+            horizontal='center', vertical='center', wrap_text=True,
+        )
+    for row in range(2, 202):
+        worksheet.cell(row=row, column=1).number_format = '@'
+        worksheet.cell(row=row, column=4).number_format = '@'
+        worksheet.cell(row=row, column=6).number_format = '@'
+
+    day_validation = DataValidation(
+        type='list',
+        formula1='"Senin,Selasa,Rabu,Kamis,Jumat,Sabtu,Minggu"',
+        allow_blank=False,
+    )
+    open_validation = DataValidation(type='list', formula1='"Ya,Tidak"', allow_blank=True)
+    worksheet.add_data_validation(day_validation)
+    worksheet.add_data_validation(open_validation)
+    day_validation.add('E2:E201')
+    open_validation.add('I2:I201')
+
+    guide = workbook.create_sheet('Panduan')
+    guide.append(['PANDUAN IMPOR KELAS PARALEL'])
+    guide.append(['Isi satu baris untuk setiap kelas paralel. Hapus baris kosong; jangan mengubah nama kolom pada sheet Impor Kelas.'])
+    guide.append([])
+    guide.append(['Kolom', 'Wajib', 'Keterangan'])
+    instructions = [
+        ('Kode Mata Kuliah', 'Ya', 'Harus sama dengan kode mata kuliah aktif yang sudah ada di CourseRecom.'),
+        ('Nama Kelas', 'Ya', 'Contoh: A, B, 5A, 5B, atau 7P. Nama kelas tidak boleh duplikat untuk mata kuliah dan semester yang sama.'),
+        ('Nama Dosen (opsional)', 'Tidak', 'Gunakan nama dari direktori dosen atau nama pengajar sesuai dokumen akademik. Akun login tidak wajib.'),
+        ('Kode Ruang', 'Ya', 'Gunakan ruang aktif yang tercatat di Admin, misalnya FT301, FT401, FTTI1, atau FTTI2.'),
+        ('Hari', 'Ya', 'Senin sampai Minggu.'),
+        ('Jam Mulai (HH:MM)', 'Ya', 'Format 24 jam, contoh 07:50 atau 13:00. Slot harus berada pada rentang 07:00–18:00.'),
+        ('Kapasitas', 'Ya', 'Bilangan bulat. Tidak boleh melebihi kapasitas fisik ruang.'),
+        ('Semester', 'Ya', 'Angka 1 sampai 14.'),
+        ('Buka Kelas (Ya/Tidak)', 'Tidak', 'Kosong atau Ya berarti kelas dibuka. Tidak berarti kelas disimpan tertutup.'),
+    ]
+    for item in instructions:
+        guide.append(list(item))
+    guide.append([])
+    guide.append(['ATURAN OTOMATIS'])
+    guide.append(['Jam selesai tidak perlu diisi. Sistem menghitung Jam Mulai + (SKS mata kuliah × 50 menit).'])
+    guide.append(['Sistem menolak bentrok ruang/dosen, kode mata kuliah/ruang tidak valid, kelas duplikat, dan kapasitas melebihi ruangan.'])
+    guide.append(['Impor bersifat menyeluruh: jika satu baris gagal, seluruh file dibatalkan dan tidak ada kelas yang disimpan sebagian.'])
+    guide.freeze_panes = 'A5'
+    guide.column_dimensions['A'].width = 33
+    guide.column_dimensions['B'].width = 13
+    guide.column_dimensions['C'].width = 105
+    for cell in guide[1]:
+        cell.font = Font(bold=True, size=15, color='FFFFFF')
+        cell.fill = PatternFill('solid', fgColor='075E59')
+    for cell in guide[4]:
+        cell.font = Font(bold=True, color='FFFFFF')
+        cell.fill = PatternFill('solid', fgColor='176B87')
+    for row in guide.iter_rows():
+        for cell in row:
+            cell.alignment = __import__('openpyxl').styles.Alignment(
+                vertical='top', wrap_text=True,
+            )
+    guide.row_dimensions[1].height = 28
+    guide.row_dimensions[2].height = 34
+    return _excel_response(workbook, 'Template_Impor_Kelas_CourseRecom.xlsx')
+
+
+@router.post('/admin/classes/import', status_code=201)
+async def import_parallel_classes(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles('admin')),
+):
+    filename = (file.filename or '').strip().lower()
+    if not filename.endswith('.xlsx'):
+        raise HTTPException(status_code=415, detail='Gunakan file Excel .xlsx dari template CourseRecom.')
+    content = await file.read(MAX_IMPORT_BYTES + 1)
+    if len(content) > MAX_IMPORT_BYTES:
+        raise HTTPException(status_code=413, detail='Ukuran file impor maksimal 10 MB.')
+    if not content.startswith(b'PK'):
+        raise HTTPException(status_code=415, detail='File bukan workbook Excel .xlsx yang valid.')
+
+    try:
+        workbook = load_workbook(BytesIO(content), read_only=True, data_only=True)
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail='File Excel tidak dapat dibaca. Unduh template terbaru lalu isi kembali.') from exc
+    try:
+        if 'Impor Kelas' not in workbook.sheetnames:
+            raise HTTPException(status_code=422, detail="Sheet 'Impor Kelas' tidak ditemukan. Gunakan template resmi CourseRecom.")
+        worksheet = workbook['Impor Kelas']
+        header_values = next(worksheet.iter_rows(min_row=1, max_row=1, values_only=True), ())
+        normalize_header = lambda value: ' '.join(str(value or '').strip().casefold().replace('_', ' ').split())
+        header_positions = {normalize_header(value): index for index, value in enumerate(header_values) if value is not None}
+        aliases = {
+            'course': ('kode mata kuliah', 'kode mk', 'course code'),
+            'class': ('nama kelas', 'kelas', 'class name'),
+            'lecturer': ('nama dosen (opsional)', 'nama dosen', 'dosen pengampu', 'lecturer name'),
+            'room': ('kode ruang', 'ruang', 'room'),
+            'day': ('hari', 'day'),
+            'start': ('jam mulai (hh:mm)', 'jam mulai', 'start time'),
+            'capacity': ('kapasitas', 'kapasitas kursi', 'capacity'),
+            'semester': ('semester',),
+            'open': ('buka kelas (ya/tidak)', 'buka kelas', 'status kelas', 'is open'),
+        }
+        column_map = {
+            key: next((header_positions[candidate] for candidate in candidates if candidate in header_positions), None)
+            for key, candidates in aliases.items()
+        }
+        required = ('course', 'class', 'room', 'day', 'start', 'capacity', 'semester')
+        missing = [key for key in required if column_map[key] is None]
+        if missing:
+            labels = {
+                'course': 'Kode Mata Kuliah', 'class': 'Nama Kelas', 'room': 'Kode Ruang',
+                'day': 'Hari', 'start': 'Jam Mulai', 'capacity': 'Kapasitas', 'semester': 'Semester',
+            }
+            raise HTTPException(
+                status_code=422,
+                detail='Kolom wajib tidak lengkap: ' + ', '.join(labels[key] for key in missing),
+            )
+
+        rows = []
+        for row_number, values in enumerate(worksheet.iter_rows(min_row=2, values_only=True), start=2):
+            if not any(value is not None and str(value).strip() for value in values):
+                continue
+            if len(rows) >= 500:
+                raise HTTPException(status_code=413, detail='Maksimal 500 kelas dalam satu file impor.')
+            cell = lambda key: values[column_map[key]] if column_map[key] is not None and column_map[key] < len(values) else None
+            try:
+                course_code = str(cell('course') or '').strip().upper()
+                if not course_code:
+                    raise ValueError('Kode Mata Kuliah wajib diisi.')
+                class_name = str(cell('class') or '').strip()
+                if not class_name:
+                    raise ValueError('Nama Kelas wajib diisi.')
+                capacity = _class_import_number(cell('capacity'), 'Kapasitas', 1, 10000)
+                semester = _class_import_number(cell('semester'), 'Semester', 1, 14)
+                lecturer_name = str(cell('lecturer') or '').strip() or None
+                payload = CourseClassMutation.model_validate({
+                    'course_code': course_code,
+                    'class_name': class_name,
+                    'lecturer_id': None,
+                    'lecturer_name': lecturer_name,
+                    'room': str(cell('room') or '').strip().upper(),
+                    'day': str(cell('day') or '').strip().title(),
+                    'start_time': _class_import_time(cell('start')),
+                    'end_time': None,
+                    'capacity': capacity,
+                    'semester': str(semester),
+                    'is_open': _class_import_boolean(cell('open')),
+                })
+                rows.append((row_number, payload))
+            except Exception as exc:
+                message = str(exc).splitlines()[0]
+                raise HTTPException(
+                    status_code=422,
+                    detail={'message': 'Format baris Excel tidak valid.', 'errors': [{'baris': row_number, 'pesan': message}]},
+                ) from exc
+    finally:
+        workbook.close()
+
+    if not rows:
+        raise HTTPException(status_code=422, detail='Tidak ada baris kelas yang dapat diimpor.')
+
+    begin_capacity_transaction(db)
+    created = []
+    row_errors = []
+    try:
+        # Lock all referenced room resources in deterministic order.
+        room_codes = sorted({payload.room for _, payload in rows})
+        locked_rooms = db.query(Room).filter(Room.code.in_(room_codes)).order_by(Room.code).with_for_update().all()
+        room_map = {room.code: room for room in locked_rooms}
+        lecturer_profiles = db.query(LecturerDirectory).all()
+        profile_by_name = {profile.full_name.strip().casefold(): profile for profile in lecturer_profiles if profile.full_name}
+        active_accounts = db.query(User).filter(
+            User.role == 'dosen',
+            User.is_active.is_(True),
+        ).all()
+        account_by_name = {account.full_name.strip().casefold(): account for account in active_accounts if account.full_name}
+
+        for row_number, payload in rows:
+            try:
+                course = db.query(Course).filter(
+                    Course.code == payload.course_code,
+                    Course.is_active.is_(True),
+                ).first()
+                if not course:
+                    raise ValueError(f'Mata kuliah {payload.course_code} tidak ditemukan atau tidak aktif.')
+                if db.query(CourseClass.id).filter(
+                    CourseClass.course_code == payload.course_code,
+                    CourseClass.class_name.ilike(payload.class_name),
+                    CourseClass.semester == payload.semester,
+                ).first():
+                    raise ValueError(f'Kelas {payload.course_code} {payload.class_name} semester {payload.semester} sudah terdaftar.')
+                room = room_map.get(payload.room)
+                if not room or not room.is_active:
+                    raise ValueError(f'Ruang {payload.room} tidak ditemukan atau belum aktif.')
+                if room.capacity is not None and payload.capacity > room.capacity:
+                    raise ValueError(f'Kapasitas kelas {payload.capacity} melebihi kapasitas ruang {payload.room} ({room.capacity} kursi).')
+
+                lecturer_id = None
+                lecturer_name = payload.lecturer_name
+                if lecturer_name:
+                    profile = profile_by_name.get(lecturer_name.casefold())
+                    mapped_id = profile.linked_user_id if profile else None
+                    linked_account = next((item for item in active_accounts if item.id == mapped_id), None) if mapped_id else None
+                    linked_account = linked_account or account_by_name.get(lecturer_name.casefold())
+                    if linked_account:
+                        lecturer_id = linked_account.id
+                        lecturer_name = linked_account.full_name
+
+                end_time = validate_class_schedule(
+                    db,
+                    course_code=course.code,
+                    room_code=payload.room,
+                    day=payload.day,
+                    start_time=payload.start_time,
+                    lecturer_id=lecturer_id,
+                    lecturer_name=lecturer_name,
+                )
+                item = CourseClass(
+                    course_code=course.code,
+                    class_name=payload.class_name,
+                    lecturer_id=lecturer_id,
+                    lecturer_name=lecturer_name,
+                    room=payload.room,
+                    day=payload.day,
+                    start_time=payload.start_time,
+                    end_time=end_time,
+                    capacity=payload.capacity,
+                    semester=payload.semester,
+                    is_open=payload.is_open,
+                )
+                db.add(item)
+                db.flush()
+                write_audit(
+                    db, current_user, 'class_imported', 'course_class', item.id, None,
+                    {
+                        'excel_filename': filename,
+                        'row_number': row_number,
+                        'course_code': course.code,
+                        'class_name': payload.class_name,
+                        'lecturer_name': lecturer_name,
+                        'room': payload.room,
+                        'day': payload.day,
+                        'start_time': payload.start_time,
+                        'end_time': end_time,
+                        'sks': course.sks,
+                        'duration_minutes': course.sks * 50,
+                        'capacity': payload.capacity,
+                        'semester': payload.semester,
+                        'is_open': payload.is_open,
+                    },
+                )
+                created.append({
+                    'id': item.id,
+                    'course_code': item.course_code,
+                    'class_name': item.class_name,
+                    'lecturer_name': item.lecturer_name,
+                    'room': item.room,
+                    'day': item.day,
+                    'start_time': item.start_time,
+                    'end_time': item.end_time,
+                })
+            except (ValueError, TypeError) as exc:
+                row_errors.append({'baris': row_number, 'pesan': str(exc)})
+
+        if row_errors:
+            db.rollback()
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    'message': f'Impor dibatalkan. Ditemukan {len(row_errors)} baris bermasalah; tidak ada kelas yang disimpan.',
+                    'errors': row_errors[:50],
+                },
+            )
+        db.commit()
+    except HTTPException:
+        raise
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail='Data impor bertabrakan dengan perubahan lain. Muat ulang data lalu coba kembali.') from exc
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(status_code=500, detail='Impor gagal diproses. Tidak ada kelas yang disimpan.') from exc
+
+    return {
+        'message': f'{len(created)} kelas berhasil diimpor.',
+        'created_count': len(created),
+        'classes': created,
+    }
 
 
 @router.post('/admin/classes', status_code=201)
