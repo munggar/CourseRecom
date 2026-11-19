@@ -1686,6 +1686,7 @@ function App() {
   const importClassesFromExcel = async (event) => {
     event.preventDefault();
     if (user?.role !== 'admin' || !classImportFile) return;
+    const formElement = event.currentTarget;
     const formData = new FormData();
     formData.append('file', classImportFile);
     const token = localStorage.getItem('courseRecomToken');
@@ -1719,7 +1720,7 @@ function App() {
         message: result.message || 'Impor kelas berhasil.',
       });
       setClassImportFile(null);
-      event.currentTarget.reset();
+      formElement.reset();
       pushToast(result.message || 'Kelas berhasil diimpor.', 'success');
     } catch (error) {
       if (!classImportErrors.length) {
