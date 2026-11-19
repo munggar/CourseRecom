@@ -177,6 +177,7 @@ class CourseClass(Base):
     course_code = Column(String(20), nullable=False, index=True)
     class_name = Column(String(40), nullable=False)
     lecturer_id = Column(Integer, ForeignKey('users.id'), nullable=True, index=True)
+    lecturer_name = Column(String(180), nullable=True)
     room = Column(String(40), nullable=False)
     day = Column(String(20), nullable=False)
     start_time = Column(String(5), nullable=False)
@@ -205,7 +206,7 @@ class KprsRequest(Base):
 class Room(Base):
     __tablename__ = 'rooms'
     code = Column(String(10), primary_key=True)
-    floor = Column(Integer, nullable=False)
+    floor = Column(Integer, nullable=True)
     room_number = Column(String(3), nullable=False)
     capacity = Column(Integer, nullable=True)
     room_type = Column(String(40), nullable=False, default='Ruang kuliah')
