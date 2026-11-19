@@ -8,9 +8,16 @@ from sqlalchemy.orm import declarative_base, sessionmaker
 
 from app.config import settings
 
-connect_args = {'check_same_thread': False} if settings.database_url.startswith('sqlite') else {}
-engine = create_engine(settings.database_url, connect_args=connect_args, pool_pre_ping=not settings.database_url.startswith('sqlite'))
-if settings.database_url.startswith('sqlite'):
+is_sqlite = settings.database_url.startswith('sqlite')
+connect_args = {'check_same_thread': False} if is_sqlite else {'connect_timeout': 10}
+engine = create_engine(
+    settings.database_url,
+    connect_args=connect_args,
+    pool_pre_ping=not is_sqlite,
+    pool_timeout=15,
+    pool_recycle=300,
+)
+if is_sqlite:
     @event.listens_for(engine, 'connect')
     def enable_sqlite_foreign_keys(connection, _record):
         cursor = connection.cursor()
