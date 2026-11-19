@@ -7,6 +7,7 @@ import {
   CheckCircle2,
   ChevronDown,
   Clock3,
+  Download,
   FileClock,
   FileUp,
   HelpCircle,
@@ -535,6 +536,10 @@ function App() {
   const [studentClasses, setStudentClasses] = useState([]);
   const [studentClassesLoaded, setStudentClassesLoaded] = useState(false);
   const [classBusy, setClassBusy] = useState(false);
+  const [classImportFile, setClassImportFile] = useState(null);
+  const [classImportBusy, setClassImportBusy] = useState(false);
+  const [classImportResult, setClassImportResult] = useState(null);
+  const [classImportErrors, setClassImportErrors] = useState([]);
   const [editingClassId, setEditingClassId] = useState(null);
   const [classForm, setClassForm] = useState({
     course_code: '', class_name: '', lecturer_id: '', lecturer_name: '', room: '', day: 'Senin',
@@ -1650,6 +1655,80 @@ function App() {
     const sections = await apiRequest('/admin/classes');
     setClassList(sections);
     return sections;
+  };
+
+  const downloadClassImportTemplate = async () => {
+    if (user?.role !== 'admin') return;
+    const token = localStorage.getItem('courseRecomToken');
+    setClassImportBusy(true);
+    try {
+      const response = await fetch(`${API_BASE}/admin/classes/template`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      expireSessionOnUnauthorized(response, token);
+      if (!response.ok) throw new Error('Template impor kelas tidak dapat diunduh.');
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'Template_Impor_Kelas_CourseRecom.xlsx';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (error) {
+      pushToast(error.message || 'Template gagal diunduh.', 'error');
+    } finally {
+      setClassImportBusy(false);
+    }
+  };
+
+  const importClassesFromExcel = async (event) => {
+    event.preventDefault();
+    if (user?.role !== 'admin' || !classImportFile) return;
+    const formData = new FormData();
+    formData.append('file', classImportFile);
+    const token = localStorage.getItem('courseRecomToken');
+    setClassImportBusy(true);
+    setClassImportResult(null);
+    setClassImportErrors([]);
+    try {
+      const response = await fetch(`${API_BASE}/admin/classes/import`, {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: formData,
+      });
+      expireSessionOnUnauthorized(response, token);
+      let result = {};
+      try {
+        result = await response.json();
+      } catch {
+        // Preserve a useful fallback when the server returns a non-JSON error.
+      }
+      if (!response.ok) {
+        const detail = result.detail;
+        if (detail && typeof detail === 'object') {
+          setClassImportErrors(Array.isArray(detail.errors) ? detail.errors : []);
+          throw new Error(detail.message || 'Impor dibatalkan karena ada data yang belum valid.');
+        }
+        throw new Error(detail || 'Impor kelas gagal diproses.');
+      }
+      await refreshClassList();
+      setClassImportResult({
+        created_count: Number(result.created_count) || 0,
+        message: result.message || 'Impor kelas berhasil.',
+      });
+      setClassImportFile(null);
+      event.currentTarget.reset();
+      pushToast(result.message || 'Kelas berhasil diimpor.', 'success');
+    } catch (error) {
+      if (!classImportErrors.length) {
+        // The inline error panel below displays the server's validation detail.
+        setClassImportErrors((previous) => previous.length ? previous : [{ baris: null, pesan: error.message || 'Impor kelas gagal.' }]);
+      }
+    } finally {
+      setClassImportBusy(false);
+    }
   };
 
   const saveParallelClass = async (event) => {
@@ -3602,6 +3681,58 @@ function App() {
             <div className="stat"><small>Kapasitas aktif</small><strong>{totalSeats} kursi</strong></div>
             <div className="stat"><small>Terpakai</small><strong>{usedSeats} kursi</strong></div>
           </div>
+          <section className="class-import-card">
+            <div className="class-section-heading class-import-heading">
+              <div>
+                <span className="guide-role-tag admin">IMPOR MASSAL</span>
+                <h3>Tambah kelas dari Excel</h3>
+                <p className="muted">Unduh template, isi satu baris untuk setiap kelas paralel, lalu unggah kembali file .xlsx.</p>
+              </div>
+              <button className="btn outline class-template-button" type="button" disabled={classImportBusy} onClick={downloadClassImportTemplate}>
+                <Download size={16} /> Unduh template Excel
+              </button>
+            </div>
+            <form className="class-import-form" onSubmit={importClassesFromExcel}>
+              <label className="class-import-file">
+                <span>File Excel kelas (.xlsx)</span>
+                <input
+                  type="file"
+                  accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                  required
+                  disabled={classImportBusy}
+                  onChange={(event) => {
+                    setClassImportFile(event.target.files?.[0] || null);
+                    setClassImportResult(null);
+                    setClassImportErrors([]);
+                  }}
+                />
+                <small>{classImportFile ? `${classImportFile.name} · ${(classImportFile.size / 1024).toFixed(1)} KB` : 'Pilih file template yang sudah diisi. Maksimal 10 MB dan 500 baris kelas.'}</small>
+              </label>
+              <button className="btn primary" type="submit" disabled={classImportBusy || !classImportFile}>
+                <FileUp size={16} /> {classImportBusy ? 'Memeriksa dan mengimpor...' : 'Impor kelas'}
+              </button>
+            </form>
+            <div className="class-import-guidance">
+              <ShieldCheck size={17} />
+              <span>Jam selesai dihitung otomatis dari SKS × 50 menit. Sistem memeriksa mata kuliah, dosen, ruangan, kapasitas, rentang 07.00–18.00, duplikasi kelas, dan bentrok jadwal. Jika satu baris bermasalah, seluruh impor dibatalkan tanpa menyimpan sebagian data.</span>
+            </div>
+            {classImportResult && (
+              <div className="class-import-result success" role="status">
+                <CheckCircle2 size={18} />
+                <div><strong>{classImportResult.created_count} kelas berhasil ditambahkan</strong><span>{classImportResult.message}</span></div>
+              </div>
+            )}
+            {classImportErrors.length > 0 && (
+              <div className="class-import-result error" role="alert">
+                <AlertCircle size={18} />
+                <div>
+                  <strong>Impor belum dilakukan</strong>
+                  <span>Perbaiki baris berikut pada file Excel, kemudian unggah ulang.</span>
+                  <ul>{classImportErrors.map((item, index) => <li key={`${item.baris ?? 'file'}-${index}`}>{item.baris ? `Baris ${item.baris}: ` : ''}{item.pesan}</li>)}</ul>
+                </div>
+              </div>
+            )}
+          </section>
           <section className="class-form-card">
             <div className="class-section-heading"><div><span className="guide-role-tag admin">{editingClassId ? 'EDIT KELAS' : 'KELAS BARU'}</span><h3>{editingClassId ? 'Perbarui kelas paralel' : 'Buat kelas paralel'}</h3><p className="muted">Kelas yang dibuka akan muncul pada proses pemilihan kelas mahasiswa.</p></div>
               {editingClassId && <button className="btn outline" type="button" onClick={() => { setEditingClassId(null); setClassForm({ course_code: '', class_name: '', lecturer_id: '', room: '', day: 'Senin', start_time: '', end_time: '', capacity: 40, semester: '1', is_open: true }); }}>Batal edit</button>}
