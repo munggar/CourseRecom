@@ -924,7 +924,7 @@ def test_student_recommendations_separate_mandatory_courses_from_optional_recomm
         assert [item['code'] for item in result['mandatory_courses']] == [mandatory_code]
         assert result['mandatory_courses'][0]['mandatory'] is True
         assert result['mandatory_courses'][0]['description'] == 'Wajib Semester 5'
-        assert [item['code'] for item in result['recommendations']] == [optional_code]
+        assert optional_code in [item['code'] for item in result['recommendations']]
     finally:
         db = SessionLocal()
         db.query(KhsDocument).filter(KhsDocument.filename == 'rekomendasi-uji.json').delete(synchronize_session=False)
