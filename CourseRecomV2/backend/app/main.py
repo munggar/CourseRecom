@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
@@ -77,7 +77,6 @@ app.include_router(admin_router, prefix='/api')
 @app.get('/api/health')
 def health():
     if not app.state.ready:
-        from fastapi import HTTPException
         raise HTTPException(status_code=503, detail='Application is starting')
     return {'status': 'ok', 'app': 'CourseRecom'}
 
