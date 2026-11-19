@@ -395,7 +395,7 @@ class LecturerDirectoryLink(BaseModel):
 
 
 class RoomMutation(BaseModel):
-    code: str = Field(min_length=5, max_length=10, pattern=r'^(?:FT[234]\d{2}|FTTI[12])
+    code: str = Field(min_length=5, max_length=10)
     capacity: int | None = Field(default=None, ge=1, le=1000)
     room_type: str = Field(default='Ruang kuliah', min_length=2, max_length=40)
     is_active: bool = False
@@ -404,7 +404,12 @@ class RoomMutation(BaseModel):
     @field_validator('code')
     @classmethod
     def normalize_room_code(cls, value: str) -> str:
-        return value.strip().upper()
+        normalized = value.strip().upper()
+        standard_room = len(normalized) == 5 and normalized.startswith('FT') and normalized[2] in '234' and normalized[3:].isdigit()
+        lab_room = normalized in {'FTTI1', 'FTTI2'}
+        if not (standard_room or lab_room):
+            raise ValueError('Kode ruang harus FT2xx, FT3xx, FT4xx, FTTI1, atau FTTI2.')
+        return normalized
 
 
 class CourseClassMutation(BaseModel):
@@ -412,7 +417,7 @@ class CourseClassMutation(BaseModel):
     class_name: str = Field(min_length=1, max_length=40)
     lecturer_id: int | None = None
     lecturer_name: str | None = Field(default=None, max_length=180)
-    room: str = Field(min_length=5, max_length=10, pattern=r'^(?:FT[234]\d{2}|FTTI[12])
+    room: str = Field(min_length=5, max_length=10)
     day: Literal['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu']
     start_time: str = Field(pattern=r'^([01]\d|2[0-3]):[0-5]\d$')
     end_time: str | None = Field(default=None, pattern=r'^([01]\d|2[0-3]):[0-5]\d$')
@@ -423,7 +428,12 @@ class CourseClassMutation(BaseModel):
     @field_validator('room')
     @classmethod
     def normalize_class_room(cls, value: str) -> str:
-        return value.strip().upper()
+        normalized = value.strip().upper()
+        standard_room = len(normalized) == 5 and normalized.startswith('FT') and normalized[2] in '234' and normalized[3:].isdigit()
+        lab_room = normalized in {'FTTI1', 'FTTI2'}
+        if not (standard_room or lab_room):
+            raise ValueError('Kode ruang harus FT2xx, FT3xx, FT4xx, FTTI1, atau FTTI2.')
+        return normalized
 
     @field_validator('semester')
     @classmethod
