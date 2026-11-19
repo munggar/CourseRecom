@@ -57,7 +57,7 @@ def test_official_krs_pdf_has_hmac_verified_qr_token():
     assert verify_token(token + 'tampered') is None
     assert content.startswith(b'%PDF')
     assert hashlib.sha256(content).hexdigest() == content_hash
-    pdf_text = '\\n'.join(page.extract_text() or '' for page in PdfReader(BytesIO(content)).pages)
+    pdf_text = ' '.join(' '.join(page.extract_text() or '' for page in PdfReader(BytesIO(content)).pages).split())
     for label in (
         'UNIVERSITAS MUHAMMADIYAH PROF. DR. HAMKA',
         'KRS MAHASISWA',
