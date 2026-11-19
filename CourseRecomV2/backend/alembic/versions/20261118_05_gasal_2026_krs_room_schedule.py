@@ -108,7 +108,7 @@ COURSES = [
 # KRS times match SKS x 50 minutes. The 15 September 2026 PDF used FTTI1 for
 # Praktikum Mobile Application; the newer 19 November sources use FTTI2.
 SCHEDULES = [
-    ('03045008', '5A', 5, 'Ridwan Abd.Salam, Drs., M.M.', 'RIDWAN ABD.SALAM', 'FT403', 'Kamis', '10:20', '12:00'),
+    ('03045008', '5A', 5, 'Ridwan Abd.Salam, Drs., M.M.', None, 'FT403', 'Kamis', '10:20', '12:00'),
     ('03045008', '5B', 5, 'Margiono, Drs.', None, 'FT302', 'Jumat', '07:50', '09:30'),
     ('03045104', '5A', 5, 'Yuni Masrokhah, S.Pd., M.Hum.', None, 'FT302', 'Kamis', '14:40', '16:20'),
     ('03045097', '5A', 5, 'Rita Agustina Karnawati, Dr., M.Pd.', None, 'FT401', 'Kamis', '07:50', '09:30'),
@@ -166,6 +166,7 @@ def upgrade():
         sa.column('source_url', sa.String(500)),
         sa.column('notes', sa.Text),
         sa.column('verified_at', sa.DateTime),
+        sa.column('created_at', sa.DateTime),
     )
     for code, floor, number in [
         ('FT301',3,'01'),('FT302',3,'02'),('FT303',3,'03'),('FT304',3,'04'),('FT305',3,'05'),
