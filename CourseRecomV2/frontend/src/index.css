@@ -2715,3 +2715,146 @@ footer {
     width: 100%;
   }
 }
+
+
+/* Admin Excel class import */
+.class-import-card {
+  margin: 20px 0;
+  padding: 20px;
+  background: linear-gradient(135deg, #ffffff 0%, #f5faf9 100%);
+  border: 1px solid #cfdedc;
+  border-radius: 16px;
+  box-shadow: 0 5px 18px rgb(23 43 58 / 5%);
+}
+.class-import-heading {
+  align-items: flex-start;
+}
+.class-import-heading h3 {
+  margin: 9px 0 5px;
+}
+.class-template-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+.class-import-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 13px;
+  margin-top: 17px;
+}
+.class-import-file {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 13px;
+  border: 1px dashed #a9c3c0;
+  border-radius: 12px;
+  background: #fff;
+  color: #294854;
+  font-weight: 650;
+}
+.class-import-file input[type="file"] {
+  width: 100%;
+  min-width: 0;
+  padding: 9px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: #f8fbfc;
+  color: var(--ink);
+  font-weight: 500;
+}
+.class-import-file small {
+  color: var(--muted);
+  font-weight: 400;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.class-import-form > .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 47px;
+  white-space: nowrap;
+}
+.class-import-guidance {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 13px;
+  padding: 12px 13px;
+  border: 1px solid #d6e5eb;
+  border-radius: 11px;
+  background: #f3f8fb;
+  color: #385563;
+  font-size: .88rem;
+  line-height: 1.55;
+}
+.class-import-guidance svg {
+  flex: 0 0 auto;
+  margin-top: 2px;
+  color: var(--teal);
+}
+.class-import-result {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 13px;
+  padding: 13px 14px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  font-size: .9rem;
+}
+.class-import-result > svg {
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+.class-import-result strong,
+.class-import-result span {
+  display: block;
+}
+.class-import-result span {
+  margin-top: 3px;
+  line-height: 1.45;
+}
+.class-import-result.success {
+  color: #176448;
+  border-color: #bfe3d2;
+  background: #f1faf5;
+}
+.class-import-result.error {
+  color: #8a3434;
+  border-color: #edcecc;
+  background: #fff5f4;
+}
+.class-import-result ul {
+  margin: 8px 0 0;
+  padding-left: 18px;
+}
+.class-import-result li {
+  margin: 4px 0;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 700px) {
+  .class-import-card {
+    padding: 15px;
+    border-radius: 13px;
+  }
+  .class-import-heading {
+    flex-direction: column;
+  }
+  .class-template-button {
+    width: 100%;
+  }
+  .class-import-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .class-import-form > .btn {
+    width: 100%;
+  }
+}
