@@ -17,6 +17,7 @@ from app.database import ensure_schema
 from app.seed import seed_data
 
 logger = logging.getLogger("courserecom.startup")
+logger.setLevel(logging.INFO)
 
 
 @asynccontextmanager
