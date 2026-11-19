@@ -761,16 +761,21 @@ def test_admin_supports_ftti_lab_and_detects_manual_lecturer_overlap():
     created_classes = []
     created_rooms = []
     try:
-        for room_code, room_type in ((room_class, 'Ruang kuliah'), ('FTTI1', 'Laboratorium')):
-            created = client.post('/api/admin/rooms', headers=ADMIN_HEADERS, json={
-                'code': room_code,
-                'capacity': 35,
-                'room_type': room_type,
-                'is_active': True,
-                'notes': 'Sudah diverifikasi untuk tes jadwal.',
-            })
-            assert created.status_code == 201, created.text
-            created_rooms.append(room_code)
+        created = client.post('/api/admin/rooms', headers=ADMIN_HEADERS, json={
+            'code': room_class,
+            'capacity': 35,
+            'room_type': 'Ruang kuliah',
+            'is_active': True,
+            'notes': 'Sudah diverifikasi untuk tes jadwal.',
+        })
+        assert created.status_code == 201, created.text
+        created_rooms.append(room_class)
+
+        db = SessionLocal()
+        lab_room = db.query(Room).filter(Room.code == 'FTTI1').one()
+        assert lab_room.is_active is True
+        assert lab_room.capacity == 35
+        db.close()
 
         lab_class = client.post('/api/admin/classes', headers=ADMIN_HEADERS, json={
             'course_code': code_three,
