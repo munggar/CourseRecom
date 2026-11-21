@@ -1,6 +1,8 @@
 from types import SimpleNamespace
+from uuid import uuid4
 
-from app.models import AdvisorCourseFeedback, StudentRecord
+from app.database import SessionLocal
+from app.models import AdvisorCourseFeedback, StudentRecord, User
 from app.services.recommendation import (
     _build_model_runtime_info,
     _course_recommendation_explanation,
@@ -96,6 +98,12 @@ def test_peer_course_scores_match_catalog_codes_and_count_only_similar_peers():
         def filter(self, *_args, **_kwargs):
             return self
 
+        def join(self, *_args, **_kwargs):
+            return self
+
+        def options(self, *_args, **_kwargs):
+            return self
+
         def all(self):
             return self.rows
 
@@ -139,6 +147,93 @@ def test_peer_course_scores_match_catalog_codes_and_count_only_similar_peers():
     assert counts['code:X501'] == (1, 2)
     assert counts['code:X502'] == (1, 2)
 
+
+
+
+def test_peer_course_scores_scope_to_active_students_in_the_same_program():
+    suffix = uuid4().hex[:10]
+    db = SessionLocal()
+    users = [
+        User(
+            nim=f'PEER-STU-{suffix}',
+            username=f'peer-stu-{suffix}',
+            full_name='Peer Test Student',
+            role='mahasiswa',
+            program_study='Sistem dan Teknologi Informasi',
+            password_hash='not-used',
+            is_active=True,
+        ),
+        User(
+            nim=f'PEER-SAME-{suffix}',
+            username=f'peer-same-{suffix}',
+            full_name='Peer Same Program',
+            role='mahasiswa',
+            program_study='Sistem dan Teknologi Informasi',
+            password_hash='not-used',
+            is_active=True,
+        ),
+        User(
+            nim=f'PEER-OTHER-{suffix}',
+            username=f'peer-other-{suffix}',
+            full_name='Peer Other Program',
+            role='mahasiswa',
+            program_study='Teknik Informatika',
+            password_hash='not-used',
+            is_active=True,
+        ),
+        User(
+            nim=f'PEER-INACTIVE-{suffix}',
+            username=f'peer-inactive-{suffix}',
+            full_name='Peer Inactive',
+            role='mahasiswa',
+            program_study='Sistem dan Teknologi Informasi',
+            password_hash='not-used',
+            is_active=False,
+        ),
+    ]
+    try:
+        db.add_all(users)
+        db.flush()
+        student, same_program, other_program, inactive = users
+        records = [
+            StudentRecord(student_id=student.id, course_code='C101', course_name='Algoritma', grade='A', semester=1),
+            StudentRecord(student_id=same_program.id, course_code='C101', course_name='Algoritma', grade='A', semester=1),
+            StudentRecord(student_id=same_program.id, course_code='X501', course_name='Mobile Application', grade='A', semester=2),
+            StudentRecord(student_id=other_program.id, course_code='C101', course_name='Algoritma', grade='A', semester=1),
+            StudentRecord(student_id=other_program.id, course_code='X502', course_name='Praktikum Mobile Application', grade='A', semester=2),
+            StudentRecord(student_id=inactive.id, course_code='C101', course_name='Algoritma', grade='A', semester=1),
+            StudentRecord(student_id=inactive.id, course_code='X503', course_name='Kursus Inactive', grade='A', semester=2),
+        ]
+        db.add_all(records)
+        db.commit()
+        db.refresh(student)
+        student_history = db.query(StudentRecord).filter(
+            StudentRecord.student_id == student.id,
+            StudentRecord.semester < 2,
+        ).all()
+        catalog = [
+            SimpleNamespace(code='C101', name='Algoritma'),
+            SimpleNamespace(code='X501', name='Mobile Application'),
+            SimpleNamespace(code='X502', name='Praktikum Mobile Application'),
+            SimpleNamespace(code='X503', name='Kursus Inactive'),
+        ]
+
+        similarities, counts, peer_count = _peer_course_scores(
+            db, student, 2, student_history, catalog
+        )
+
+        assert peer_count == 1
+        assert similarities['code:X501'] == 1.0
+        assert counts['code:X501'] == (1, 1)
+        assert 'code:X502' not in similarities
+        assert 'code:X503' not in similarities
+    finally:
+        if users and all(user.id is not None for user in users):
+            user_ids = [user.id for user in users]
+            db.query(StudentRecord).filter(StudentRecord.student_id.in_(user_ids)).delete(synchronize_session=False)
+            db.query(User).filter(User.id.in_(user_ids)).delete(synchronize_session=False)
+            db.commit()
+        db.close()
 
 def test_weighted_score_renormalizes_only_factors_with_real_evidence():
     score, coverage, effective_weights = _score_with_available_factors(
