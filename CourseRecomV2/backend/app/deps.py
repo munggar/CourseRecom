@@ -1,4 +1,6 @@
 from datetime import timedelta
+import os
+from urllib.parse import urlsplit, urlunsplit
 
 from fastapi import Depends, HTTPException, Request, Response, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -102,8 +104,15 @@ def get_current_user(
     # frontend/API origin. Bearer clients remain compatible and bypass CSRF checks.
     if not credentials and cookie_token and request.method.upper() not in {'GET', 'HEAD', 'OPTIONS'}:
         origin = (request.headers.get('origin') or '').rstrip('/')
-        allowed_origins = {settings.frontend_url.rstrip('/')}
-        render_origin = __import__('os').environ.get('RENDER_EXTERNAL_URL', '').rstrip('/')
+        configured_origin = urlsplit(settings.frontend_url)
+        allowed_origins = {
+            urlunsplit((configured_origin.scheme, configured_origin.netloc, '', '', '')).rstrip('/')
+        }
+        if configured_origin.hostname in {'localhost', '127.0.0.1'}:
+            alternate_host = '127.0.0.1' if configured_origin.hostname == 'localhost' else 'localhost'
+            alternate_netloc = f'{alternate_host}:{configured_origin.port}' if configured_origin.port else alternate_host
+            allowed_origins.add(urlunsplit((configured_origin.scheme, alternate_netloc, '', '', '')))
+        render_origin = os.environ.get('RENDER_EXTERNAL_URL', '').rstrip('/')
         if render_origin:
             allowed_origins.add(render_origin)
         if not origin or origin not in allowed_origins:
