@@ -3,7 +3,7 @@ import math
 import re
 from collections import defaultdict
 
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, load_only
 
 from app.config import settings
 from app.models import AdvisorCourseFeedback, Course, KhsDocument, RecommendationModelVersion, StudentRecord, User
@@ -401,7 +401,49 @@ def _peer_course_scores(
         if len(codes) == 1
     }
 
-    all_records = db.query(StudentRecord).filter(StudentRecord.semester.is_not(None)).all()
+    # First identify the small candidate cohort from passed courses in the
+    # requested semester. Then load only the previous/current records and the
+    # columns needed by the similarity calculation. This avoids scanning every
+    # StudentRecord in the institution on each recommendation request.
+    peer_query = (
+        db.query(StudentRecord)
+        .join(User, User.id == StudentRecord.student_id)
+        .filter(
+            StudentRecord.student_id != student.id,
+            StudentRecord.semester == target_semester,
+            StudentRecord.grade.in_(PASSING_GRADES),
+            User.role == 'mahasiswa',
+            User.is_active.is_(True),
+        )
+    )
+    student_program = getattr(student, 'program_study', None)
+    if student_program:
+        peer_query = peer_query.filter(User.program_study == student_program)
+
+    history_columns = load_only(
+        StudentRecord.id,
+        StudentRecord.student_id,
+        StudentRecord.course_code,
+        StudentRecord.course_name,
+        StudentRecord.grade,
+        StudentRecord.semester,
+    )
+    candidate_rows = peer_query.options(history_columns).all()
+    candidate_student_ids = {record.student_id for record in candidate_rows}
+    if candidate_student_ids:
+        all_records = (
+            db.query(StudentRecord)
+            .filter(
+                StudentRecord.student_id.in_(candidate_student_ids),
+                StudentRecord.semester.is_not(None),
+                StudentRecord.semester <= target_semester,
+            )
+            .options(history_columns)
+            .all()
+        )
+    else:
+        all_records = []
+
     peer_by_student: dict[int, list[StudentRecord]] = defaultdict(list)
     for record in all_records:
         if record.student_id != student.id:

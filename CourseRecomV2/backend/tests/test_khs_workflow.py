@@ -58,6 +58,7 @@ def test_khs_preview_is_not_saved_until_confirmation_and_rules_filter_courses(mo
         nim='TESTPEER9001',
         full_name='Mahasiswa Pembanding',
         role='mahasiswa',
+        program_study='Teknik Informatika',
         password_hash=get_password_hash('test-password'),
     )
     eligible = Course(
