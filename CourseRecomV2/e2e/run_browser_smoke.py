@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import csv
 import os
 import subprocess
 import tempfile
@@ -61,6 +62,7 @@ def run_browser_smoke() -> None:
             'QR_VERIFICATION_SECRET': 'courserecom-e2e-qr-secret-value-at-least-32-bytes',
             'FRONTEND_URL': FRONTEND_URL,
             'SEED_DEMO_USERS': 'true',
+            'REQUIRE_STUDENT_ROSTER': 'true',
             'API_PROXY_TARGET': BACKEND_URL,
         })
 
@@ -129,13 +131,48 @@ def run_browser_smoke() -> None:
                     downloaded_path = Path(download.path())
                     assert downloaded_path.read_bytes()[:2] == b'PK', 'Excel template is not a valid XLSX ZIP package.'
 
-                    # Logout must revoke and remove the cookie before the next role logs in.
+                    # Admin onboarding journey: import a temporary official roster row and issue one-time code.
+                    student_nim = 'E2E' + str(int(time.time()))[-10:]
+                    student_name = 'Mahasiswa Browser Uji'
+                    roster_file = temp_path / 'roster-e2e.csv'
+                    with roster_file.open('w', encoding='utf-8-sig', newline='') as stream:
+                        writer = csv.writer(stream)
+                        writer.writerow(['NIM', 'Nama Lengkap', 'Program Studi', 'Angkatan'])
+                        writer.writerow([student_nim, student_name, 'Sistem dan Teknologi Informasi', '2022'])
+
+                    page.get_by_role('button', name='Pendaftaran Mahasiswa').click()
+                    page.get_by_role('heading', name='Pendaftaran Mahasiswa').wait_for(state='visible', timeout=15000)
+                    page.locator('input[type="file"]').set_input_files(str(roster_file))
+                    page.get_by_role('button', name='Validasi & impor roster').click()
+                    page.get_by_text('1 / 100').wait_for(state='visible', timeout=15000)
+                    with page.expect_download(timeout=20000) as invitation_download_info:
+                        page.get_by_role('button', name='Buat & unduh 1 kode pendaftaran').click()
+                    invitation_path = Path(invitation_download_info.value.path())
+                    with invitation_path.open('r', encoding='utf-8-sig', newline='') as stream:
+                        invitation = next(csv.DictReader(stream))
+                    assert invitation['NIM'] == student_nim
+                    invitation_code = invitation['Kode Pendaftaran']
+                    assert len(invitation_code) >= 24
+
+                    # Logout must revoke and remove the cookie before the new real-style student registers.
                     page.get_by_role('button', name='Keluar').click()
                     page.get_by_text('Rencanakan Studi Lebih Cerdas').wait_for(state='visible', timeout=15000)
                     assert not any(cookie['name'] == 'course_recom_session' for cookie in context.cookies())
 
-                    # Student journey: login -> dashboard -> KHS upload screen.
-                    login(page, 'Mahasiswa', '2203001')
+                    # Student self-registration: roster identity + one-time invitation + personal password.
+                    page.get_by_role('button', name='Daftar akun mahasiswa').click()
+                    page.get_by_label('NIM').fill(student_nim)
+                    page.get_by_label('Nama lengkap').fill(student_name)
+                    page.get_by_label('Program studi').select_option(label='Sistem dan Teknologi Informasi')
+                    page.get_by_label('Angkatan').fill('2022')
+                    page.get_by_label('Kode pendaftaran resmi').fill(invitation_code)
+                    page.get_by_label('Password (minimal 8 karakter)').fill('secure-student-password-123')
+                    page.get_by_label('Konfirmasi password').fill('secure-student-password-123')
+                    page.get_by_role('button', name='Daftar sebagai mahasiswa').click()
+                    page.get_by_text('Pendaftaran mahasiswa berhasil', exact=False).wait_for(state='visible', timeout=15000)
+
+                    # Login as the newly registered student and open KHS upload screen.
+                    login(page, 'Mahasiswa', student_nim)
                     assert page.locator('.topbar-label').inner_text() == 'Dashboard Mahasiswa'
                     page.get_by_role('button', name='Upload KHS').click()
                     page.get_by_role('heading', name='Unggah KHS Lengkap').wait_for(
