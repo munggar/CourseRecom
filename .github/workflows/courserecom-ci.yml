@@ -94,11 +94,12 @@ jobs:
         run: |
           python -m py_compile scripts/build_submission_zip.py
           python scripts/build_submission_zip.py --output "$RUNNER_TEMP/CourseRecom-submission.zip"
-          python - <<'PY'
+          OUTPUT_ZIP="$RUNNER_TEMP/CourseRecom-submission.zip" python - <<'PY'
+          import os
           import zipfile
           from pathlib import Path
 
-          archive = Path("$RUNNER_TEMP/CourseRecom-submission.zip")
+          archive = Path(os.environ["OUTPUT_ZIP"])
           with zipfile.ZipFile(archive) as package:
               names = package.namelist()
               assert names, "Submission archive is empty."
