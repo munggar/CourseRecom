@@ -109,12 +109,26 @@ def register_student(payload: StudentRegistration, db: Session = Depends(get_db)
     )
     db.add(student)
     try:
+        db.flush()
         if roster_entry:
-            db.flush()
             roster_entry.registration_code_hash = None
             roster_entry.registration_code_expires_at = None
             roster_entry.registered_user_id = student.id
             roster_entry.registered_at = datetime.utcnow()
+        write_audit(
+            db,
+            student,
+            'student_self_registered',
+            'student_roster',
+            roster_entry.id if roster_entry else student.id,
+            None,
+            {
+                'nim': student.nim,
+                'program_study': student.program_study,
+                'angkatan': student.angkatan,
+                'verified_roster': roster_entry is not None,
+            },
+        )
         db.commit()
     except IntegrityError as exc:
         db.rollback()
