@@ -44,7 +44,13 @@ def login(page, role_label: str, username: str) -> None:
     page.get_by_label('Username').fill(username)
     page.get_by_label('Password').fill('password123')
     page.get_by_role('button', name='Masuk', exact=True).click()
-    page.locator('.topbar-label').wait_for(state='visible', timeout=20000)
+    try:
+        page.locator('.topbar-label').wait_for(state='visible', timeout=20000)
+    except PlaywrightTimeoutError as exc:
+        auth_panel = page.locator('.login-box').inner_text(timeout=5000)
+        raise AssertionError(
+            f'Login failed for {username} as {role_label}; visible auth panel: {auth_panel}'
+        ) from exc
 
 
 def run_browser_smoke() -> None:
