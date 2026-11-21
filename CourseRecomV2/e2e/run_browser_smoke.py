@@ -147,6 +147,15 @@ def run_browser_smoke() -> None:
                     assert not page_errors, f'Browser JavaScript errors: {page_errors}'
 
                     browser.close()
+            finally:
+                for process in (frontend, backend):
+                    if process is not None and process.poll() is None:
+                        process.terminate()
+                        try:
+                            process.wait(timeout=10)
+                        except subprocess.TimeoutExpired:
+                            process.kill()
+                            process.wait(timeout=5)
 
 
 if __name__ == '__main__':
