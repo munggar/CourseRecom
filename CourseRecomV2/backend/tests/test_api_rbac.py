@@ -33,9 +33,12 @@ def test_access_token_expiration_is_timezone_aware():
 
 
 def test_health():
-    response = client.get('/api/health')
-    assert response.status_code == 200
-    assert response.json()['status'] == 'ok'
+    # Readiness is only true after the FastAPI lifespan has completed
+    # schema migration and seed initialization.
+    with TestClient(app) as readiness_client:
+        response = readiness_client.get('/api/health')
+        assert response.status_code == 200
+        assert response.json()['status'] == 'ok'
 
 
 def test_cors_allows_localhost_and_loopback_frontend_origins():
