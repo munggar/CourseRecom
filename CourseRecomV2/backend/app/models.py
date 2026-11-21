@@ -233,3 +233,20 @@ class LecturerDirectory(Base):
     profile_url = Column(String(500), nullable=False)
     notes = Column(Text, nullable=True)
     linked_user_id = Column(Integer, ForeignKey('users.id', ondelete='SET NULL'), nullable=True, index=True)
+
+
+
+class StudentRosterEntry(Base):
+    __tablename__ = 'student_roster_entries'
+    id = Column(Integer, primary_key=True, index=True)
+    nim = Column(String(20), nullable=False, unique=True, index=True)
+    full_name = Column(String(120), nullable=False)
+    program_study = Column(String(120), nullable=False)
+    angkatan = Column(String(4), nullable=False)
+    is_active = Column(Boolean, nullable=False, default=True)
+    registration_code_hash = Column(String(64), nullable=True)
+    registration_code_expires_at = Column(DateTime, nullable=True)
+    registered_user_id = Column(Integer, ForeignKey('users.id', ondelete='SET NULL'), nullable=True, unique=True)
+    imported_by = Column(Integer, ForeignKey('users.id', ondelete='SET NULL'), nullable=True)
+    imported_at = Column(DateTime, nullable=False)
+    registered_at = Column(DateTime, nullable=True)
