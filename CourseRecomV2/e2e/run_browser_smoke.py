@@ -162,14 +162,15 @@ def run_browser_smoke() -> None:
 
                     # Student self-registration: roster identity + one-time invitation + personal password.
                     page.get_by_role('button', name='Daftar akun mahasiswa').click()
-                    page.get_by_label('NIM').fill(student_nim)
-                    page.get_by_label('Nama lengkap').fill(student_name)
-                    page.get_by_label('Program studi').select_option(label='Sistem dan Teknologi Informasi')
-                    page.get_by_label('Angkatan').fill('2022')
-                    page.get_by_label('Kode pendaftaran resmi').fill(invitation_code)
-                    page.get_by_label('Password (minimal 8 karakter)').fill('secure-student-password-123')
-                    page.get_by_label('Konfirmasi password').fill('secure-student-password-123')
-                    page.get_by_role('button', name='Daftar sebagai mahasiswa').click()
+                    registration_form = page.locator('.login-box form')
+                    registration_form.get_by_label('NIM').fill(student_nim)
+                    registration_form.get_by_label('Nama lengkap').fill(student_name)
+                    registration_form.get_by_label('Program studi').select_option(label='Sistem dan Teknologi Informasi')
+                    registration_form.get_by_label('Angkatan').fill('2022')
+                    registration_form.get_by_label('Kode pendaftaran resmi').fill(invitation_code)
+                    registration_form.get_by_label('Password (minimal 8 karakter)').fill('secure-student-password-123')
+                    registration_form.get_by_label('Konfirmasi password').fill('secure-student-password-123')
+                    registration_form.get_by_role('button', name='Daftar sebagai mahasiswa').click()
                     page.get_by_text('Pendaftaran mahasiswa berhasil', exact=False).wait_for(state='visible', timeout=15000)
 
                     # Login as the newly registered student and open KHS upload screen.
