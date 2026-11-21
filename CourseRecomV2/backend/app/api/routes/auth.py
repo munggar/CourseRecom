@@ -1,3 +1,5 @@
+import hashlib
+import hmac
 import re
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -9,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.deps import AUTH_COOKIE_NAME, authenticate_user, clear_session_cookie, create_access_token, get_current_user, get_db, get_password_hash, set_session_cookie, verify_password
-from app.models import SystemSetting, User
+from app.models import StudentRosterEntry, SystemSetting, User
 from app.schemas import AccountProfileResponse, AccountProfileUpdate, PasswordChange, StudentRegistration, TokenResponse, UserLogin, UserOut
 from app.services.validation import get_sks_quota
 from app.services.audit import write_audit
@@ -28,6 +30,7 @@ def _academic_year_context(db: Session) -> dict[str, int | str]:
     return {
         'academic_year': academic_year,
         'max_angkatan': int(academic_year.split('/')[0]),
+        'registration_requires_invitation': bool(settings.require_student_roster),
     }
 
 
@@ -59,6 +62,36 @@ def register_student(payload: StudentRegistration, db: Session = Depends(get_db)
     if db.query(User).filter((User.username == username) | (User.nim == username)).first():
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='Username sudah terdaftar.')
 
+    roster_entry = None
+    if settings.require_student_roster:
+        roster_entry = (
+            db.query(StudentRosterEntry)
+            .filter(StudentRosterEntry.nim == payload.nim, StudentRosterEntry.is_active.is_(True))
+            .with_for_update()
+            .first()
+        )
+        if not roster_entry:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail='NIM belum terdaftar pada roster resmi. Hubungi Admin Prodi untuk verifikasi.',
+            )
+        if roster_entry.registered_user_id is not None:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='NIM sudah digunakan untuk membuat akun.')
+        if not payload.registration_code or not roster_entry.registration_code_hash:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='Kode pendaftaran belum tersedia. Hubungi Admin Prodi.')
+        if not roster_entry.registration_code_expires_at or roster_entry.registration_code_expires_at < datetime.utcnow():
+            raise HTTPException(status_code=status.HTTP_410_GONE, detail='Kode pendaftaran sudah kedaluwarsa. Minta kode baru kepada Admin Prodi.')
+        supplied_hash = hashlib.sha256(payload.registration_code.strip().encode('utf-8')).hexdigest()
+        if not hmac.compare_digest(supplied_hash, roster_entry.registration_code_hash):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='Kode pendaftaran tidak valid.')
+        normalize_name = lambda value: ' '.join((value or '').casefold().split())
+        if normalize_name(payload.full_name) != normalize_name(roster_entry.full_name):
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail='Nama harus sesuai dengan data roster resmi.')
+        if program_study != roster_entry.program_study:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail='Program studi harus sesuai dengan data roster resmi.')
+        if payload.angkatan.strip() != roster_entry.angkatan:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail='Angkatan harus sesuai dengan data roster resmi.')
+
     student = User(
         nim=payload.nim,
         full_name=payload.full_name,
@@ -76,6 +109,12 @@ def register_student(payload: StudentRegistration, db: Session = Depends(get_db)
     )
     db.add(student)
     try:
+        if roster_entry:
+            db.flush()
+            roster_entry.registration_code_hash = None
+            roster_entry.registration_code_expires_at = None
+            roster_entry.registered_user_id = student.id
+            roster_entry.registered_at = datetime.utcnow()
         db.commit()
     except IntegrityError as exc:
         db.rollback()
