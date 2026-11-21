@@ -421,6 +421,12 @@ def test_peer_course_scores_downweight_courses_rejected_by_similar_peers():
         def filter(self, *_args, **_kwargs):
             return self
 
+        def join(self, *_args, **_kwargs):
+            return self
+
+        def options(self, *_args, **_kwargs):
+            return self
+
         def all(self):
             return self.rows
 
