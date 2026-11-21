@@ -77,10 +77,12 @@ def test_fresh_migration_is_repeatable_and_creates_constraints(tmp_path):
     assert {'nim', 'full_name', 'program_study', 'angkatan', 'registration_code_hash', 'registered_user_id'} <= {
         column['name'] for column in inspector.get_columns('student_roster_entries')
     }
-    assert {'nim', 'registered_user_id'} <= {
-        column['name'] for column in inspector.get_unique_constraints('student_roster_entries')
-        for column in column['column_names']
+    roster_unique_columns = {
+        name
+        for constraint in inspector.get_unique_constraints('student_roster_entries')
+        for name in constraint['column_names']
     }
+    assert {'nim', 'registered_user_id'} <= roster_unique_columns
     assert 'advisor_id' in {
         column['name'] for column in inspector.get_columns('users')
     }
