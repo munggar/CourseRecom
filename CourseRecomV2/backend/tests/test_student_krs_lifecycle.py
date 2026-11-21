@@ -27,6 +27,8 @@ def test_student_can_submit_krs_and_receive_official_pdf_after_advisor_approval(
     mandatory_code = f'E2E{suffix}01'
     previous_code = f'E2E{suffix}PRE'
     now = datetime.now(timezone.utc).replace(tzinfo=None)
+    old_setting_values = {}
+    client = None
     db = SessionLocal()
 
     advisor = User(
