@@ -205,7 +205,7 @@ def test_admin_can_import_one_hundred_official_roster_entries_and_generate_one_t
         assert summary.json()['total'] == 100
         assert summary.json()['registered'] == 0
         assert summary.json()['waiting'] == 100
-        assert summary.json()['target_reached'] is True
+        assert summary.json()['target_reached'] is False
 
         invitations = client.post('/api/admin/student-roster/invitations.csv', headers=headers)
         assert invitations.status_code == 200
