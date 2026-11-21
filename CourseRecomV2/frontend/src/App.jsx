@@ -2440,7 +2440,7 @@ function App() {
       const summary = studentRosterStats || {
         total: 0, registered: 0, waiting: 0, inactive: 0, target: 100, target_reached: false, by_program: {},
       };
-      const progress = Math.min(100, (Number(summary.total || 0) / Number(summary.target || 100)) * 100);
+      const progress = Math.min(100, (Number(summary.registered || 0) / Number(summary.target || 100)) * 100);
       return (
         <div className="card">
           <div className="preview-header">
@@ -2466,7 +2466,7 @@ function App() {
               <div><h3>Target 100 mahasiswa</h3><p className="muted">{summary.target_reached ? 'Target jumlah roster tercapai. Mahasiswa tetap perlu menyelesaikan pendaftaran akun masing-masing.' : `Masih kurang ${Math.max(0, 100 - Number(summary.total || 0))} entri roster menuju target.`}</p></div>
               <strong>{Math.round(progress)}%</strong>
             </div>
-            <progress value={progress} max="100" aria-label="Progres jumlah roster mahasiswa" style={{ width: '100%', height: 14 }} />
+            <progress value={progress} max="100" aria-label="Progres 100 akun mahasiswa terdaftar" style={{ width: '100%', height: 14 }} />
           </section>
           <section style={{ marginTop: 26 }}>
             <h3>1. Impor roster resmi dari program studi</h3>
