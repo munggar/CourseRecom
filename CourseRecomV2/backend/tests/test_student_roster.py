@@ -151,6 +151,8 @@ def test_student_roster_import_rejects_duplicate_nim_atomically():
         db.close()
     finally:
         db = SessionLocal()
+        db.query(StudentRosterEntry).filter(StudentRosterEntry.nim == nim).delete(synchronize_session=False)
+        db.query(User).filter(User.nim == nim).delete(synchronize_session=False)
         if admin_id is not None:
             db.query(AuditLog).filter(
                 AuditLog.actor_id == admin_id,
@@ -161,3 +163,75 @@ def test_student_roster_import_rejects_duplicate_nim_atomically():
         db.close()
         client.close()
         settings.require_student_roster = old_setting
+
+def test_admin_can_import_one_hundred_official_roster_entries_and_generate_one_time_codes():
+    old_setting = settings.require_student_roster
+    settings.require_student_roster = True
+    batch = uuid4().hex[:8].upper()
+    nims = [f'ROSTER{batch}{index:03d}' for index in range(100)]
+    client = TestClient(app)
+    admin_id = None
+    try:
+        headers = _login_admin(client)
+        db = SessionLocal()
+        admin_id = db.query(User.id).filter(User.nim == 'admin').scalar()
+        db.close()
+
+        roster_csv = StringIO(newline='')
+        writer = csv.writer(roster_csv)
+        writer.writerow(['NIM', 'Nama Lengkap', 'Program Studi', 'Angkatan'])
+        for index, nim in enumerate(nims, start=1):
+            writer.writerow([
+                nim,
+                f'Mahasiswa Roster Uji {index:03d}',
+                'Sistem dan Teknologi Informasi',
+                '2022',
+            ])
+
+        imported = client.post(
+            '/api/admin/student-roster/import',
+            headers=headers,
+            files={'file': ('roster-100.csv', roster_csv.getvalue().encode('utf-8'), 'text/csv')},
+        )
+        assert imported.status_code == 200, imported.text
+        payload = imported.json()
+        assert payload['imported'] == 100
+        assert payload['created'] == 100
+        assert payload['registered'] == 0
+        assert payload['waiting'] == 100
+
+        summary = client.get('/api/admin/student-roster', headers=headers)
+        assert summary.status_code == 200
+        assert summary.json()['total'] == 100
+        assert summary.json()['registered'] == 0
+        assert summary.json()['waiting'] == 100
+        assert summary.json()['target_reached'] is True
+
+        invitations = client.post('/api/admin/student-roster/invitations.csv', headers=headers)
+        assert invitations.status_code == 200
+        invite_rows = list(csv.DictReader(StringIO(invitations.content.decode('utf-8-sig'))))
+        assert len(invite_rows) == 100
+        assert {row['NIM'] for row in invite_rows} == set(nims)
+        assert all(len(row['Kode Pendaftaran']) >= 24 for row in invite_rows)
+
+        db = SessionLocal()
+        roster_rows = db.query(StudentRosterEntry).filter(StudentRosterEntry.nim.in_(nims)).all()
+        assert len(roster_rows) == 100
+        assert all(row.registration_code_hash for row in roster_rows)
+        assert all(row.registered_user_id is None for row in roster_rows)
+        assert all(row.registration_code_hash not in {item['Kode Pendaftaran'] for item in invite_rows} for row in roster_rows)
+        db.close()
+    finally:
+        db = SessionLocal()
+        db.query(StudentRosterEntry).filter(StudentRosterEntry.nim.in_(nims)).delete(synchronize_session=False)
+        if admin_id is not None:
+            db.query(AuditLog).filter(
+                AuditLog.actor_id == admin_id,
+                AuditLog.entity_type == 'student_roster',
+                AuditLog.entity_id == 'batch',
+            ).delete(synchronize_session=False)
+        db.commit()
+        db.close()
+        client.close()
+        settings.require_student_roster = old_setting
+
