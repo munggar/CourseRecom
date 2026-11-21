@@ -339,7 +339,7 @@ def generate_student_roster_invitations(
     )
     db.commit()
     response = Response(
-        content='\\ufeff' + output.getvalue(),
+        content='\ufeff' + output.getvalue(),
         media_type='text/csv; charset=utf-8',
         headers={'Content-Disposition': 'attachment; filename="kode-pendaftaran-mahasiswa-sekali-pakai.csv"'},
     )
