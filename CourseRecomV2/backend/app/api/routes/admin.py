@@ -1,7 +1,10 @@
+import csv
+import hashlib
 import json
 import re
-from datetime import datetime, timezone
-from io import BytesIO
+import secrets
+from datetime import datetime, timedelta, timezone
+from io import BytesIO, StringIO
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import Response
@@ -29,6 +32,7 @@ from app.models import (
     KprsRequest,
     Room,
     LecturerDirectory,
+    StudentRosterEntry,
 )
 from app.schemas import CourseMutation, AdvisorMapping, SystemSettingUpdate, StudyPlanOverride, CourseClassMutation, LecturerRegistration, LecturerUpdate, RoomMutation, LecturerDirectoryLink
 from app.services.academic import class_selection_map, validate_course_selection
@@ -46,10 +50,303 @@ from app.services.audit import write_audit
 from app.services.scheduling import ALLOWED_DAYS, build_available_start_times, validate_class_schedule, validate_room_code
 from app.services.time_utils import utc_now_naive
 from app.services.validation import assert_krs_period_open
+from app.services.program_interests import normalize_program_name
 from app.deps import get_password_hash
 
 router = APIRouter()
 MAX_IMPORT_BYTES = 10 * 1024 * 1024
+
+
+
+
+MAX_STUDENT_ROSTER_BYTES = 2 * 1024 * 1024
+MAX_STUDENT_ROSTER_ROWS = 2000
+STUDENT_INVITATION_DAYS = 7
+
+
+def _roster_name(value: str) -> str:
+    return ' '.join((value or '').strip().casefold().split())
+
+
+def _safe_csv_value(value: object) -> str:
+    text = str(value or '')
+    return "'" + text if text.startswith(('=', '+', '-', '@', '\t', '\r')) else text
+
+
+@router.get('/admin/student-roster/template.csv')
+def download_student_roster_template(current_user: User = Depends(require_roles('admin'))):
+    output = StringIO(newline='')
+    writer = csv.writer(output)
+    writer.writerow(['NIM', 'Nama Lengkap', 'Program Studi', 'Angkatan'])
+    response = Response(content='\ufeff' + output.getvalue(), media_type='text/csv; charset=utf-8')
+    response.headers['Content-Disposition'] = 'attachment; filename="template-roster-mahasiswa.csv"'
+    response.headers['Cache-Control'] = 'no-store'
+    return response
+
+
+@router.get('/admin/student-roster')
+def student_roster_summary(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles('admin')),
+):
+    entries = db.query(StudentRosterEntry).order_by(StudentRosterEntry.program_study, StudentRosterEntry.nim).all()
+    active = [entry for entry in entries if entry.is_active]
+    registered_ids = {entry.registered_user_id for entry in active if entry.registered_user_id is not None}
+    pending = [entry for entry in active if entry.registered_user_id is None]
+    by_program = {}
+    for entry in active:
+        item = by_program.setdefault(entry.program_study, {'total': 0, 'registered': 0, 'waiting': 0})
+        item['total'] += 1
+        if entry.registered_user_id is None:
+            item['waiting'] += 1
+        else:
+            item['registered'] += 1
+    registered_count = len(active) - len(pending)
+    return {
+        'total': len(active),
+        'registered': registered_count,
+        'waiting': len(pending),
+        'inactive': len(entries) - len(active),
+        'target': 100,
+        'target_reached': registered_count >= 100,
+        'by_program': by_program,
+    }
+
+
+@router.post('/admin/student-roster/import')
+async def import_student_roster(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles('admin')),
+):
+    filename = (file.filename or '').casefold()
+    if not filename.endswith('.csv'):
+        raise HTTPException(status_code=415, detail='Roster mahasiswa harus diunggah sebagai file CSV UTF-8.')
+    content = await file.read(MAX_STUDENT_ROSTER_BYTES + 1)
+    if not content:
+        raise HTTPException(status_code=422, detail='File roster kosong.')
+    if len(content) > MAX_STUDENT_ROSTER_BYTES:
+        raise HTTPException(status_code=413, detail='Ukuran roster maksimal 2 MB.')
+    try:
+        decoded = content.decode('utf-8-sig')
+    except UnicodeDecodeError as exc:
+        raise HTTPException(status_code=422, detail='File harus menggunakan encoding UTF-8.') from exc
+
+    sample = decoded[:4096]
+    try:
+        dialect = csv.Sniffer().sniff(sample, delimiters=',;\t')
+    except csv.Error:
+        dialect = csv.excel
+    reader = csv.DictReader(StringIO(decoded), dialect=dialect)
+    if not reader.fieldnames:
+        raise HTTPException(status_code=422, detail='Header CSV tidak ditemukan.')
+    aliases = {
+        'nim': {'nim', 'nomor induk mahasiswa'},
+        'full_name': {'nama lengkap', 'nama mahasiswa', 'nama', 'full name', 'full_name'},
+        'program_study': {'program studi', 'prodi', 'program_study'},
+        'angkatan': {'angkatan', 'tahun angkatan', 'cohort'},
+    }
+    resolved = {}
+    for header in reader.fieldnames:
+        key = ' '.join((header or '').strip().casefold().replace('_', ' ').split())
+        for target, candidates in aliases.items():
+            if key in candidates:
+                if target in resolved:
+                    raise HTTPException(status_code=422, detail=f'Kolom {target} terduplikasi.')
+                resolved[target] = header
+    missing = sorted(set(aliases) - set(resolved))
+    if missing:
+        raise HTTPException(
+            status_code=422,
+            detail='Kolom wajib belum lengkap: ' + ', '.join(missing) + '. Unduh template roster terlebih dahulu.',
+        )
+
+    from app.api.routes.auth import _academic_year_context
+    maximum_angkatan = int(_academic_year_context(db)['max_angkatan'])
+    rows = []
+    seen_nims = set()
+    for row_number, record in enumerate(reader, start=2):
+        if not any(str(value or '').strip() for value in record.values()):
+            continue
+        nim = str(record.get(resolved['nim']) or '').strip()
+        full_name = ' '.join(str(record.get(resolved['full_name']) or '').strip().split())
+        raw_program = str(record.get(resolved['program_study']) or '').strip()
+        program = normalize_program_name(raw_program)
+        angkatan = str(record.get(resolved['angkatan']) or '').strip()
+        if not nim or len(nim) > 20 or len(nim) < 2:
+            raise HTTPException(status_code=422, detail=f'NIM pada baris {row_number} tidak valid.')
+        if nim in seen_nims:
+            raise HTTPException(status_code=422, detail=f'NIM {nim} muncul lebih dari sekali pada file (baris {row_number}).')
+        seen_nims.add(nim)
+        if len(full_name) < 2 or len(full_name) > 120:
+            raise HTTPException(status_code=422, detail=f'Nama pada baris {row_number} tidak valid.')
+        if not program:
+            raise HTTPException(status_code=422, detail=f'Program studi pada baris {row_number} tidak dikenal.')
+        if not re.fullmatch(r'\d{4}', angkatan) or int(angkatan) > maximum_angkatan:
+            raise HTTPException(status_code=422, detail=f'Angkatan pada baris {row_number} harus 4 digit dan tidak melebihi {maximum_angkatan}.')
+        rows.append({
+            'nim': nim,
+            'full_name': full_name,
+            'program_study': program,
+            'angkatan': angkatan,
+        })
+        if len(rows) > MAX_STUDENT_ROSTER_ROWS:
+            raise HTTPException(status_code=413, detail=f'Roster maksimal {MAX_STUDENT_ROSTER_ROWS} mahasiswa per unggahan.')
+
+    if not rows:
+        raise HTTPException(status_code=422, detail='Tidak ada baris data mahasiswa pada file roster.')
+
+    now = utc_now_naive()
+    created = updated = already_registered = 0
+    try:
+        for item in rows:
+            existing = (
+                db.query(StudentRosterEntry)
+                .filter(StudentRosterEntry.nim == item['nim'])
+                .with_for_update()
+                .first()
+            )
+            user = db.query(User).filter(User.nim == item['nim']).first()
+            if user and user.role != 'mahasiswa':
+                raise HTTPException(status_code=409, detail=f'NIM {item["nim"]} sudah digunakan akun non-mahasiswa.')
+            if user and (
+                _roster_name(user.full_name) != _roster_name(item['full_name'])
+                or normalize_program_name(user.program_study or '') != item['program_study']
+                or (user.angkatan or '') != item['angkatan']
+            ):
+                raise HTTPException(status_code=409, detail=f'Data akun yang sudah ada untuk NIM {item["nim"]} berbeda dari roster. Perlu verifikasi Admin.')
+
+            if existing:
+                if existing.registered_user_id and (
+                    existing.full_name != item['full_name']
+                    or existing.program_study != item['program_study']
+                    or existing.angkatan != item['angkatan']
+                ):
+                    raise HTTPException(status_code=409, detail=f'Roster NIM {item["nim"]} sudah terkait akun dan tidak dapat ditimpa.')
+                existing.full_name = item['full_name']
+                existing.program_study = item['program_study']
+                existing.angkatan = item['angkatan']
+                existing.is_active = True
+                existing.imported_by = current_user.id
+                existing.imported_at = now
+                if existing.registered_user_id is None:
+                    existing.registration_code_hash = None
+                    existing.registration_code_expires_at = None
+                updated += 1
+            else:
+                existing = StudentRosterEntry(
+                    nim=item['nim'],
+                    full_name=item['full_name'],
+                    program_study=item['program_study'],
+                    angkatan=item['angkatan'],
+                    is_active=True,
+                    registered_user_id=user.id if user else None,
+                    registered_at=now if user else None,
+                    imported_by=current_user.id,
+                    imported_at=now,
+                )
+                db.add(existing)
+                created += 1
+            if user and existing.registered_user_id is None:
+                existing.registered_user_id = user.id
+                existing.registered_at = now
+            if user:
+                already_registered += 1
+
+        db.flush()
+        write_audit(
+            db,
+            current_user,
+            'student_roster_imported',
+            'student_roster',
+            'batch',
+            None,
+            {
+                'rows': len(rows),
+                'created': created,
+                'updated': updated,
+                'already_registered': already_registered,
+            },
+        )
+        db.commit()
+    except HTTPException:
+        db.rollback()
+        raise
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail='Roster bertabrakan dengan data yang sudah ada. Periksa duplikasi NIM.') from exc
+    except Exception:
+        db.rollback()
+        raise
+
+    active_count = db.query(StudentRosterEntry).filter(StudentRosterEntry.is_active.is_(True)).count()
+    registered_count = db.query(StudentRosterEntry).filter(
+        StudentRosterEntry.is_active.is_(True),
+        StudentRosterEntry.registered_user_id.is_not(None),
+    ).count()
+    return {
+        'imported': len(rows),
+        'created': created,
+        'updated': updated,
+        'already_registered': already_registered,
+        'total_active': active_count,
+        'registered': registered_count,
+        'waiting': active_count - registered_count,
+    }
+
+
+@router.post('/admin/student-roster/invitations.csv')
+def generate_student_roster_invitations(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles('admin')),
+):
+    now = utc_now_naive()
+    expires = now + timedelta(days=STUDENT_INVITATION_DAYS)
+    entries = (
+        db.query(StudentRosterEntry)
+        .filter(
+            StudentRosterEntry.is_active.is_(True),
+            StudentRosterEntry.registered_user_id.is_(None),
+        )
+        .order_by(StudentRosterEntry.program_study, StudentRosterEntry.nim)
+        .with_for_update()
+        .all()
+    )
+    if not entries:
+        raise HTTPException(status_code=409, detail='Tidak ada mahasiswa roster yang menunggu pendaftaran.')
+    output = StringIO(newline='')
+    writer = csv.writer(output)
+    writer.writerow(['NIM', 'Nama Lengkap', 'Program Studi', 'Angkatan', 'Kode Pendaftaran', 'Berlaku Sampai UTC'])
+    for entry in entries:
+        token = secrets.token_urlsafe(24)
+        entry.registration_code_hash = hashlib.sha256(token.encode('utf-8')).hexdigest()
+        entry.registration_code_expires_at = expires
+        writer.writerow([
+            _safe_csv_value(entry.nim),
+            _safe_csv_value(entry.full_name),
+            _safe_csv_value(entry.program_study),
+            _safe_csv_value(entry.angkatan),
+            token,
+            expires.isoformat(),
+        ])
+    write_audit(
+        db,
+        current_user,
+        'student_roster_invitations_generated',
+        'student_roster',
+        'batch',
+        None,
+        {'invitation_count': len(entries), 'expires_at_utc': expires.isoformat()},
+    )
+    db.commit()
+    response = Response(
+        content='\ufeff' + output.getvalue(),
+        media_type='text/csv; charset=utf-8',
+        headers={'Content-Disposition': 'attachment; filename="kode-pendaftaran-mahasiswa-sekali-pakai.csv"'},
+    )
+    response.headers['Cache-Control'] = 'no-store, private'
+    response.headers['Pragma'] = 'no-cache'
+    return response
 
 
 @router.post('/admin/lecturers', status_code=201, response_model=None)

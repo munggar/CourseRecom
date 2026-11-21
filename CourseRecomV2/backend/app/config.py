@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     frontend_url: str = 'http://localhost:5173'
     public_api_base_url: str | None = None
     seed_demo_users: bool | None = None
+    require_student_roster: bool | None = None
     bootstrap_admin_nim: str | None = None
     bootstrap_admin_name: str | None = None
     bootstrap_admin_password: str | None = None
@@ -72,6 +73,10 @@ class Settings(BaseSettings):
         ):
             self.database_url = 'sqlite:///./courserecom.db'
         production = self.environment.casefold() in {'prod', 'production'}
+        if self.require_student_roster is None:
+            self.require_student_roster = production
+        if production and not self.require_student_roster:
+            raise ValueError('REQUIRE_STUDENT_ROSTER must be enabled in production.')
         if production and not self.database_url.startswith('postgresql+psycopg://'):
             raise ValueError(
                 'DATABASE_URL must use a persistent PostgreSQL database in production; '

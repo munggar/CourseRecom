@@ -195,7 +195,7 @@ function App() {
   const [authMode, setAuthMode] = useState('login');
   const [selectedRole, setSelectedRole] = useState('mahasiswa');
   const [form, setForm] = useState({ username: '', password: '' });
-  const [registrationForm, setRegistrationForm] = useState({ nim: '', username: '', full_name: '', program_study: 'Sistem dan Teknologi Informasi', interests: 'Manajemen Teknologi Informasi', angkatan: '', password: '', passwordConfirmation: '' });
+  const [registrationForm, setRegistrationForm] = useState({ nim: '', username: '', full_name: '', program_study: 'Sistem dan Teknologi Informasi', interests: 'Manajemen Teknologi Informasi', angkatan: '', registration_code: '', password: '', passwordConfirmation: '' });
   const [profile, setProfile] = useState(null);
   const [programInterestCatalog, setProgramInterestCatalog] = useState(PROGRAM_INTERESTS);
   const [recommendationResult, setRecommendationResult] = useState(EMPTY_RECOMMENDATIONS);
@@ -274,6 +274,10 @@ function App() {
   const [classImportBusy, setClassImportBusy] = useState(false);
   const [classImportResult, setClassImportResult] = useState(null);
   const [classImportErrors, setClassImportErrors] = useState([]);
+  const [studentRosterStats, setStudentRosterStats] = useState(null);
+  const [studentRosterFile, setStudentRosterFile] = useState(null);
+  const [studentRosterFileKey, setStudentRosterFileKey] = useState(0);
+  const [studentRosterBusy, setStudentRosterBusy] = useState(false);
   const [editingClassId, setEditingClassId] = useState(null);
   const [classForm, setClassForm] = useState({
     course_code: '', class_name: '', lecturer_id: '', lecturer_name: '', room: '', day: 'Senin',
@@ -302,6 +306,7 @@ function App() {
   const [academicYear, setAcademicYear] = useState({
     academic_year: DEFAULT_ACADEMIC_YEAR,
     max_angkatan: INITIAL_YEAR,
+    registration_requires_invitation: false,
   });
   const [loginError, setLoginError] = useState('');
   const [authMessage, setAuthMessage] = useState('');
@@ -491,6 +496,17 @@ function App() {
     storedDraftCourses,
     studyPlans,
   ]);
+
+  useEffect(() => {
+    if (user?.role !== 'admin' || view !== 'roster') return undefined;
+    let active = true;
+    apiRequest('/admin/student-roster', { suppressLoader: true })
+      .then((result) => { if (active) setStudentRosterStats(result); })
+      .catch((error) => {
+        if (active) pushToast(error.message || 'Ringkasan roster mahasiswa gagal dimuat.', 'error');
+      });
+    return () => { active = false; };
+  }, [user?.role, view, pushToast]);
 
   useEffect(() => {
     if (actionMessage) return deferToast(actionMessage);
@@ -891,6 +907,7 @@ function App() {
           program_study: registrationForm.program_study,
           interests: registrationForm.interests,
           angkatan: registrationForm.angkatan,
+          registration_code: registrationForm.registration_code.trim(),
           password: registrationForm.password,
         }),
       });
@@ -902,6 +919,7 @@ function App() {
         program_study: 'Sistem dan Teknologi Informasi',
         interests: 'Manajemen Teknologi Informasi',
         angkatan: '',
+        registration_code: '',
         password: '',
         passwordConfirmation: '',
       });
@@ -911,6 +929,99 @@ function App() {
       setLoginError(error.message || 'Pendaftaran mahasiswa gagal.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const downloadStudentRosterTemplate = async () => {
+    setStudentRosterBusy(true);
+    try {
+      const response = await fetch(`${API_BASE}/admin/student-roster/template.csv`, {
+        credentials: 'same-origin',
+      });
+      expireSessionOnUnauthorized(response);
+      if (!response.ok) throw new Error('Template roster gagal diunduh.');
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'template-roster-mahasiswa.csv';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      pushToast(error.message || 'Template roster gagal diunduh.', 'error');
+    } finally {
+      setStudentRosterBusy(false);
+    }
+  };
+
+  const importStudentRoster = async (event) => {
+    event.preventDefault();
+    if (!studentRosterFile) {
+      pushToast('Pilih file CSV roster mahasiswa terlebih dahulu.', 'warning');
+      return;
+    }
+    setStudentRosterBusy(true);
+    try {
+      const body = new FormData();
+      body.append('file', studentRosterFile);
+      const result = await apiRequest('/admin/student-roster/import', {
+        method: 'POST',
+        body,
+      });
+      const summary = await apiRequest('/admin/student-roster', { suppressLoader: true });
+      setStudentRosterStats(summary);
+      setStudentRosterFile(null);
+      setStudentRosterFileKey((value) => value + 1);
+      pushToast(
+        `Roster diproses: ${result.imported} baris, ${result.created} baru, ${result.already_registered} sudah memiliki akun. ${result.waiting} menunggu pendaftaran.`,
+        'success',
+      );
+    } catch (error) {
+      pushToast(error.message || 'Impor roster gagal. Tidak ada data roster yang diubah.', 'error');
+    } finally {
+      setStudentRosterBusy(false);
+    }
+  };
+
+  const generateStudentRosterInvitations = async () => {
+    const waiting = Number(studentRosterStats?.waiting || 0);
+    if (!waiting) {
+      pushToast('Belum ada mahasiswa roster yang menunggu pendaftaran.', 'warning');
+      return;
+    }
+    if (!window.confirm(
+      `Buat ${waiting} kode pendaftaran sekali pakai? File hasil unduhan berisi NIM, nama, dan kode rahasia. Simpan dengan aman lalu bagikan setiap kode hanya kepada mahasiswa terkait.`,
+    )) return;
+
+    setStudentRosterBusy(true);
+    try {
+      const response = await fetch(`${API_BASE}/admin/student-roster/invitations.csv`, {
+        method: 'POST',
+        credentials: 'same-origin',
+      });
+      expireSessionOnUnauthorized(response);
+      if (!response.ok) {
+        const body = await response.json().catch(() => null);
+        throw new Error(body?.detail || 'Kode pendaftaran gagal dibuat.');
+      }
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'kode-pendaftaran-mahasiswa-sekali-pakai.csv';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      const summary = await apiRequest('/admin/student-roster', { suppressLoader: true });
+      setStudentRosterStats(summary);
+      pushToast('Kode pendaftaran berhasil dibuat. File hanya tersedia pada unduhan ini; distribusikan secara pribadi.', 'success');
+    } catch (error) {
+      pushToast(error.message || 'Kode pendaftaran gagal dibuat.', 'error');
+    } finally {
+      setStudentRosterBusy(false);
     }
   };
 
@@ -1935,6 +2046,7 @@ function App() {
     ] : []),
     ...(user?.role === 'admin' ? [
       { key: 'admin', label: 'Manajemen Data', Icon: Settings },
+      { key: 'roster', label: 'Pendaftaran Mahasiswa', Icon: Users },
       { key: 'kelas', label: 'Kelas & Jadwal', Icon: CalendarDays },
       { key: 'akun-dosen', label: 'Daftar Akun Dosen PA', Icon: UsersRound },
       { key: 'riwayat-pa', label: 'Riwayat Dosen PA', Icon: History },
@@ -2319,6 +2431,88 @@ function App() {
                 </div>
               ))
               : <p className="muted">Belum ada dokumen KHS.</p>}
+          </section>
+        </div>
+      );
+    }
+
+    if (view === 'roster' && user.role === 'admin') {
+      const summary = studentRosterStats || {
+        total: 0, registered: 0, waiting: 0, inactive: 0, target: 100, target_reached: false, by_program: {},
+      };
+      const progress = Math.min(100, (Number(summary.registered || 0) / Number(summary.target || 100)) * 100);
+      return (
+        <div className="card">
+          <div className="preview-header">
+            <div>
+              <span className="guide-eyebrow">ONBOARDING MAHASISWA ASLI</span>
+              <h2>Pendaftaran Mahasiswa</h2>
+              <p className="muted">Kelola roster mahasiswa yang disahkan program studi. Akun baru dibuat sendiri oleh mahasiswa menggunakan kode undangan satu kali.</p>
+            </div>
+            <button className="btn outline" type="button" disabled={studentRosterBusy} onClick={() => {
+              apiRequest('/admin/student-roster', { suppressLoader: true })
+                .then(setStudentRosterStats)
+                .catch((error) => pushToast(error.message || 'Data roster gagal diperbarui.', 'error'));
+            }}>Muat ulang</button>
+          </div>
+          <div className="stat-grid">
+            <div className="stat"><small>Roster aktif</small><strong>{summary.total} / 100</strong></div>
+            <div className="stat"><small>Akun terdaftar</small><strong>{summary.registered}</strong></div>
+            <div className="stat"><small>Menunggu daftar</small><strong>{summary.waiting}</strong></div>
+            <div className="stat"><small>Nonaktif</small><strong>{summary.inactive}</strong></div>
+          </div>
+          <section style={{ marginTop: 18 }}>
+            <div className="preview-header">
+              <div><h3>Target 100 mahasiswa</h3><p className="muted">{summary.target_reached ? 'Target jumlah roster tercapai. Mahasiswa tetap perlu menyelesaikan pendaftaran akun masing-masing.' : `Masih kurang ${Math.max(0, 100 - Number(summary.total || 0))} entri roster menuju target.`}</p></div>
+              <strong>{Math.round(progress)}%</strong>
+            </div>
+            <progress value={progress} max="100" aria-label="Progres 100 akun mahasiswa terdaftar" style={{ width: '100%', height: 14 }} />
+          </section>
+          <section style={{ marginTop: 26 }}>
+            <h3>1. Impor roster resmi dari program studi</h3>
+            <p className="muted">File berisi NIM, nama lengkap, program studi FTII, dan angkatan. Sistem menolak NIM duplikat, prodi yang tidak dikenal, angkatan yang tidak valid, serta perubahan data yang bertentangan dengan akun yang sudah terdaftar.</p>
+            <div className="row wrap" style={{ gap: 10, alignItems: 'center' }}>
+              <button className="btn outline" type="button" disabled={studentRosterBusy} onClick={downloadStudentRosterTemplate}>Unduh template CSV</button>
+              <form className="form-grid" onSubmit={importStudentRoster} style={{ flex: '1 1 320px', minWidth: 260 }}>
+                <label>
+                  <span className="muted">File roster (.csv UTF-8, maksimal 2 MB)</span>
+                  <input
+                    key={studentRosterFileKey}
+                    type="file"
+                    accept=".csv,text/csv"
+                    onChange={(event) => setStudentRosterFile(event.target.files?.[0] || null)}
+                    required
+                  />
+                </label>
+                <button className="btn primary" type="submit" disabled={studentRosterBusy || !studentRosterFile}>
+                  {studentRosterBusy ? 'Memproses...' : 'Validasi & impor roster'}
+                </button>
+              </form>
+            </div>
+          </section>
+          <section style={{ marginTop: 28 }}>
+            <h3>2. Buat kode pendaftaran sekali pakai</h3>
+            <p className="muted">Kode hanya dibuat untuk mahasiswa roster yang belum mempunyai akun. Kode kedaluwarsa dalam 7 hari, hanya hash yang disimpan server, dan setiap kode hangus setelah satu kali digunakan.</p>
+            <button className="btn primary" type="button" disabled={studentRosterBusy || Number(summary.waiting || 0) === 0} onClick={generateStudentRosterInvitations}>
+              Buat & unduh {summary.waiting} kode pendaftaran
+            </button>
+            <p className="notice" role="note">File kode berisi data pribadi dan rahasia pendaftaran. Jangan bagikan di grup publik. Distribusikan kode secara individual melalui kanal kampus yang aman, lalu hapus salinan yang tidak lagi diperlukan.</p>
+          </section>
+          <section style={{ marginTop: 26 }}>
+            <h3>Ringkasan per program studi</h3>
+            <div className="table-wrap">
+              <table className="table">
+                <thead><tr><th>Program studi</th><th>Roster</th><th>Sudah daftar</th><th>Menunggu</th></tr></thead>
+                <tbody>
+                  {Object.entries(summary.by_program || {}).map(([program, item]) => (
+                    <tr key={program}>
+                      <td>{program}</td><td>{item.total}</td><td>{item.registered}</td><td>{item.waiting}</td>
+                    </tr>
+                  ))}
+                  {Object.keys(summary.by_program || {}).length === 0 && <tr><td colSpan="4" className="muted">Belum ada roster resmi yang diimpor.</td></tr>}
+                </tbody>
+              </table>
+            </div>
           </section>
         </div>
       );
@@ -3871,7 +4065,7 @@ function App() {
           <div className="login-brand-block">
             <img src="/logo.png" alt="CourseRecom logo" style={{ width: 88, height: 88 }} />
             <h2>CourseRecom</h2>
-            <span className="ml-brand-badge"><BrainCircuit size={16} /> POWERED BY MACHINE LEARNING</span>
+            <span className="ml-brand-badge"><BrainCircuit size={16} /> HYBRID RECOMMENDATION ENGINE</span>
             <h3>Rencanakan Studi Lebih Cerdas</h3>
             <p>Analisis kemiripan riwayat akademik, minat, nilai prasyarat, dan kurikulum untuk membantu menemukan rekomendasi mata kuliah yang lebih relevan.</p>
             <div className="login-ml-tags"><span>Academic History</span><span>Similar Students</span><span>Smart Recommendation</span></div>
@@ -3932,6 +4126,20 @@ function App() {
                   />
                   <small className="muted">Hanya angka 4 digit, maksimal angkatan {academicYear.max_angkatan} (tahun ajaran {academicYear.academic_year}).</small>
                 </label>
+                {academicYear.registration_requires_invitation && (
+                  <label>
+                    <span className="muted">Kode pendaftaran resmi</span>
+                    <input
+                      required
+                      minLength="24"
+                      maxLength="128"
+                      autoComplete="one-time-code"
+                      value={registrationForm.registration_code}
+                      onChange={(event) => setRegistrationForm({ ...registrationForm, registration_code: event.target.value.trim() })}
+                    />
+                    <small className="muted">Kode sekali pakai diberikan Admin Prodi setelah NIM Anda diverifikasi di roster mahasiswa resmi.</small>
+                  </label>
+                )}
                 <label>
                   <span className="muted">Password (minimal 8 karakter)</span>
                   <input required type="password" minLength="8" maxLength="72" autoComplete="new-password" value={registrationForm.password} onChange={(e) => setRegistrationForm({ ...registrationForm, password: e.target.value })} />

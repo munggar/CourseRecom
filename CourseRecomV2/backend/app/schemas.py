@@ -18,6 +18,7 @@ class StudentRegistration(BaseModel):
     interests: str = Field(min_length=2, max_length=255)
     angkatan: str = Field(default='', max_length=4)
     password: str = Field(min_length=8, max_length=72)
+    registration_code: str | None = Field(default=None, max_length=128)
 
     @field_validator('angkatan')
     @classmethod
