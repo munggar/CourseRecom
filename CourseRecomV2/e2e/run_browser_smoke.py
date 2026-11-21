@@ -160,8 +160,16 @@ def run_browser_smoke() -> None:
                     page.get_by_text('Rencanakan Studi Lebih Cerdas').wait_for(state='visible', timeout=15000)
                     assert not any(cookie['name'] == 'course_recom_session' for cookie in context.cookies())
 
-                    # Student self-registration: roster identity + one-time invitation + personal password.
+                    # Student self-registration: ensure the API has enabled roster-gated mode
+                    # and wait for the asynchronously loaded form configuration before filling.
+                    academic_year_response = page.request.get(f'{FRONTEND_URL}/api/auth/academic-year')
+                    assert academic_year_response.status == 200
+                    assert academic_year_response.json()['registration_requires_invitation'] is True
                     page.get_by_role('button', name='Daftar akun mahasiswa').click()
+                    page.locator('.login-box input[autocomplete="one-time-code"]').wait_for(
+                        state='visible',
+                        timeout=20000,
+                    )
                     registration_form = page.locator('.login-box form')
                     registration_form.get_by_role('textbox', name='NIM', exact=True).fill(student_nim)
                     registration_form.get_by_role('textbox', name='Nama lengkap', exact=True).fill(student_name)
