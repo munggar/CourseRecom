@@ -70,7 +70,7 @@ def _roster_name(value: str) -> str:
 
 def _safe_csv_value(value: object) -> str:
     text = str(value or '')
-    return "'" + text if text.startswith(('=', '+', '-', '@', '\\t', '\\r')) else text
+    return "'" + text if text.startswith(('=', '+', '-', '@', '\t', '\r')) else text
 
 
 @router.get('/admin/student-roster/template.csv')
@@ -78,7 +78,7 @@ def download_student_roster_template(current_user: User = Depends(require_roles(
     output = StringIO(newline='')
     writer = csv.writer(output)
     writer.writerow(['NIM', 'Nama Lengkap', 'Program Studi', 'Angkatan'])
-    response = Response(content='\\ufeff' + output.getvalue(), media_type='text/csv; charset=utf-8')
+    response = Response(content='\ufeff' + output.getvalue(), media_type='text/csv; charset=utf-8')
     response.headers['Content-Disposition'] = 'attachment; filename="template-roster-mahasiswa.csv"'
     response.headers['Cache-Control'] = 'no-store'
     return response
@@ -133,7 +133,7 @@ async def import_student_roster(
 
     sample = decoded[:4096]
     try:
-        dialect = csv.Sniffer().sniff(sample, delimiters=',;\\t')
+        dialect = csv.Sniffer().sniff(sample, delimiters=',;\t')
     except csv.Error:
         dialect = csv.excel
     reader = csv.DictReader(StringIO(decoded), dialect=dialect)
@@ -181,7 +181,7 @@ async def import_student_roster(
             raise HTTPException(status_code=422, detail=f'Nama pada baris {row_number} tidak valid.')
         if not program:
             raise HTTPException(status_code=422, detail=f'Program studi pada baris {row_number} tidak dikenal.')
-        if not re.fullmatch(r'\\d{4}', angkatan) or int(angkatan) > maximum_angkatan:
+        if not re.fullmatch(r'\d{4}', angkatan) or int(angkatan) > maximum_angkatan:
             raise HTTPException(status_code=422, detail=f'Angkatan pada baris {row_number} harus 4 digit dan tidak melebihi {maximum_angkatan}.')
         rows.append({
             'nim': nim,
