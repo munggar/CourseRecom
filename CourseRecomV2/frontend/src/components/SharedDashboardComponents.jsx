@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { AlertCircle, CheckCircle2, Info, X } from 'lucide-react';
 
-function ToastItem({ toast, onDismiss }) {
+export function ToastItem({ toast, onDismiss }) {
   const [isLeaving, setIsLeaving] = useState(false);
   const Icon = toast.type === 'success'
     ? CheckCircle2
@@ -37,7 +37,7 @@ function ToastItem({ toast, onDismiss }) {
   );
 }
 
-function AnimatedDonut({ title, value, percentage, subtitle, accent = 'teal' }) {
+export function AnimatedDonut({ title, value, percentage, subtitle, accent = 'teal' }) {
   const [animate, setAnimate] = useState(false);
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => setAnimate(true));
@@ -57,7 +57,7 @@ function AnimatedDonut({ title, value, percentage, subtitle, accent = 'teal' }) 
   );
 }
 
-function SemesterCourseChart({ items = [] }) {
+export function SemesterCourseChart({ items = [] }) {
   const [animate, setAnimate] = useState(false);
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => setAnimate(true));
@@ -88,7 +88,7 @@ function SemesterCourseChart({ items = [] }) {
   );
 }
 
-function GuideStep({ index, children }) {
+export function GuideStep({ index, children }) {
   return (
     <li className="guide-step">
       <span className="guide-step-number">{String(index + 1).padStart(2, '0')}</span>
