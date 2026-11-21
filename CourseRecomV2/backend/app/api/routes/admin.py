@@ -101,13 +101,14 @@ def student_roster_summary(
             item['waiting'] += 1
         else:
             item['registered'] += 1
+    registered_count = len(active) - len(pending)
     return {
         'total': len(active),
-        'registered': len(active) - len(pending),
+        'registered': registered_count,
         'waiting': len(pending),
         'inactive': len(entries) - len(active),
         'target': 100,
-        'target_reached': len(active) >= 100,
+        'target_reached': registered_count >= 100,
         'by_program': by_program,
     }
 
