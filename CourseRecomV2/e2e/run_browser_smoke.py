@@ -145,6 +145,7 @@ def run_browser_smoke() -> None:
                     page.locator('input[type="file"]').set_input_files(str(roster_file))
                     page.get_by_role('button', name='Validasi & impor roster').click()
                     page.get_by_text('1 / 100').wait_for(state='visible', timeout=15000)
+                    page.once('dialog', lambda dialog: dialog.accept())
                     with page.expect_download(timeout=20000) as invitation_download_info:
                         page.get_by_role('button', name='Buat & unduh 1 kode pendaftaran').click()
                     invitation_path = Path(invitation_download_info.value.path())
