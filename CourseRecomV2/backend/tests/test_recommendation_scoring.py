@@ -451,6 +451,10 @@ def test_collaborative_votes_use_only_successfully_completed_peer_courses():
             self.rows = rows
         def filter(self, *_args, **_kwargs):
             return self
+        def join(self, *_args, **_kwargs):
+            return self
+        def options(self, *_args, **_kwargs):
+            return self
         def all(self):
             return self.rows
 
