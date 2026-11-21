@@ -166,7 +166,7 @@ def run_browser_smoke() -> None:
                     registration_form.get_by_role('textbox', name='NIM', exact=True).fill(student_nim)
                     registration_form.get_by_role('textbox', name='Nama lengkap', exact=True).fill(student_name)
                     registration_form.get_by_role('combobox', name='Program studi', exact=True).select_option(label='Sistem dan Teknologi Informasi')
-                    registration_form.get_by_role('spinbutton', name='Angkatan', exact=True).fill('2022')
+                    registration_form.locator('input[type="number"]').fill('2022')
                     registration_form.get_by_role('textbox', name='Kode pendaftaran resmi Kode', exact=True).fill(invitation_code)
                     registration_form.get_by_role('textbox', name='Password (minimal 8 karakter)', exact=True).fill('secure-student-password-123')
                     registration_form.get_by_role('textbox', name='Konfirmasi password', exact=True).fill('secure-student-password-123')
