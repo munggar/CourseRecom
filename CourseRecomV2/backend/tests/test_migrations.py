@@ -73,6 +73,14 @@ def test_fresh_migration_is_repeatable_and_creates_constraints(tmp_path):
     inspector = inspect(engine)
     assert 'kprs_requests' in inspector.get_table_names()
     assert 'advisor_course_feedback' in inspector.get_table_names()
+    assert 'student_roster_entries' in inspector.get_table_names()
+    assert {'nim', 'full_name', 'program_study', 'angkatan', 'registration_code_hash', 'registered_user_id'} <= {
+        column['name'] for column in inspector.get_columns('student_roster_entries')
+    }
+    assert {'nim', 'registered_user_id'} <= {
+        column['name'] for column in inspector.get_unique_constraints('student_roster_entries')
+        for column in column['column_names']
+    }
     assert 'advisor_id' in {
         column['name'] for column in inspector.get_columns('users')
     }
@@ -125,6 +133,7 @@ def test_legacy_migration_preserves_academic_history_and_adds_columns(tmp_path):
     assert {'content', 'updated_at'} <= {
         column['name'] for column in inspect(engine).get_columns('khs_documents')
     }
+    assert 'student_roster_entries' in inspect(engine).get_table_names()
     assert any(
         foreign_key['constrained_columns'] == ['advisor_id']
         and foreign_key['referred_table'] == 'users'
