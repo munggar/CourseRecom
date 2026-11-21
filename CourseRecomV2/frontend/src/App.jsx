@@ -1110,9 +1110,6 @@ function App() {
           new_password: passwordDraft.new_password || null,
         }),
       });
-      if (updated.access_token) {
-        localStorage.setItem('courseRecomToken', updated.access_token);
-      }
       const updatedUser = { ...updated };
       delete updatedUser.access_token;
       setUser(updatedUser);
@@ -1689,7 +1686,6 @@ function App() {
     const formElement = event.currentTarget;
     const formData = new FormData();
     formData.append('file', classImportFile);
-    const token = localStorage.getItem('courseRecomToken');
     setClassImportBusy(true);
     setClassImportResult(null);
     setClassImportErrors([]);
