@@ -194,9 +194,8 @@ function toastTypeFor(message) {
   return 'info';
 }
 
-function expireSessionOnUnauthorized(response, token) {
-  if (response.status !== 401 || !token) return;
-  localStorage.removeItem('courseRecomToken');
+function expireSessionOnUnauthorized(response, path = '') {
+  if (response.status !== 401 || ['/auth/login', '/auth/me', '/auth/session/migrate'].includes(path)) return;
   window.dispatchEvent(new Event('courserecom:session-expired'));
 }
 
@@ -237,15 +236,10 @@ function ToastItem({ toast, onDismiss }) {
 }
 
 async function apiRequest(path, options = {}) {
-  const token = localStorage.getItem('courseRecomToken');
   const headers = new Headers(options.headers || {});
 
   if (!headers.has('Content-Type') && !(options.body instanceof FormData)) {
     headers.set('Content-Type', 'application/json');
-  }
-
-  if (token) {
-    headers.set('Authorization', 'Bearer ' + token);
   }
 
   const { suppressLoader = false, ...requestOptions } = options;
@@ -253,9 +247,10 @@ async function apiRequest(path, options = {}) {
   try {
     const response = await fetch(`${API_BASE}${path}`, {
       ...requestOptions,
+      credentials: 'same-origin',
       headers,
     });
-    expireSessionOnUnauthorized(response, token);
+    expireSessionOnUnauthorized(response, path);
 
     const contentType = response.headers.get('content-type') || '';
     const responseText = response.status === 204 ? '' : await response.text();
@@ -590,14 +585,13 @@ function App() {
   const [officialKrsPreviewPlanId, setOfficialKrsPreviewPlanId] = useState(null);
   const [officialKrsPreviewBusy, setOfficialKrsPreviewBusy] = useState(false);
   const previewOfficialKrs = useCallback(async (planId) => {
-    const token = localStorage.getItem('courseRecomToken');
     setOfficialKrsPreviewBusy(true);
     window.dispatchEvent(new Event('courserecom:request-start'));
     try {
       const response = await fetch(`${API_BASE}/mahasiswa/rencana-studi/${planId}/pdf-resmi`, {
-        headers: token ? { Authorization: 'Bearer ' + token } : {},
+        credentials: 'same-origin',
       });
-      expireSessionOnUnauthorized(response, token);
+      expireSessionOnUnauthorized(response);
       if (!response.ok) throw new Error('PDF resmi belum tersedia atau KRS belum disetujui.');
       const contentType = response.headers.get('content-type') || '';
       if (!contentType.includes('application/pdf')) {
@@ -857,19 +851,35 @@ function App() {
   }, [hasPendingStudentPlan, pushToast, recommendationResult.target_semester, user]);
 
   useEffect(() => {
-    const token = localStorage.getItem('courseRecomToken');
-    if (!token) return;
-
+    let cancelled = false;
     const restoreSession = async () => {
       try {
-        const me = await apiRequest('/auth/me');
+        const legacyToken = localStorage.getItem('courseRecomToken');
+        let me;
+        if (legacyToken) {
+          const migration = await fetch(`${API_BASE}/auth/session/migrate`, {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { Authorization: `Bearer ${legacyToken}` },
+          });
+          localStorage.removeItem('courseRecomToken');
+          if (migration.status === 401) return;
+          if (!migration.ok) throw new Error('Sesi lama tidak dapat dipindahkan. Silakan masuk kembali.');
+          me = await apiRequest('/auth/me');
+        } else {
+          const response = await fetch(`${API_BASE}/auth/me`, { credentials: 'same-origin' });
+          if (response.status === 401) return;
+          if (!response.ok) throw new Error('Sesi sebelumnya tidak dapat dipulihkan.');
+          me = await response.json();
+        }
+        if (cancelled) return;
         if (me.role === 'mahasiswa') {
           try {
             const savedDraft = localStorage.getItem(`courseRecomDraft:${me.nim}`);
             const parsed = savedDraft ? JSON.parse(savedDraft) : null;
             setDraftCourses(
               parsed && parsed.semester === (me.semester ?? null) && Array.isArray(parsed.courses)
-                ? parsed.courses                : [],
+                ? parsed.courses : [],
             );
           } catch {
             setDraftCourses([]);
@@ -879,15 +889,13 @@ function App() {
         }
         setUser(me);
       } catch (error) {
-        const sessionExpired = !localStorage.getItem('courseRecomToken');
         localStorage.removeItem('courseRecomToken');
-        setLoginError(sessionExpired
-          ? 'Sesi telah berakhir. Silakan masuk kembali.'
-          : error.message || 'Sesi sebelumnya tidak dapat dipulihkan. Silakan masuk kembali.');
+        if (!cancelled) setLoginError(error.message || 'Sesi sebelumnya tidak dapat dipulihkan. Silakan masuk kembali.');
       }
     };
 
     restoreSession();
+    return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {
@@ -1042,11 +1050,10 @@ function App() {
     event.preventDefault();
     setLoading(true);
     setLoginError('');
-    let sessionStarted = false;
-
     try {
-      const tokenResponse = await apiRequest('/auth/login', {
+      await apiRequest('/auth/login', {
         method: 'POST',
+        headers: { 'X-Auth-Mode': 'cookie' },
         body: JSON.stringify({
           username: form.username,
           password: form.password,
@@ -1054,8 +1061,6 @@ function App() {
         }),
       });
 
-      localStorage.setItem('courseRecomToken', tokenResponse.access_token);
-      sessionStarted = true;
       const me = await apiRequest('/auth/me');
       setUser(me);
       setProfile(null);
@@ -1067,11 +1072,8 @@ function App() {
       setKhsPreview(null);
       setView('dashboard');
     } catch (error) {
-      const sessionExpired = sessionStarted && !localStorage.getItem('courseRecomToken');
       localStorage.removeItem('courseRecomToken');
-      setLoginError(sessionExpired
-        ? 'Sesi telah berakhir. Silakan masuk kembali.'
-        : error.message || 'NIM atau password tidak valid.');
+      setLoginError(error.message || 'NIM atau password tidak valid.');
     } finally {
       setLoading(false);
     }
@@ -1108,9 +1110,6 @@ function App() {
           new_password: passwordDraft.new_password || null,
         }),
       });
-      if (updated.access_token) {
-        localStorage.setItem('courseRecomToken', updated.access_token);
-      }
       const updatedUser = { ...updated };
       delete updatedUser.access_token;
       setUser(updatedUser);
@@ -1545,13 +1544,12 @@ function App() {
     };
     const selected = exports[kind];
     if (!selected || user?.role !== 'admin') return;
-    const token = localStorage.getItem('courseRecomToken');
     setExportBusy(kind);
     try {
       const response = await fetch(`${API_BASE}${selected.endpoint}`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        credentials: 'same-origin',
       });
-      expireSessionOnUnauthorized(response, token);
+      expireSessionOnUnauthorized(response);
       if (!response.ok) {
         let detail = 'Ekspor data gagal.';
         try {
@@ -1659,13 +1657,12 @@ function App() {
 
   const downloadClassImportTemplate = async () => {
     if (user?.role !== 'admin') return;
-    const token = localStorage.getItem('courseRecomToken');
     setClassImportBusy(true);
     try {
       const response = await fetch(`${API_BASE}/admin/classes/template`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        credentials: 'same-origin',
       });
-      expireSessionOnUnauthorized(response, token);
+      expireSessionOnUnauthorized(response);
       if (!response.ok) throw new Error('Template impor kelas tidak dapat diunduh.');
       const blob = await response.blob();
       const url = URL.createObjectURL(blob);
@@ -1689,17 +1686,16 @@ function App() {
     const formElement = event.currentTarget;
     const formData = new FormData();
     formData.append('file', classImportFile);
-    const token = localStorage.getItem('courseRecomToken');
     setClassImportBusy(true);
     setClassImportResult(null);
     setClassImportErrors([]);
     try {
       const response = await fetch(`${API_BASE}/admin/classes/import`, {
         method: 'POST',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        credentials: 'same-origin',
         body: formData,
       });
-      expireSessionOnUnauthorized(response, token);
+      expireSessionOnUnauthorized(response);
       let result = {};
       try {
         result = await response.json();

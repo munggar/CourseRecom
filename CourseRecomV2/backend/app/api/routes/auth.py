@@ -2,13 +2,13 @@ import re
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.deps import authenticate_user, create_access_token, get_current_user, get_db, get_password_hash, verify_password
+from app.deps import AUTH_COOKIE_NAME, authenticate_user, clear_session_cookie, create_access_token, get_current_user, get_db, get_password_hash, set_session_cookie, verify_password
 from app.models import SystemSetting, User
 from app.schemas import AccountProfileResponse, AccountProfileUpdate, PasswordChange, StudentRegistration, TokenResponse, UserLogin, UserOut
 from app.services.validation import get_sks_quota
@@ -85,7 +85,7 @@ def register_student(payload: StudentRegistration, db: Session = Depends(get_db)
 
 
 @router.post('/auth/login', response_model=TokenResponse)
-def login(payload: UserLogin, db: Session = Depends(get_db)):
+def login(payload: UserLogin, request: Request, http_response: Response, db: Session = Depends(get_db)):
     login_name = payload.username.strip()
     user = db.query(User).filter(
         (User.nim == login_name)
@@ -108,9 +108,27 @@ def login(payload: UserLogin, db: Session = Depends(get_db)):
             detail='Peran yang dipilih tidak sesuai dengan akun.',
         )
     token = create_access_token(user.nim, user.role, user.token_version)
-    write_audit(db, user, 'login_success', 'user', user.id, None, {'role': user.role})
+    cookie_mode = request.headers.get('x-auth-mode', '').casefold() == 'cookie'
+    if cookie_mode:
+        set_session_cookie(http_response, token)
+    write_audit(db, user, 'login_success', 'user', user.id, None, {'role': user.role, 'auth_mode': 'cookie' if cookie_mode else 'bearer'})
     db.commit()
-    return {'access_token': token, 'token_type': 'bearer'}
+    return {
+        'access_token': None if cookie_mode else token,
+        'token_type': 'cookie' if cookie_mode else 'bearer',
+    }
+
+
+@router.post('/auth/session/migrate', status_code=status.HTTP_204_NO_CONTENT)
+def migrate_legacy_session(
+    http_response: Response,
+    current_user: User = Depends(get_current_user),
+):
+    """Exchange a previously stored Bearer token for an HttpOnly browser cookie."""
+    token = create_access_token(current_user.nim, current_user.role, current_user.token_version)
+    set_session_cookie(http_response, token)
+    http_response.status_code = status.HTTP_204_NO_CONTENT
+    return http_response
 
 
 @router.get('/auth/me', response_model=UserOut)
@@ -126,6 +144,8 @@ def account_profile(current_user: User = Depends(get_current_user)):
 @router.put('/auth/profile', response_model=AccountProfileResponse)
 def update_account_profile(
     payload: AccountProfileUpdate,
+    request: Request,
+    http_response: Response,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -171,17 +191,28 @@ def update_account_profile(
     write_audit(db, current_user, 'profile_updated', 'user', current_user.id, None, {'password_changed': bool(payload.new_password)})
     db.commit()
     db.refresh(current_user)
-    response = UserOut.model_validate(current_user).model_dump()
+    response_data = UserOut.model_validate(current_user).model_dump()
     if identity_changed or password_changed:
-        response['access_token'] = create_access_token(
+        renewed_token = create_access_token(
             current_user.nim,
             current_user.role,
             current_user.token_version,
         )
-    return response
+        if request.cookies.get(AUTH_COOKIE_NAME) or request.headers.get('x-auth-mode', '').casefold() == 'cookie':
+            set_session_cookie(http_response, renewed_token)
+        else:
+            response_data['access_token'] = renewed_token
+    return response_data
 
 
 @router.post('/auth/logout', status_code=status.HTTP_204_NO_CONTENT)
-def logout(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+def logout(
+    http_response: Response,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     current_user.token_version += 1
     db.commit()
+    clear_session_cookie(http_response)
+    http_response.status_code = status.HTTP_204_NO_CONTENT
+    return http_response
