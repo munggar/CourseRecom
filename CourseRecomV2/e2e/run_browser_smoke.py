@@ -12,9 +12,9 @@ from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from playwright.sync_api import sync_playwright
 
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
-BACKEND_DIR = REPO_ROOT / 'backend'
-FRONTEND_DIR = REPO_ROOT / 'frontend'
+PROJECT_DIR = Path(__file__).resolve().parents[1]
+BACKEND_DIR = PROJECT_DIR / 'backend'
+FRONTEND_DIR = PROJECT_DIR / 'frontend'
 BACKEND_URL = 'http://127.0.0.1:8000'
 FRONTEND_URL = 'http://127.0.0.1:5173'
 
