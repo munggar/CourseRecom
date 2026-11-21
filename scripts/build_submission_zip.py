@@ -10,7 +10,7 @@ import zipfile
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_OUTPUT = REPO_ROOT / "out" / "CourseRecom-submission.zip"
+DEFAULT_OUTPUT = REPO_ROOT.parent / "CourseRecom-submission.zip"
 
 EXCLUDED_DIRS = {
     ".git",
@@ -60,7 +60,7 @@ def should_exclude(path: Path, relative: Path) -> bool:
 def build_archive(output: Path) -> tuple[int, int]:
     output = output.resolve()
     output.parent.mkdir(parents=True, exist_ok=True)
-    if output == REPO_ROOT or REPO_ROOT not in output.parents:
+    if output == REPO_ROOT or REPO_ROOT in output.parents:
         raise ValueError("Output archive must be written outside the source tree.")
 
     file_count = 0
