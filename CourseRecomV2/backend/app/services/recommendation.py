@@ -416,8 +416,9 @@ def _peer_course_scores(
             User.is_active.is_(True),
         )
     )
-    if student.program_study:
-        peer_query = peer_query.filter(User.program_study == student.program_study)
+    student_program = getattr(student, 'program_study', None)
+    if student_program:
+        peer_query = peer_query.filter(User.program_study == student_program)
 
     history_columns = load_only(
         StudentRecord.id,
