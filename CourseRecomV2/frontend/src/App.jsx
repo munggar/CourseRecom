@@ -3148,7 +3148,8 @@ function App() {
             <article><span>03</span><strong>Skor rekomendasi</strong><p>Sinyal collaborative filtering digabungkan dengan minat, nilai prasyarat/IPK, dan kesesuaian kurikulum.</p></article>
             <article><span>04</span><strong>Validasi akademik</strong><p>Hasil diperiksa kembali terhadap prasyarat, mata kuliah yang sudah lulus, dan batas SKS sebelum ditampilkan.</p></article>
           </div>
-          <p className="ml-method-note">Jika data mahasiswa pembanding belum mencukupi, sistem menggunakan content-based fallback dan menandai aspek yang belum memiliki bukti. Skor kecocokan bukan probabilitas kelulusan.</p>
+          <p className="ml-method-note">Kemiripan collaborative memakai 0,8 × Jaccard histori mata kuliah + 0,2 × kesamaan nilai pada mata kuliah yang sama. Sistem memprioritaskan peer aktif dari program studi yang sama, lalu menggunakan hingga 20 peer dengan skor tertinggi.</p>
+          <p className="ml-method-note">Bobot default faktor adalah Similar Students 30%, Academic History 25%, Interest 20%, Curriculum 15%, dan Course Pattern 10% (dapat dikonfigurasi). Jika bukti peer belum cukup, sistem memakai content-based fallback. Skor kecocokan adalah sinyal pendukung, bukan probabilitas kelulusan atau jaminan nilai.</p>
           <h3>Manfaat untuk pengguna</h3>
           <ul>
             <li>Mahasiswa menerima rekomendasi yang mempertimbangkan riwayat akademik dan minat.</li>
