@@ -162,8 +162,10 @@ def test_student_can_submit_krs_and_receive_official_pdf_after_advisor_approval(
         try:
             recommendations = client.get('/api/mahasiswa/rekomendasi', headers=student_headers)
             assert recommendations.status_code == 200, recommendations.text
+            recommendation_data = recommendations.json()
+            assert recommendation_data['status'] == 'ready'
             mandatory = next(
-                item for item in recommendations.json()
+                item for item in recommendation_data['mandatory_courses']
                 if item['code'] == mandatory_code
             )
             assert mandatory['mandatory'] is True
