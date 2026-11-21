@@ -1,6 +1,6 @@
 from datetime import timedelta
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, Response, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
 from passlib.context import CryptContext
@@ -14,6 +14,30 @@ from app.services.time_utils import utc_now
 
 pwd_context = CryptContext(schemes=['bcrypt'], deprecated='auto')
 security = HTTPBearer(auto_error=False)
+AUTH_COOKIE_NAME = 'course_recom_session'
+AUTH_SESSION_MAX_AGE = 8 * 60 * 60
+
+
+def set_session_cookie(response: Response, token: str) -> None:
+    response.set_cookie(
+        key=AUTH_COOKIE_NAME,
+        value=token,
+        max_age=AUTH_SESSION_MAX_AGE,
+        httponly=True,
+        secure=settings.environment.casefold() in {'prod', 'production'},
+        samesite='lax',
+        path='/',
+    )
+
+
+def clear_session_cookie(response: Response) -> None:
+    response.delete_cookie(
+        key=AUTH_COOKIE_NAME,
+        path='/',
+        httponly=True,
+        secure=settings.environment.casefold() in {'prod', 'production'},
+        samesite='lax',
+    )
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
@@ -65,12 +89,28 @@ def get_db():
 
 
 def get_current_user(
+    request: Request,
     credentials: HTTPAuthorizationCredentials | None = Depends(security),
     db: Session = Depends(get_db),
 ):
-    if credentials is None or not credentials.credentials:
+    cookie_token = request.cookies.get(AUTH_COOKIE_NAME)
+    token = credentials.credentials if credentials and credentials.credentials else cookie_token
+    if not token:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Not authenticated')
-    token = credentials.credentials
+
+    # Cookie-authenticated unsafe requests must originate from the configured
+    # frontend/API origin. Bearer clients remain compatible and bypass CSRF checks.
+    if not credentials and cookie_token and request.method.upper() not in {'GET', 'HEAD', 'OPTIONS'}:
+        origin = (request.headers.get('origin') or '').rstrip('/')
+        allowed_origins = {settings.frontend_url.rstrip('/')}
+        render_origin = __import__('os').environ.get('RENDER_EXTERNAL_URL', '').rstrip('/')
+        if render_origin:
+            allowed_origins.add(render_origin)
+        if not origin or origin not in allowed_origins:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail='Origin tidak diizinkan untuk autentikasi berbasis cookie.',
+            )
     try:
         payload = jwt.decode(token, settings.jwt_secret, algorithms=['HS256'])
     except JWTError as exc:
