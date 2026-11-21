@@ -2896,7 +2896,7 @@ function App() {
                   </div>
                   <p className="ml-course-explanation">
                     <Sparkles size={17} aria-hidden="true" />
-                    <span><strong>Dipilih oleh model Machine Learning CourseRecom.</strong> {item.recommendation_explanation || 'Skor menggabungkan riwayat akademik, kecocokan minat yang tersedia, prasyarat, dan kurikulum.'} Skor ini menunjukkan kecocokan rekomendasi, bukan probabilitas kelulusan.</span>
+                    <span><strong>Direkomendasikan oleh mesin rekomendasi hybrid CourseRecom.</strong> {item.recommendation_explanation || 'Skor menggabungkan riwayat akademik, kecocokan minat yang tersedia, prasyarat, dan kurikulum.'} Skor ini menunjukkan kecocokan rekomendasi, bukan probabilitas kelulusan.</span>
                   </p>
                   {item.description && <p>{item.description}</p>}
                   {item.prerequisite_text && (
@@ -3137,7 +3137,7 @@ function App() {
       return (
         <div className="card">
           <div className="ml-about-hero">
-            <span className="ml-brand-badge"><BrainCircuit size={16} /> POWERED BY MACHINE LEARNING</span>
+            <span className="ml-brand-badge"><BrainCircuit size={16} /> HYBRID RECOMMENDATION ENGINE</span>
             <h2>CourseRecom — Rekomendasi Mata Kuliah Cerdas</h2>
             <p>CourseRecom menggunakan pendekatan hybrid <strong>weighted nearest-neighbor collaborative filtering</strong> dan <strong>content-based recommendation</strong> untuk membantu mahasiswa menyusun pilihan studi berdasarkan data akademiknya.</p>
           </div>
@@ -3148,7 +3148,8 @@ function App() {
             <article><span>03</span><strong>Skor rekomendasi</strong><p>Sinyal collaborative filtering digabungkan dengan minat, nilai prasyarat/IPK, dan kesesuaian kurikulum.</p></article>
             <article><span>04</span><strong>Validasi akademik</strong><p>Hasil diperiksa kembali terhadap prasyarat, mata kuliah yang sudah lulus, dan batas SKS sebelum ditampilkan.</p></article>
           </div>
-          <p className="ml-method-note">Jika data mahasiswa pembanding belum mencukupi, sistem menggunakan content-based fallback dan menandai aspek yang belum memiliki bukti. Skor kecocokan bukan probabilitas kelulusan.</p>
+          <p className="ml-method-note">Kemiripan collaborative memakai 0,8 × Jaccard histori mata kuliah + 0,2 × kesamaan nilai pada mata kuliah yang sama. Sistem memprioritaskan peer aktif dari program studi yang sama, lalu menggunakan hingga 20 peer dengan skor tertinggi.</p>
+          <p className="ml-method-note">Bobot default faktor adalah Similar Students 30%, Academic History 25%, Interest 20%, Curriculum 15%, dan Course Pattern 10% (dapat dikonfigurasi). Jika bukti peer belum cukup, sistem memakai content-based fallback. Skor kecocokan adalah sinyal pendukung, bukan probabilitas kelulusan atau jaminan nilai.</p>
           <h3>Manfaat untuk pengguna</h3>
           <ul>
             <li>Mahasiswa menerima rekomendasi yang mempertimbangkan riwayat akademik dan minat.</li>
