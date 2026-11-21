@@ -80,3 +80,39 @@ jobs:
         run: python -m playwright install --with-deps chromium
       - name: Run browser E2E smoke journey
         run: python CourseRecomV2/e2e/run_browser_smoke.py
+
+  submission-package:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Build and inspect clean submission archive
+        run: |
+          python -m py_compile scripts/build_submission_zip.py
+          python scripts/build_submission_zip.py --output "$RUNNER_TEMP/CourseRecom-submission.zip"
+          OUTPUT_ZIP="$RUNNER_TEMP/CourseRecom-submission.zip" python - <<'PY'
+          import os
+          import zipfile
+          from pathlib import Path, PurePosixPath
+
+          archive = Path(os.environ["OUTPUT_ZIP"])
+          with zipfile.ZipFile(archive) as package:
+              names = package.namelist()
+              assert names, "Submission archive is empty."
+              forbidden_dirs = {".git", ".venv", "venv", "node_modules", "__pycache__"}
+              secret_files = [
+                  part for name in names
+                  for part in PurePosixPath(name).parts
+                  if part == ".env" or (
+                      part.startswith(".env.")
+                      and not part.endswith((".example", ".sample"))
+                  )
+              ]
+              assert not any(forbidden_dirs.intersection(PurePosixPath(name).parts) for name in names), "Archive includes excluded directories."
+              assert not secret_files, f"Archive includes environment files: {secret_files}"
+          print(f"Validated {len(names)} packaged source files.")
+          PY
