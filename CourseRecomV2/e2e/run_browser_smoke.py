@@ -39,10 +39,10 @@ def wait_for_url(url: str, process: subprocess.Popen, timeout_seconds: int, log_
     raise TimeoutError(f'Timed out waiting for {url}: {last_error}\n{log_tail}')
 
 
-def login(page, role_label: str, username: str) -> None:
+def login(page, role_label: str, username: str, password: str = 'password123') -> None:
     page.get_by_role('radio', name=role_label).click()
     page.get_by_label('Username').fill(username)
-    page.get_by_label('Password').fill('password123')
+    page.get_by_label('Password').fill(password)
     page.get_by_role('button', name='Masuk', exact=True).click()
     try:
         page.locator('.topbar-label').wait_for(state='visible', timeout=20000)
@@ -188,7 +188,7 @@ def run_browser_smoke() -> None:
                     page.get_by_text('Pendaftaran mahasiswa berhasil', exact=False).wait_for(state='visible', timeout=15000)
 
                     # Login as the newly registered student and open KHS upload screen.
-                    login(page, 'Mahasiswa', student_nim)
+                    login(page, 'Mahasiswa', student_nim, 'secure-student-password-123')
                     assert page.locator('.topbar-label').inner_text() == 'Dashboard Mahasiswa'
                     page.get_by_role('button', name='Upload KHS').click()
                     page.get_by_role('heading', name='Unggah KHS Lengkap').wait_for(
