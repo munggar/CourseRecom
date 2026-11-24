@@ -23,7 +23,7 @@ class StudentRegistration(BaseModel):
     @classmethod
     def validate_angkatan(cls, value: str) -> str:
         value = value.strip()
-        if not re.fullmatch(r'\\d{4}', value):
+        if not re.fullmatch(r'\d{4}', value):
             raise ValueError('Angkatan harus berupa 4 digit angka.')
         return value
 
