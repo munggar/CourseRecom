@@ -853,7 +853,7 @@ function App() {
         }),
       });
 
-      setForm({ username: registrationForm.nim.trim(), password: '' });
+      setForm({ username: registrationForm.username.trim() || registrationForm.nim.trim(), password: '' });
       setSelectedRole('mahasiswa');
       setRegistrationForm({
         nim: '',
