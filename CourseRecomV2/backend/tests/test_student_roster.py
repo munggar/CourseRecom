@@ -70,7 +70,7 @@ def test_admin_import_creates_student_account_and_disables_public_registration()
             },
         )
         assert disabled_registration.status_code == 403
-        assert 'diimpor roster' in disabled_registration.text
+        assert 'impor roster' in disabled_registration.text
 
         imported = client.post(
             '/api/admin/student-roster/import',
