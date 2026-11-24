@@ -1,72 +1,93 @@
-# Impor data dan pembuatan akun mahasiswa CourseRecom
+# Pendaftaran manual dan impor akun mahasiswa CourseRecom
 
-## Tujuan dan batasan
+## Tujuan
 
-Akun mahasiswa dibuat oleh Admin Prodi melalui impor daftar mahasiswa yang bersumber dari data resmi fakultas/program studi. Tidak ada pendaftaran mandiri mahasiswa dan tidak ada kode pendaftaran/undangan. Impor hanya dilakukan oleh akun dengan peran Admin.
+CourseRecom mendukung dua jalur pembuatan akun mahasiswa:
 
-Data demo dan data sintetis pada pengujian CI hanya berada di database sementara dan tidak boleh dipakai sebagai data mahasiswa nyata.
+1. **Pendaftaran manual oleh mahasiswa** dari halaman login. Mahasiswa mengisi identitas akademik dan membuat password sendiri. Tidak ada field atau kode pendaftaran resmi.
+2. **Impor data oleh Admin Prodi** menggunakan Excel atau CSV. Sistem langsung membuat akun untuk NIM yang belum memiliki akun. Untuk mahasiswa yang sudah mendaftar manual, sistem mencocokkan data lalu menautkan akun yang sudah ada ke roster.
 
-## Format file roster
+Kedua jalur tersebut menggunakan akun mahasiswa yang sama. Tidak boleh ada akun ganda untuk NIM yang sama.
 
-Admin masuk ke CourseRecom → **Impor & Akun Mahasiswa**, lalu mengunduh template Excel. Format yang diterima adalah Excel \`.xlsx\` atau CSV UTF-8, maksimum 2 MB dan 2.000 baris per unggahan.
+## Pendaftaran manual mahasiswa
+
+1. Buka aplikasi CourseRecom, pilih **Daftar akun mahasiswa** pada halaman login.
+2. Isi NIM, nama lengkap, username (opsional), program studi, bidang minat, angkatan, password, dan konfirmasi password.
+3. Field kode pendaftaran tidak digunakan dan tidak diminta.
+4. Angkatan harus berupa empat digit angka serta tidak boleh melebihi tahun awal pada tahun ajaran aktif.
+5. Sistem memvalidasi program studi dan bidang minat, memastikan NIM/username belum digunakan, lalu membuat akun dengan peran `mahasiswa`.
+6. Setelah berhasil, masuk menggunakan NIM atau username dan password yang dibuat.
+7. Pastikan data identitas sesuai data akademik kampus. Jika ada kesalahan identitas, hubungi Admin Prodi untuk pemeriksaan dan penyesuaian data akademik.
+
+Pendaftaran mandiri tidak membuat akun dosen PA atau admin. Role akun ditetapkan oleh server menjadi `mahasiswa`, bukan dari input pengguna.
+
+## Format file impor Admin
+
+Admin dapat mengunduh **Template Excel** dari menu Admin Prodi → **Impor & Akun Mahasiswa**. Sistem menerima file `.xlsx` atau `.csv` UTF-8, maksimal 2 MB dan 2.000 baris per unggahan.
 
 Kolom wajib:
 
 | Kolom | Aturan |
 |---|---|
-| NIM | Harus sama persis dengan data akademik kampus; pada Excel, atur kolom sebagai teks agar angka nol di depan tidak hilang |
+| NIM | NIM resmi kampus. Atur sebagai teks di Excel agar angka nol di depan tidak hilang |
 | Nama Lengkap | Nama resmi sesuai data akademik |
 | Program Studi | Salah satu program studi FTII yang dikenali CourseRecom |
 | Angkatan | Empat digit tahun masuk dan tidak melebihi awal tahun ajaran aktif |
 
-NIM ganda, prodi tak dikenal, angkatan tidak valid, atau konflik dengan identitas akun yang sudah ada akan ditolak. Impor berlangsung dalam satu transaksi: jika ada satu data bermasalah, seluruh batch dibatalkan. Data yang sudah memiliki akun akan ditautkan/diakui sebagai akun terdaftar dan password yang sudah ada tidak diubah.
+Sistem memvalidasi NIM duplikat dalam file, nama, program studi, dan angkatan. Konflik identitas dengan akun yang sudah ada ditolak agar data akun tidak ditimpa diam-diam. Impor berjalan dalam satu transaksi; jika satu baris gagal, seluruh batch dibatalkan.
 
-## Alur Admin
+## Alur Admin Prodi
 
-1. Pastikan file roster diperoleh dari sumber resmi fakultas/prodi dan penggunaannya untuk CourseRecom telah diizinkan.
+1. Dapatkan file mahasiswa dari sumber resmi fakultas/program studi dan pastikan penggunaannya untuk CourseRecom telah diizinkan.
 2. Masuk sebagai Admin Prodi → **Impor & Akun Mahasiswa**.
-3. Unduh template Excel, isi NIM, nama lengkap, program studi, dan angkatan, kemudian periksa kembali setiap baris.
-4. Unggah file \`.xlsx\` atau \`.csv\` dan konfirmasi proses impor.
-5. Untuk setiap NIM baru, sistem membuat akun dengan peran \`mahasiswa\`, username awal menggunakan NIM, serta password awal acak. Akun langsung aktif dan ditautkan ke roster.
-6. Setelah impor berhasil, unduh file kredensial awal dari halaman admin. File tersebut memuat NIM, nama, username, dan password awal untuk akun yang baru dibuat pada batch itu.
-7. Simpan file kredensial di perangkat admin yang terlindungi dan distribusikan setiap kredensial secara pribadi kepada mahasiswa yang bersangkutan. Jangan kirim seluruh file ke grup publik atau mengunggahnya ke repositori.
-8. Minta mahasiswa mengganti password awal setelah pertama kali masuk. Password awal tidak disimpan dalam bentuk teks biasa di database dan tidak dapat diambil kembali setelah respons impor/halaman admin ditutup. Jika file kredensial hilang, admin perlu mengikuti prosedur reset password yang tersedia; impor ulang tidak akan mengubah password akun yang sudah ada.
+3. Unduh template Excel, isi NIM, Nama Lengkap, Program Studi, dan Angkatan, kemudian periksa seluruh baris.
+4. Unggah file `.xlsx` atau `.csv` dan pilih **Validasi & buat akun mahasiswa**.
+5. Untuk NIM yang belum memiliki akun, sistem membuat akun dengan peran `mahasiswa`, username awal berupa NIM (atau alternatif bila username tersebut sudah dipakai), serta password awal acak.
+6. Untuk NIM yang sudah memiliki akun dari pendaftaran manual, sistem memeriksa kesesuaian nama, program studi, dan angkatan. Jika cocok, roster ditautkan ke akun yang sudah ada. Password, username, dan data akademik akun yang sudah ada tidak dibuat ulang atau di-reset.
+7. Jika identitas tidak cocok atau NIM dipakai akun non-mahasiswa, sistem menolak seluruh batch dan meminta Admin memeriksa datanya.
+8. Setelah impor berhasil, Admin dapat mengunduh file kredensial awal yang hanya berisi akun baru yang dibuat oleh batch tersebut. Akun manual yang sudah ada tidak memiliki password baru untuk dibagikan.
+9. Simpan file kredensial di perangkat admin yang terlindungi. Bagikan hanya kredensial milik mahasiswa terkait melalui kanal pribadi kampus. Jangan kirim seluruh file ke grup publik atau mengunggahnya ke repositori.
 
-Jumlah akun yang berhasil dibuat, akun yang sudah tersedia, dan entri roster ditampilkan pada ringkasan halaman admin. Target minimal 100 akun dinilai dari akun yang sudah dibuat, bukan sekadar jumlah baris roster.
+Password awal akun yang dibuat Admin hanya dikembalikan pada respons impor dan disajikan tanpa cache. Password disimpan di database dalam bentuk hash. Impor ulang tidak menampilkan kembali password lama, tidak mereset password, dan tidak membuat akun duplikat.
 
-## Alur Mahasiswa
+## Jika mahasiswa daftar manual sebelum data diimpor
 
-1. Mahasiswa menerima username/NIM dan password awal secara pribadi dari Admin Prodi.
-2. Masuk ke CourseRecom menggunakan kredensial yang diberikan.
-3. Ganti password awal melalui pengaturan akun, lalu buka profil/minat untuk memeriksa bidang minat.
-4. Unggah KHS resmi yang lengkap, periksa hasil pembacaan KHS, dan konfirmasi hanya jika sesuai dokumen.
-5. Admin Prodi menetapkan Dosen PA. Tanpa Dosen PA dan KHS terkonfirmasi, mahasiswa belum dapat mengajukan KRS.
-6. Setelah Dosen PA ditetapkan, mahasiswa menggunakan rekomendasi sebagai bahan pertimbangan, menyusun kelas/jadwal, dan mengajukan KRS. Dosen PA meninjau dan menyetujui atau meminta revisi.
+Contoh alur:
 
-Endpoint pendaftaran mandiri \`/api/auth/register\` dinonaktifkan dan mengembalikan HTTP 403. Endpoint pembuatan kode undangan lama juga dinonaktifkan; proses impor Excel/CSV adalah satu-satunya jalur provisioning akun mahasiswa pada sistem ini.
+1. Mahasiswa mendaftar manual dengan NIM `2403045007` dan mengatur password sendiri.
+2. Admin kemudian mengimpor roster dengan NIM, nama, program studi, dan angkatan mahasiswa tersebut.
+3. CourseRecom menemukan akun berdasarkan NIM dan memeriksa kesesuaian nama, program studi, serta angkatan.
+4. Jika cocok, entri roster ditautkan ke akun tersebut. Jumlah akun baru yang dibuat tetap nol untuk baris itu, tidak ada file password baru, dan mahasiswa tetap masuk menggunakan password yang sebelumnya dibuat.
+5. Jika tidak cocok, batch impor ditolak agar Admin dapat memeriksa sumber datanya.
 
-## Penugasan Dosen PA dan kesiapan operasional
+## Target akun dan penugasan Dosen PA
 
-Setelah akun terbentuk, Admin harus menetapkan Dosen PA yang benar kepada setiap mahasiswa. Jangan mengasumsikan satu dosen membimbing semua 100 mahasiswa. Cocokkan pembagian dengan keputusan resmi prodi dan kapasitas bimbingan dosen. Dashboard CourseRecom menyediakan daftar mahasiswa untuk penetapan dosen PA.
+Dashboard roster menampilkan total entri, jumlah akun yang sudah dibuat/ditautkan, jumlah yang belum memiliki akun, dan ringkasan per program studi. Target 100 akun dinilai dari akun mahasiswa aktif yang sudah terhubung dengan roster, bukan sekadar jumlah baris dalam file.
 
-Sebelum uji coba produksi:
-- Konfirmasi seluruh baris roster terhadap sumber akademik resmi.
-- Siapkan akun Admin dan Dosen PA individual dengan password kuat; jangan membagikan akun demo.
-- Tetapkan Dosen PA kepada mahasiswa sesuai SK/daftar bimbingan.
+Setelah akun tersedia, Admin harus menetapkan Dosen PA sesuai keputusan resmi program studi. Cocokkan pembagian dengan daftar resmi dan kapasitas bimbingan masing-masing dosen.
+
+## Pengujian sebelum operasional
+
+- Uji pendaftaran manual dengan NIM baru, username default NIM, dan username khusus.
+- Uji NIM duplikat, username duplikat, password pendek, angkatan bukan empat digit, dan angkatan melebihi tahun ajaran aktif.
+- Uji impor Excel dan CSV dengan NIM yang belum memiliki akun.
+- Uji impor roster untuk akun yang sudah mendaftar manual dan cocokkan bahwa tidak ada akun kedua serta password tidak berubah.
+- Uji penolakan ketika nama, program studi, atau angkatan tidak sesuai dengan akun yang sudah ada.
+- Tetapkan Dosen PA sesuai SK/daftar bimbingan.
 - Verifikasi periode KRS, tahun ajaran aktif, kurikulum, prasyarat, jadwal, ruang, dosen pengampu, serta kapasitas kelas.
 - Minta mahasiswa mengunggah KHS masing-masing. Jangan memasukkan KHS milik orang lain.
-- Uji satu siklus KRS dengan mahasiswa dan Dosen PA yang bersedia sebelum pembukaan massal.
 - Pastikan backup database, pemantauan error, kebijakan retensi dokumen, dan saluran bantuan kampus sudah tersedia.
 
 ## Keamanan dan privasi
 
-- Endpoint template, impor roster, dan ringkasan roster hanya dapat digunakan Admin Prodi.
-- Password mahasiswa disimpan dalam bentuk hash; password awal acak hanya dikembalikan pada respons impor untuk ditampilkan ke Admin satu kali.
-- Audit log mencatat aktivitas impor dan jumlah akun yang dibuat tanpa menyimpan password.
-- File roster dan file kredensial berisi data pribadi. Terapkan minimisasi akses, distribusi pribadi, dan penghapusan sesuai kebijakan kampus.
-- Perubahan pada roster yang sudah terhubung ke akun tidak boleh menimpa identitas akun secara diam-diam; konflik harus ditinjau Admin.
-- Jangan mengirim file kredensial ke repositori, grup publik, atau pihak yang tidak berkepentingan.
+- Endpoint impor roster, ringkasan roster, dan template hanya dapat digunakan Admin Prodi.
+- Pendaftaran manual hanya dapat membuat role `mahasiswa`; mahasiswa tidak dapat menetapkan role dosen atau admin melalui payload.
+- Tidak ada kode pendaftaran/undangan yang diminta oleh halaman pendaftaran atau API registrasi.
+- Password mahasiswa disimpan dalam bentuk hash. Password awal akun baru hanya dikembalikan kepada Admin yang melakukan impor dan tidak disimpan dalam bentuk teks biasa.
+- Impor menggunakan transaksi dan menolak konflik identitas agar data akun tidak tertimpa tanpa pemeriksaan.
+- Audit log mencatat aktivitas pendaftaran/impor tanpa menyimpan password.
+- File roster dan file kredensial berisi data pribadi. Batasi akses, distribusikan secara pribadi, dan hapus salinan sesuai kebijakan kampus.
 
-## Yang bukan dilakukan sistem
+## Batasan integrasi
 
-CourseRecom tidak memverifikasi identitas melalui sistem SIAKAD/SSO kampus secara langsung dalam implementasi ini. Keabsahan roster bergantung pada sumber resmi yang diberikan Admin. Untuk integrasi identitas otomatis, diperlukan API/SSO resmi dan otorisasi dari UHAMKA.
+CourseRecom belum terhubung langsung ke SIAKAD/SSO UHAMKA. Pendaftaran manual memvalidasi format dan keunikan NIM, tetapi tidak melakukan verifikasi otomatis terhadap sistem akademik kampus. Admin perlu mencocokkan roster dengan sumber resmi fakultas/program studi. Integrasi identitas otomatis memerlukan API/SSO resmi dan otorisasi dari UHAMKA.
