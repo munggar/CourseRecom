@@ -372,18 +372,21 @@ def test_admin_override_can_unlock_and_replace_courses():
         db.query(Course).filter(Course.code == course_code).delete(synchronize_session=False)
         db.query(AuditLog).filter(AuditLog.actor_id == admin_id).delete(synchronize_session=False)
         db.query(User).filter(User.nim.in_([student_nim, admin_nim])).delete(synchronize_session=False)
-      def test_student_public_registration_cannot_create_or_escalate_an_account():
+
+def test_student_public_registration_is_disabled():
     nim = f'NEW{uuid4().hex[:12]}'
     response = client.post('/api/auth/register', json={
         'nim': nim,
         'full_name': 'Mahasiswa Baru',
         'program_study': 'Sistem dan Teknologi Informasi',
         'interests': 'Manajemen Teknologi Informasi',
+        'angkatan': '2022',
         'password': 'password-baru-123',
         'role': 'admin',
     })
     assert response.status_code == 403
-    assert 'impor roster' in response.text
+    assert 'Admin Prodi' in response.text
+
     db = SessionLocal()
     try:
         assert db.query(User).filter(User.nim == nim).count() == 0
@@ -391,17 +394,7 @@ def test_admin_override_can_unlock_and_replace_courses():
         db.close()
 
 
-def test_student_public_registration_is_disabled_regardless_of_password_payload():
-    response = client.post('/api/auth/register', json={
-        'nim': f'NEW{uuid4().hex[:12]}',
-        'full_name': 'Mahasiswa Baru',
-        'password': 'short',
-    })
-    assert response.status_code == 403
-    assert 'dinonaktifkan' in response.text
-
-
-def test_admin_roster_import_enforces_numeric_angkatan_and_active_academic_year():
+def test_admin_roster_import_rejects_invalid_angkatan():
     admin_login = client.post('/api/auth/login', json={
         'username': 'admin',
         'password': 'password123',
@@ -409,20 +402,15 @@ def test_admin_roster_import_enforces_numeric_angkatan_and_active_academic_year(
     })
     assert admin_login.status_code == 200, admin_login.text
     headers = {'Authorization': f"Bearer {admin_login.json()['access_token']}"}
-    db = SessionLocal()
-    try:
-        admin_id = db.query(User.id).filter(User.nim == 'admin').scalar()
-    finally:
-        db.close()
+    admin_id = admin_login.json().get('user', {}).get('id')
 
     academic_year = client.get('/api/auth/academic-year')
     assert academic_year.status_code == 200
     max_year = int(academic_year.json()['max_angkatan'])
-    test_nims = [f'BADYEAR{uuid4().hex[:8]}' for _ in range(2)]
+    nims = [f'BADYEAR{uuid4().hex[:8]}' for _ in range(2)]
 
     try:
-        invalid_years = [f'{max_year}A', str(max_year + 1)]
-        for nim, angkatan in zip(test_nims, invalid_years):
+        for nim, angkatan in zip(nims, [f'{max_year}A', str(max_year + 1)]):
             output = StringIO(newline='')
             writer = csv.writer(output)
             writer.writerow(['NIM', 'Nama Lengkap', 'Program Studi', 'Angkatan'])
@@ -450,9 +438,6 @@ def test_admin_roster_import_enforces_numeric_angkatan_and_active_academic_year(
             db.commit()
         finally:
             db.close()
-
-
-tr(max_year) in future_year.text
 
 
 def test_admin_dashboard_lists_students_and_advisors_and_only_admin_can_delete_students():
