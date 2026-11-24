@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 from io import BytesIO, StringIO
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
-from fastapi.responses import Response
+from fastapi.responses import JSONResponse, Response
 from openpyxl import Workbook as ExcelWorkbook, load_workbook
 from openpyxl.worksheet.datavalidation import DataValidation
 from openpyxl.styles import Alignment, Font, PatternFill
@@ -271,10 +271,16 @@ async def import_student_roster(
 
             if not user:
                 username = item['nim']
-                username_conflict = db.query(User).filter(User.username == username, User.nim != item['nim']).first()
+                username_conflict = db.query(User).filter(
+                    ((User.username == username) | (User.nim == username)),
+                    User.nim != item['nim'],
+                ).first()
                 if username_conflict:
                     username = f'mhs-{item["nim"]}'
-                    second_conflict = db.query(User).filter(User.username == username, User.nim != item['nim']).first()
+                    second_conflict = db.query(User).filter(
+                        ((User.username == username) | (User.nim == username)),
+                        User.nim != item['nim'],
+                    ).first()
                     if second_conflict:
                         raise HTTPException(status_code=409, detail=f'Username otomatis untuk NIM {item["nim"]} sudah digunakan. Perlu penyesuaian Admin.')
                 temporary_password = secrets.token_urlsafe(12)
@@ -373,17 +379,20 @@ async def import_student_roster(
         StudentRosterEntry.is_active.is_(True),
         StudentRosterEntry.registered_user_id.is_not(None),
     ).count()
-    return {
-        'imported': len(rows),
-        'created': created_roster,
-        'updated': updated_roster,
-        'created_accounts': created_accounts,
-        'already_registered': already_registered,
-        'total_active': active_count,
-        'registered': registered_count,
-        'waiting': active_count - registered_count,
-        'credentials': credentials,
-    }
+    return JSONResponse(
+        content={
+            'imported': len(rows),
+            'created': created_roster,
+            'updated': updated_roster,
+            'created_accounts': created_accounts,
+            'already_registered': already_registered,
+            'total_active': active_count,
+            'registered': registered_count,
+            'waiting': active_count - registered_count,
+            'credentials': credentials,
+        },
+        headers={'Cache-Control': 'no-store, private', 'Pragma': 'no-cache'},
+    )
 
 
 @router.post('/admin/student-roster/invitations.csv', status_code=410)
