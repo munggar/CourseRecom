@@ -192,8 +192,23 @@ function parallelScheduleConflict(courseEntries) {
 function App() {
   const [user, setUser] = useState(null);
   const [view, setView] = useState('dashboard');
+  const [authMode, setAuthMode] = useState('login');
   const [selectedRole, setSelectedRole] = useState('mahasiswa');
   const [form, setForm] = useState({ username: '', password: '' });
+  const [registrationForm, setRegistrationForm] = useState({
+    nim: '',
+    username: '',
+    full_name: '',
+    program_study: 'Sistem dan Teknologi Informasi',
+    interests: 'Manajemen Teknologi Informasi',
+    angkatan: '',
+    password: '',
+    passwordConfirmation: '',
+  });
+  const [academicYear, setAcademicYear] = useState({
+    academic_year: DEFAULT_ACADEMIC_YEAR,
+    max_angkatan: INITIAL_YEAR,
+  });
   const [profile, setProfile] = useState(null);
   const [programInterestCatalog, setProgramInterestCatalog] = useState(PROGRAM_INTERESTS);
   const [recommendationResult, setRecommendationResult] = useState(EMPTY_RECOMMENDATIONS);
@@ -418,6 +433,16 @@ function App() {
       .then((catalog) => {
         if (!active || !catalog || typeof catalog !== 'object') return;
         setProgramInterestCatalog(catalog);
+      })
+      .catch(() => {});
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    apiRequest('/auth/academic-year', { suppressLoader: true })
+      .then((result) => {
+        if (active && result && typeof result === 'object') setAcademicYear(result);
       })
       .catch(() => {});
     return () => { active = false; };
@@ -798,6 +823,52 @@ function App() {
     } catch (error) {
       localStorage.removeItem('courseRecomToken');
       setLoginError(error.message || 'NIM atau password tidak valid.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const registerStudent = async (event) => {
+    event.preventDefault();
+    setLoading(true);
+    setLoginError('');
+
+    if (registrationForm.password !== registrationForm.passwordConfirmation) {
+      setLoginError('Konfirmasi password tidak sama.');
+      setLoading(false);
+      return;
+    }
+
+    try {
+      await apiRequest('/auth/register', {
+        method: 'POST',
+        body: JSON.stringify({
+          nim: registrationForm.nim.trim(),
+          username: registrationForm.username.trim() || registrationForm.nim.trim(),
+          full_name: registrationForm.full_name.trim(),
+          program_study: registrationForm.program_study,
+          interests: registrationForm.interests,
+          angkatan: registrationForm.angkatan,
+          password: registrationForm.password,
+        }),
+      });
+
+      setForm({ username: registrationForm.nim.trim(), password: '' });
+      setSelectedRole('mahasiswa');
+      setRegistrationForm({
+        nim: '',
+        username: '',
+        full_name: '',
+        program_study: 'Sistem dan Teknologi Informasi',
+        interests: 'Manajemen Teknologi Informasi',
+        angkatan: '',
+        password: '',
+        passwordConfirmation: '',
+      });
+      setAuthMode('login');
+      pushToast('Pendaftaran berhasil. Silakan masuk menggunakan NIM/username dan password yang dibuat.', 'success');
+    } catch (error) {
+      setLoginError(error.message || 'Pendaftaran mahasiswa gagal.');
     } finally {
       setLoading(false);
     }
@@ -3990,31 +4061,180 @@ function App() {
             <p>Analisis kemiripan riwayat akademik, minat, nilai prasyarat, dan kurikulum untuk membantu menemukan rekomendasi mata kuliah yang lebih relevan.</p>
             <div className="login-ml-tags"><span>Academic History</span><span>Similar Students</span><span>Smart Recommendation</span></div>
           </div>
-
+          {authMode === 'register' ? (
+            <>
+              <h3>Daftar akun mahasiswa</h3>
+              <form className="form-grid" onSubmit={registerStudent}>
+                <label>
+                  <span className="muted">NIM</span>
+                  <input
+                    required
+                    minLength="2"
+                    maxLength="20"
+                    autoComplete="username"
+                    value={registrationForm.nim}
+                    onChange={(event) => setRegistrationForm({ ...registrationForm, nim: event.target.value })}
+                  />
+                </label>
+                <label>
+                  <span className="muted">Nama lengkap</span>
+                  <input
+                    required
+                    minLength="2"
+                    maxLength="120"
+                    autoComplete="name"
+                    value={registrationForm.full_name}
+                    onChange={(event) => setRegistrationForm({ ...registrationForm, full_name: event.target.value })}
+                  />
+                </label>
+                <label>
+                  <span className="muted">Username (opsional)</span>
+                  <input
+                    minLength="2"
+                    maxLength="120"
+                    autoComplete="username"
+                    value={registrationForm.username}
+                    placeholder="Kosongkan untuk menggunakan NIM"
+                    onChange={(event) => setRegistrationForm({ ...registrationForm, username: event.target.value })}
+                  />
+                </label>
+                <label>
+                  <span className="muted">Program studi</span>
+                  <select
+                    required
+                    value={registrationForm.program_study}
+                    onChange={(event) => {
+                      const program_study = event.target.value;
+                      const options = programInterestCatalog[program_study]?.options || [];
+                      setRegistrationForm({
+                        ...registrationForm,
+                        program_study,
+                        interests: options[0] || '',
+                      });
+                    }}
+                  >
+                    <option value="">Pilih program studi</option>
+                    {Object.keys(programInterestCatalog).map((program) => (
+                      <option key={program} value={program}>{program}</option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span className="muted">{programInterestCatalog[registrationForm.program_study]?.kind || 'Bidang minat'}</span>
+                  <select
+                    required
+                    value={registrationForm.interests}
+                    onChange={(event) => setRegistrationForm({ ...registrationForm, interests: event.target.value })}
+                  >
+                    {(programInterestCatalog[registrationForm.program_study]?.options || []).map((interest) => (
+                      <option key={interest} value={interest}>{interest}</option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span className="muted">Angkatan</span>
+                  <input
+                    required
+                    type="number"
+                    min="1900"
+                    max={academicYear.max_angkatan}
+                    step="1"
+                    inputMode="numeric"
+                    value={registrationForm.angkatan}
+                    onChange={(event) => setRegistrationForm({
+                      ...registrationForm,
+                      angkatan: event.target.value.replace(/\D/g, '').slice(0, 4),
+                    })}
+                  />
+                  <small className="muted">
+                    Masukkan 4 digit angka, maksimal {academicYear.max_angkatan} sesuai tahun ajaran {academicYear.academic_year}.
+                  </small>
+                </label>
+                <label>
+                  <span className="muted">Password (minimal 8 karakter)</span>
+                  <input
+                    required
+                    type="password"
+                    minLength="8"
+                    maxLength="72"
+                    autoComplete="new-password"
+                    value={registrationForm.password}
+                    onChange={(event) => setRegistrationForm({ ...registrationForm, password: event.target.value })}
+                  />
+                </label>
+                <label>
+                  <span className="muted">Konfirmasi password</span>
+                  <input
+                    required
+                    type="password"
+                    minLength="8"
+                    maxLength="72"
+                    autoComplete="new-password"
+                    value={registrationForm.passwordConfirmation}
+                    onChange={(event) => setRegistrationForm({ ...registrationForm, passwordConfirmation: event.target.value })}
+                  />
+                </label>
+                <button className="btn primary" type="submit" disabled={loading}>
+                  {loading ? 'Memproses...' : 'Daftar sebagai mahasiswa'}
+                </button>
+              </form>
+              <button
+                className="btn outline"
+                type="button"
+                style={{ marginTop: 12, width: '100%' }}
+                onClick={() => {
+                  setAuthMode('login');
+                  setLoginError('');
+                }}
+              >
+                Kembali ke masuk
+              </button>
+            </>
+          ) : (
             <>
               <form className="form-grid" onSubmit={login}>
-                    <div className="role-selector" role="radiogroup" aria-label="Pilih peran login">
-                      {[['mahasiswa', 'Mahasiswa'], ['dosen', 'Dosen PA'], ['admin', 'Admin Prodi']].map(([role, label]) => (
-                        <button key={role} type="button" role="radio" aria-checked={selectedRole === role} className={`role-option${selectedRole === role ? ' active' : ''}`} onClick={() => setSelectedRole(role)}>{label}</button>
-                      ))}
-                    </div>
-                    <strong className="login-role">Masuk sebagai {selectedRole === 'mahasiswa' ? 'Mahasiswa' : selectedRole === 'dosen' ? 'Dosen PA' : 'Admin Prodi'}</strong>
-                    <label>
+                <div className="role-selector" role="radiogroup" aria-label="Pilih peran login">
+                  {[['mahasiswa', 'Mahasiswa'], ['dosen', 'Dosen PA'], ['admin', 'Admin Prodi']].map(([role, label]) => (
+                    <button
+                      key={role}
+                      type="button"
+                      role="radio"
+                      aria-checked={selectedRole === role}
+                      className={`role-option${selectedRole === role ? ' active' : ''}`}
+                      onClick={() => setSelectedRole(role)}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                <strong className="login-role">
+                  Masuk sebagai {selectedRole === 'mahasiswa' ? 'Mahasiswa' : selectedRole === 'dosen' ? 'Dosen PA' : 'Admin Prodi'}
+                </strong>
+                <label>
                   <span className="muted">Username</span>
-                  <input value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} />
+                  <input value={form.username} onChange={(event) => setForm({ ...form, username: event.target.value })} />
                 </label>
                 <label>
                   <span className="muted">Password</span>
-                  <input type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
+                  <input type="password" value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} />
                 </label>
                 <button className="btn primary" type="submit" disabled={loading}>
                   {loading ? 'Memproses...' : 'Masuk'}
                 </button>
               </form>
-              <p className="notice" role="note" style={{ marginTop: 12 }}>
-                Akun mahasiswa dibuat oleh Admin Prodi melalui impor data Excel/CSV. Hubungi Admin Prodi untuk memperoleh username dan password awal.
-              </p>
+              <button
+                className="btn outline"
+                type="button"
+                style={{ marginTop: 12, width: '100%' }}
+                onClick={() => {
+                  setAuthMode('register');
+                  setLoginError('');
+                }}
+              >
+                Daftar akun mahasiswa
+              </button>
             </>
+          )}
           {!IS_PRODUCTION_ENVIRONMENT && (
             <div className="login-demo">
               <Info size={18} aria-hidden="true" />
