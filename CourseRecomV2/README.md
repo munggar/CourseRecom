@@ -73,7 +73,7 @@ Supabase Free saat ini mencantumkan batas 500 MB dan jeda setelah satu minggu ti
 - Dosen PA: `pa001` / `password123`
 - Admin Prodi: `admin` / `password123`
 
-Akun mahasiswa tidak dibuat melalui pendaftaran mandiri. Admin Prodi mengimpor data roster dari Excel `.xlsx` atau CSV UTF-8 melalui menu **Impor & Akun Mahasiswa**. Setiap NIM baru dibuatkan akun mahasiswa dengan username awal berupa NIM dan password awal acak. Setelah impor, Admin mengunduh file kredensial satu kali dan membagikan setiap akun secara pribadi kepada mahasiswa terkait. Password awal tidak disimpan dalam bentuk teks biasa dan impor ulang tidak mereset password akun yang sudah ada. Akun dosen PA dan admin tetap dikelola oleh administrator.
+Mahasiswa dapat membuat akun sendiri melalui halaman **Daftar akun mahasiswa** tanpa kode pendaftaran. Admin Prodi tetap dapat mengimpor roster Excel `.xlsx` atau CSV UTF-8 melalui menu **Impor & Akun Mahasiswa**. Untuk NIM yang belum memiliki akun, sistem membuat akun otomatis dengan username NIM dan password awal acak yang dapat diunduh Admin satu kali. Jika mahasiswa sudah mendaftar manual dan data NIM, nama, program studi, serta angkatannya cocok, proses impor hanya menautkan akun yang sudah ada—tidak membuat duplikat dan tidak mengganti password mahasiswa. Akun dosen PA dan admin tetap dikelola administrator.
 
 ## Alur KHS mahasiswa
 
@@ -114,7 +114,7 @@ Semua endpoint selain health dan login memerlukan token Bearer. Endpoint mahasis
 | Method | Path | Fungsi |
 |---|---|---|
 | `POST` | `/api/auth/login` | Login |
-| `POST` | `/api/auth/register` | Dinonaktifkan; mengembalikan HTTP 403 karena akun mahasiswa dibuat Admin melalui impor roster |
+| `POST` | `/api/auth/register` | Membuat akun mahasiswa secara manual tanpa kode pendaftaran |
 | `GET` | `/api/auth/me` | Pengguna aktif |
 | `GET` | `/api/admin/student-roster/template.xlsx` | Mengunduh template roster Excel (khusus Admin) |
 | `POST` | `/api/admin/student-roster/import` | Memvalidasi roster Excel/CSV dan membuat akun mahasiswa |
