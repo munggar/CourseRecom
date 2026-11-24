@@ -4,8 +4,8 @@ export const GUIDE_SECTIONS = [
     title: 'Masuk, navigasi, dan keamanan akun',
     intro: 'Mulai dari halaman login, gunakan peran yang sesuai dengan akun, lalu kenali menu yang tersedia sesuai kewenangan.',
     steps: [
-      'Pilih Mahasiswa, Dosen PA, atau Admin Prodi pada halaman masuk. Gunakan username/NIM dan password akun yang diberikan atau didaftarkan.',
-      'Mahasiswa dapat membuat akun dari halaman Daftar dengan mengisi NIM, nama, program studi, bidang minat, angkatan, dan password. Tahun angkatan dibatasi oleh tahun ajaran aktif.',
+      'Pilih Mahasiswa, Dosen PA, atau Admin Prodi pada halaman masuk. Gunakan username/NIM dan password akun yang diberikan Admin Prodi.',
+      'Akun mahasiswa dibuat oleh Admin Prodi melalui impor roster Excel/CSV. Admin membagikan username dan password awal secara pribadi; mahasiswa tidak mendaftar sendiri.',
       'Menu Dashboard menampilkan ringkasan sesuai peran. Sidebar di desktop atau menu hamburger di ponsel berpindah halaman; menu Panduan selalu tersedia.',
       'Buka Edit Profil untuk memperbarui nama, username, email, nomor telepon, dan password. Perubahan password meminta password saat ini.',
       'Gunakan Keluar untuk mengakhiri sesi. Jangan membagikan password atau membiarkan akun tetap terbuka di perangkat umum.',
