@@ -4016,11 +4016,6 @@ function App() {
                   {loading ? 'Memproses...' : 'Masuk'}
                 </button>
               </form>
-              <button className="btn outline" type="button" style={{ marginTop: 12, width: '100%' }} onClick={() => {
-                setAuthMode('register');
-                setLoginError('');
-                setAuthMessage('');
-              }}>Daftar akun mahasiswa</button>
             </>
           {!IS_PRODUCTION_ENVIRONMENT && (
             <div className="login-demo">
