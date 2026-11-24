@@ -192,10 +192,8 @@ function parallelScheduleConflict(courseEntries) {
 function App() {
   const [user, setUser] = useState(null);
   const [view, setView] = useState('dashboard');
-  const [authMode, setAuthMode] = useState('login');
   const [selectedRole, setSelectedRole] = useState('mahasiswa');
   const [form, setForm] = useState({ username: '', password: '' });
-  const [registrationForm, setRegistrationForm] = useState({ nim: '', username: '', full_name: '', program_study: 'Sistem dan Teknologi Informasi', interests: 'Manajemen Teknologi Informasi', angkatan: '', registration_code: '', password: '', passwordConfirmation: '' });
   const [profile, setProfile] = useState(null);
   const [programInterestCatalog, setProgramInterestCatalog] = useState(PROGRAM_INTERESTS);
   const [recommendationResult, setRecommendationResult] = useState(EMPTY_RECOMMENDATIONS);
@@ -278,6 +276,7 @@ function App() {
   const [studentRosterFile, setStudentRosterFile] = useState(null);
   const [studentRosterFileKey, setStudentRosterFileKey] = useState(0);
   const [studentRosterBusy, setStudentRosterBusy] = useState(false);
+  const [studentCredentials, setStudentCredentials] = useState([]);
   const [editingClassId, setEditingClassId] = useState(null);
   const [classForm, setClassForm] = useState({
     course_code: '', class_name: '', lecturer_id: '', lecturer_name: '', room: '', day: 'Senin',
@@ -303,11 +302,6 @@ function App() {
   });
   const [loading, setLoading] = useState(false);
   const [pendingRequests, setPendingRequests] = useState(0);
-  const [academicYear, setAcademicYear] = useState({
-    academic_year: DEFAULT_ACADEMIC_YEAR,
-    max_angkatan: INITIAL_YEAR,
-    registration_requires_invitation: false,
-  });
   const [loginError, setLoginError] = useState('');
   const [authMessage, setAuthMessage] = useState('');
   const [profileDraft, setProfileDraft] = useState('Kecerdasan Bisnis');
@@ -425,16 +419,6 @@ function App() {
       .then((catalog) => {
         if (!active || !catalog || typeof catalog !== 'object') return;
         setProgramInterestCatalog(catalog);
-        setRegistrationForm((previous) => {
-          if (
-            previous.program_study === 'Sistem dan Teknologi Informasi'
-            && previous.interests === 'Manajemen Sistem Informasi'
-            && catalog['Sistem dan Teknologi Informasi']?.options?.includes('Manajemen Teknologi Informasi')
-          ) {
-            return { ...previous, interests: 'Manajemen Teknologi Informasi' };
-          }
-          return previous;
-        });
       })
       .catch(() => {});
     return () => { active = false; };
@@ -459,16 +443,6 @@ function App() {
       window.removeEventListener('courserecom:request-start', onRequestStart);
       window.removeEventListener('courserecom:request-end', onRequestEnd);
     };
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    apiRequest('/auth/academic-year')
-      .then((result) => {
-        if (!cancelled) setAcademicYear(result);
-      })
-      .catch((error) => console.error('Academic year configuration could not be loaded:', error));
-    return () => { cancelled = true; };
   }, []);
 
   const [storedDraftCourses, setDraftCourses] = useState(() => {
@@ -886,71 +860,51 @@ function App() {
     }
   };
 
-  const registerStudent = async (event) => {
-    event.preventDefault();
-    setLoading(true);
-    setLoginError('');
-    setAuthMessage('');
-    if (registrationForm.password !== registrationForm.passwordConfirmation) {
-      setLoginError('Konfirmasi password tidak sama.');
-      setLoading(false);
+  const downloadStudentCredentials = () => {
+    if (!studentCredentials.length) {
+      pushToast('Tidak ada kredensial akun baru untuk diunduh.', 'warning');
       return;
     }
-
-    try {
-      await apiRequest('/auth/register', {
-        method: 'POST',
-        body: JSON.stringify({
-          nim: registrationForm.nim,
-          username: registrationForm.username || registrationForm.nim,
-          full_name: registrationForm.full_name,
-          program_study: registrationForm.program_study,
-          interests: registrationForm.interests,
-          angkatan: registrationForm.angkatan,
-          registration_code: registrationForm.registration_code.trim(),
-          password: registrationForm.password,
-        }),
-      });
-      setForm({ username: registrationForm.nim.trim(), password: '' });
-      setRegistrationForm({
-        nim: '',
-        username: '',
-        full_name: '',
-        program_study: 'Sistem dan Teknologi Informasi',
-        interests: 'Manajemen Teknologi Informasi',
-        angkatan: '',
-        registration_code: '',
-        password: '',
-        passwordConfirmation: '',
-      });
-      setAuthMode('login');
-      setAuthMessage('Pendaftaran mahasiswa berhasil. Silakan masuk dengan NIM dan password Anda.');
-    } catch (error) {
-      setLoginError(error.message || 'Pendaftaran mahasiswa gagal.');
-    } finally {
-      setLoading(false);
-    }
+    const escapeCsv = (value) => {
+      let text = String(value ?? '');
+      if (/^[=+\-@\t\r]/.test(text)) text = "'" + text;
+      return '"' + text.replace(/"/g, '""') + '"';
+    };
+    const rows = [
+      ['NIM', 'Nama Lengkap', 'Username', 'Password Awal'],
+      ...studentCredentials.map((item) => [item.nim, item.full_name, item.username, item.temporary_password]),
+    ];
+    const csv = '\ufeff' + rows.map((row) => row.map(escapeCsv).join(',')).join('\r\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'akun-mahasiswa-password-awal.csv';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
   };
 
   const downloadStudentRosterTemplate = async () => {
     setStudentRosterBusy(true);
     try {
-      const response = await fetch(`${API_BASE}/admin/student-roster/template.csv`, {
+      const response = await fetch(API_BASE + '/admin/student-roster/template.xlsx', {
         credentials: 'same-origin',
       });
       expireSessionOnUnauthorized(response);
-      if (!response.ok) throw new Error('Template roster gagal diunduh.');
+      if (!response.ok) throw new Error('Template Excel roster gagal diunduh.');
       const blob = await response.blob();
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = 'template-roster-mahasiswa.csv';
+      link.download = 'template-roster-mahasiswa.xlsx';
       document.body.appendChild(link);
       link.click();
       link.remove();
       URL.revokeObjectURL(url);
     } catch (error) {
-      pushToast(error.message || 'Template roster gagal diunduh.', 'error');
+      pushToast(error.message || 'Template Excel roster gagal diunduh.', 'error');
     } finally {
       setStudentRosterBusy(false);
     }
@@ -959,10 +913,15 @@ function App() {
   const importStudentRoster = async (event) => {
     event.preventDefault();
     if (!studentRosterFile) {
-      pushToast('Pilih file CSV roster mahasiswa terlebih dahulu.', 'warning');
+      pushToast('Pilih file Excel (.xlsx) atau CSV roster mahasiswa terlebih dahulu.', 'warning');
       return;
     }
+    if (!window.confirm(
+      'Impor ini akan membuat akun untuk setiap mahasiswa baru. Password awal acak tersedia satu kali dalam file unduhan khusus admin. Pastikan file kredensial disimpan dan dibagikan secara pribadi.',
+    )) return;
+
     setStudentRosterBusy(true);
+    setStudentCredentials([]);
     try {
       const body = new FormData();
       body.append('file', studentRosterFile);
@@ -974,52 +933,15 @@ function App() {
       setStudentRosterStats(summary);
       setStudentRosterFile(null);
       setStudentRosterFileKey((value) => value + 1);
+      setStudentCredentials(Array.isArray(result.credentials) ? result.credentials : []);
       pushToast(
-        `Roster diproses: ${result.imported} baris, ${result.created} baru, ${result.already_registered} sudah memiliki akun. ${result.waiting} menunggu pendaftaran.`,
+        'Impor selesai: ' + result.imported + ' data, ' + (result.created_accounts || 0)
+          + ' akun baru dibuat, ' + (result.already_registered || 0)
+          + ' akun sudah tersedia. ' + (result.waiting || 0) + ' belum memiliki akun.',
         'success',
       );
     } catch (error) {
-      pushToast(error.message || 'Impor roster gagal. Tidak ada data roster yang diubah.', 'error');
-    } finally {
-      setStudentRosterBusy(false);
-    }
-  };
-
-  const generateStudentRosterInvitations = async () => {
-    const waiting = Number(studentRosterStats?.waiting || 0);
-    if (!waiting) {
-      pushToast('Belum ada mahasiswa roster yang menunggu pendaftaran.', 'warning');
-      return;
-    }
-    if (!window.confirm(
-      `Buat ${waiting} kode pendaftaran sekali pakai? File hasil unduhan berisi NIM, nama, dan kode rahasia. Simpan dengan aman lalu bagikan setiap kode hanya kepada mahasiswa terkait.`,
-    )) return;
-
-    setStudentRosterBusy(true);
-    try {
-      const response = await fetch(`${API_BASE}/admin/student-roster/invitations.csv`, {
-        method: 'POST',
-        credentials: 'same-origin',
-      });
-      expireSessionOnUnauthorized(response);
-      if (!response.ok) {
-        const body = await response.json().catch(() => null);
-        throw new Error(body?.detail || 'Kode pendaftaran gagal dibuat.');
-      }
-      const blob = await response.blob();
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = 'kode-pendaftaran-mahasiswa-sekali-pakai.csv';
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      URL.revokeObjectURL(url);
-      const summary = await apiRequest('/admin/student-roster', { suppressLoader: true });
-      setStudentRosterStats(summary);
-      pushToast('Kode pendaftaran berhasil dibuat. File hanya tersedia pada unduhan ini; distribusikan secara pribadi.', 'success');
-    } catch (error) {
-      pushToast(error.message || 'Kode pendaftaran gagal dibuat.', 'error');
+      pushToast(error.message || 'Impor roster gagal. Tidak ada data yang diubah.', 'error');
     } finally {
       setStudentRosterBusy(false);
     }
@@ -1058,6 +980,7 @@ function App() {
     setStudentClassesLoaded(false);
     setKhsPreview(null);
     setView('dashboard');
+    setStudentCredentials([]);
   };
 
   const openInterests = () => {
@@ -2046,7 +1969,7 @@ function App() {
     ] : []),
     ...(user?.role === 'admin' ? [
       { key: 'admin', label: 'Manajemen Data', Icon: Settings },
-      { key: 'roster', label: 'Pendaftaran Mahasiswa', Icon: Users },
+      { key: 'roster', label: 'Impor & Akun Mahasiswa', Icon: Users },
       { key: 'kelas', label: 'Kelas & Jadwal', Icon: CalendarDays },
       { key: 'akun-dosen', label: 'Daftar Akun Dosen PA', Icon: UsersRound },
       { key: 'riwayat-pa', label: 'Riwayat Dosen PA', Icon: History },
@@ -2445,9 +2368,9 @@ function App() {
         <div className="card">
           <div className="preview-header">
             <div>
-              <span className="guide-eyebrow">ONBOARDING MAHASISWA ASLI</span>
-              <h2>Pendaftaran Mahasiswa</h2>
-              <p className="muted">Kelola roster mahasiswa yang disahkan program studi. Akun baru dibuat sendiri oleh mahasiswa menggunakan kode undangan satu kali.</p>
+              <span className="guide-eyebrow">ADMINISTRASI AKUN MAHASISWA</span>
+              <h2>Impor Data & Pembuatan Akun</h2>
+              <p className="muted">Admin mengimpor daftar mahasiswa dari Excel atau CSV. Sistem membuat akun mahasiswa secara langsung; mahasiswa tidak perlu mengisi formulir pendaftaran atau kode undangan.</p>
             </div>
             <button className="btn outline" type="button" disabled={studentRosterBusy} onClick={() => {
               apiRequest('/admin/student-roster', { suppressLoader: true })
@@ -2456,60 +2379,62 @@ function App() {
             }}>Muat ulang</button>
           </div>
           <div className="stat-grid">
-            <div className="stat"><small>Roster aktif</small><strong>{summary.total} / 100</strong></div>
-            <div className="stat"><small>Akun terdaftar</small><strong>{summary.registered}</strong></div>
-            <div className="stat"><small>Menunggu daftar</small><strong>{summary.waiting}</strong></div>
+            <div className="stat"><small>Data roster aktif</small><strong>{summary.total}</strong></div>
+            <div className="stat"><small>Akun sudah dibuat</small><strong>{summary.registered}</strong></div>
+            <div className="stat"><small>Belum dibuat</small><strong>{summary.waiting}</strong></div>
             <div className="stat"><small>Nonaktif</small><strong>{summary.inactive}</strong></div>
           </div>
           <section style={{ marginTop: 18 }}>
             <div className="preview-header">
-              <div><h3>Target 100 mahasiswa</h3><p className="muted">{summary.target_reached ? 'Target jumlah roster tercapai. Mahasiswa tetap perlu menyelesaikan pendaftaran akun masing-masing.' : `Masih kurang ${Math.max(0, 100 - Number(summary.total || 0))} entri roster menuju target.`}</p></div>
+              <div><h3>Target akun mahasiswa</h3><p className="muted">{summary.target_reached ? 'Target minimal 100 akun mahasiswa sudah tercapai.' : 'Masih kurang ' + Math.max(0, 100 - Number(summary.registered || 0)) + ' akun menuju target 100 mahasiswa.'}</p></div>
               <strong>{Math.round(progress)}%</strong>
             </div>
-            <progress value={progress} max="100" aria-label="Progres 100 akun mahasiswa terdaftar" style={{ width: '100%', height: 14 }} />
+            <progress value={progress} max="100" aria-label="Progres pembuatan 100 akun mahasiswa" style={{ width: '100%', height: 14 }} />
           </section>
           <section style={{ marginTop: 26 }}>
-            <h3>1. Impor roster resmi dari program studi</h3>
-            <p className="muted">File berisi NIM, nama lengkap, program studi FTII, dan angkatan. Sistem menolak NIM duplikat, prodi yang tidak dikenal, angkatan yang tidak valid, serta perubahan data yang bertentangan dengan akun yang sudah terdaftar.</p>
+            <h3>1. Impor Excel / CSV mahasiswa</h3>
+            <p className="muted">Kolom wajib: NIM, Nama Lengkap, Program Studi, dan Angkatan. Sistem memvalidasi NIM ganda, program studi, format angkatan, serta konflik dengan akun lama. Setiap NIM baru akan dibuatkan akun mahasiswa dengan username NIM dan password awal acak.</p>
             <div className="row wrap" style={{ gap: 10, alignItems: 'center' }}>
-              <button className="btn outline" type="button" disabled={studentRosterBusy} onClick={downloadStudentRosterTemplate}>Unduh template CSV</button>
+              <button className="btn outline" type="button" disabled={studentRosterBusy} onClick={downloadStudentRosterTemplate}>Unduh template Excel</button>
               <form className="form-grid" onSubmit={importStudentRoster} style={{ flex: '1 1 320px', minWidth: 260 }}>
                 <label>
-                  <span className="muted">File roster (.csv UTF-8, maksimal 2 MB)</span>
+                  <span className="muted">File roster (.xlsx atau .csv, maksimal 2 MB)</span>
                   <input
                     key={studentRosterFileKey}
                     type="file"
-                    accept=".csv,text/csv"
+                    accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.csv,text/csv"
                     onChange={(event) => setStudentRosterFile(event.target.files?.[0] || null)}
                     required
                   />
                 </label>
                 <button className="btn primary" type="submit" disabled={studentRosterBusy || !studentRosterFile}>
-                  {studentRosterBusy ? 'Memproses...' : 'Validasi & impor roster'}
+                  {studentRosterBusy ? 'Memproses...' : 'Validasi & buat akun mahasiswa'}
                 </button>
               </form>
             </div>
           </section>
-          <section style={{ marginTop: 28 }}>
-            <h3>2. Buat kode pendaftaran sekali pakai</h3>
-            <p className="muted">Kode hanya dibuat untuk mahasiswa roster yang belum mempunyai akun. Kode kedaluwarsa dalam 7 hari, hanya hash yang disimpan server, dan setiap kode hangus setelah satu kali digunakan.</p>
-            <button className="btn primary" type="button" disabled={studentRosterBusy || Number(summary.waiting || 0) === 0} onClick={generateStudentRosterInvitations}>
-              Buat & unduh {summary.waiting} kode pendaftaran
-            </button>
-            <p className="notice" role="note">File kode berisi data pribadi dan rahasia pendaftaran. Jangan bagikan di grup publik. Distribusikan kode secara individual melalui kanal kampus yang aman, lalu hapus salinan yang tidak lagi diperlukan.</p>
-          </section>
+          {studentCredentials.length > 0 && (
+            <section className="notice" style={{ marginTop: 24 }}>
+              <h3>2. Kredensial akun awal siap diunduh</h3>
+              <p>Berhasil dibuat {studentCredentials.length} akun baru. File ini berisi NIM, username, dan password awal acak. Password tidak disimpan sebagai teks biasa pada server dan tidak dapat ditampilkan kembali setelah halaman ini ditutup atau admin keluar.</p>
+              <button className="btn primary" type="button" onClick={downloadStudentCredentials}>
+                Unduh {studentCredentials.length} kredensial akun mahasiswa
+              </button>
+              <p className="muted">Simpan pada perangkat admin yang terlindungi. Bagikan setiap kredensial hanya kepada mahasiswa terkait dan jangan unggah file ini ke repositori atau grup publik.</p>
+            </section>
+          )}
           <section style={{ marginTop: 26 }}>
             <h3>Ringkasan per program studi</h3>
             <div className="table-wrap">
               <table className="table">
-                <thead><tr><th>Program studi</th><th>Roster</th><th>Sudah daftar</th><th>Menunggu</th></tr></thead>
+                <thead><tr><th>Program studi</th><th>Data roster</th><th>Akun dibuat</th><th>Belum dibuat</th></tr></thead>
                 <tbody>
                   {Object.entries(summary.by_program || {}).map(([program, item]) => (
                     <tr key={program}>
                       <td>{program}</td><td>{item.total}</td><td>{item.registered}</td><td>{item.waiting}</td>
                     </tr>
                   ))}
-                  {Object.keys(summary.by_program || {}).length === 0 && <tr><td colSpan="4" className="muted">Belum ada roster resmi yang diimpor.</td></tr>}
+                  {Object.keys(summary.by_program || {}).length === 0 && <tr><td colSpan="4" className="muted">Belum ada data mahasiswa yang diimpor.</td></tr>}
                 </tbody>
               </table>
             </div>
@@ -4070,94 +3995,7 @@ function App() {
             <p>Analisis kemiripan riwayat akademik, minat, nilai prasyarat, dan kurikulum untuk membantu menemukan rekomendasi mata kuliah yang lebih relevan.</p>
             <div className="login-ml-tags"><span>Academic History</span><span>Similar Students</span><span>Smart Recommendation</span></div>
           </div>
-          {authMode === 'register' ? (
-            <>
-              <h3>Daftar akun mahasiswa</h3>
-              <form className="form-grid" onSubmit={registerStudent}>
-                <label>
-                  <span className="muted">NIM</span>
-                  <input required minLength="2" maxLength="20" autoComplete="username" value={registrationForm.nim} onChange={(e) => setRegistrationForm({ ...registrationForm, nim: e.target.value })} />
-                </label>
-                <label>
-                  <span className="muted">Nama lengkap</span>
-                  <input required minLength="2" maxLength="120" autoComplete="name" value={registrationForm.full_name} onChange={(e) => setRegistrationForm({ ...registrationForm, full_name: e.target.value })} />
-                </label>
-                <label>
-                  <span className="muted">Username</span>
-                  <input minLength="2" maxLength="120" autoComplete="username" value={registrationForm.username} placeholder="Default: NIM" onChange={(e) => setRegistrationForm({ ...registrationForm, username: e.target.value })} />
-                </label>
-                <label>
-                  <span className="muted">Program studi</span>
-                  <select
-                    required
-                    value={registrationForm.program_study}
-                    onChange={(event) => {
-                      const program_study = event.target.value;
-                      const options = programInterestCatalog[program_study]?.options || [];
-                      setRegistrationForm({ ...registrationForm, program_study, interests: options[0] || '' });
-                    }}
-                  >
-                    <option value="">Pilih program studi</option>
-                    {Object.keys(programInterestCatalog).map((program) => <option key={program} value={program}>{program}</option>)}
-                  </select>
-                </label>
-                <label>
-                  <span className="muted">{programInterestCatalog[registrationForm.program_study]?.kind || 'Bidang minat'}</span>
-                  <select required value={registrationForm.interests} onChange={(event) => setRegistrationForm({ ...registrationForm, interests: event.target.value })}>
-                    {(programInterestCatalog[registrationForm.program_study]?.options || []).map((interest) => <option key={interest} value={interest}>{interest}</option>)}
-                  </select>
-                  <small className="muted">{registrationForm.program_study === 'Sistem dan Teknologi Informasi'
-                    ? 'Mengikuti dua peminatan resmi STI: Manajemen Teknologi Informasi (MTI) dan Kecerdasan Bisnis (KB).'
-                    : 'Untuk program studi yang belum mempublikasikan jalur formal, pilihan ini dicatat sebagai bidang minat akademik.'}</small>
-                </label>
-                <label>
-                  <span className="muted">Angkatan</span>
-                  <input
-                    type="number"
-                    min="1900"
-                    max={academicYear.max_angkatan}
-                    step="1"
-                    inputMode="numeric"
-                    value={registrationForm.angkatan}
-                    onChange={(event) => setRegistrationForm({
-                      ...registrationForm,
-                      angkatan: event.target.value.replace(/\D/g, '').slice(0, 4),
-                    })}
-                  />
-                  <small className="muted">Hanya angka 4 digit, maksimal angkatan {academicYear.max_angkatan} (tahun ajaran {academicYear.academic_year}).</small>
-                </label>
-                {academicYear.registration_requires_invitation && (
-                  <label>
-                    <span className="muted">Kode pendaftaran resmi</span>
-                    <input
-                      required
-                      minLength="24"
-                      maxLength="128"
-                      autoComplete="one-time-code"
-                      value={registrationForm.registration_code}
-                      onChange={(event) => setRegistrationForm({ ...registrationForm, registration_code: event.target.value.trim() })}
-                    />
-                    <small className="muted">Kode sekali pakai diberikan Admin Prodi setelah NIM Anda diverifikasi di roster mahasiswa resmi.</small>
-                  </label>
-                )}
-                <label>
-                  <span className="muted">Password (minimal 8 karakter)</span>
-                  <input required type="password" minLength="8" maxLength="72" autoComplete="new-password" value={registrationForm.password} onChange={(e) => setRegistrationForm({ ...registrationForm, password: e.target.value })} />
-                </label>
-                <label>
-                  <span className="muted">Konfirmasi password</span>
-                  <input required type="password" minLength="8" maxLength="72" autoComplete="new-password" value={registrationForm.passwordConfirmation} onChange={(e) => setRegistrationForm({ ...registrationForm, passwordConfirmation: e.target.value })} />
-                </label>
-                <button className="btn primary" type="submit" disabled={loading}>
-                  {loading ? 'Memproses...' : 'Daftar sebagai mahasiswa'}
-                </button>
-              </form>
-              <button className="btn outline" type="button" style={{ marginTop: 12, width: '100%' }} onClick={() => {
-                setAuthMode('login');
-                setLoginError('');
-              }}>Kembali ke masuk</button>
-            </>
-          ) : (
+
             <>
               <form className="form-grid" onSubmit={login}>
                     <div className="role-selector" role="radiogroup" aria-label="Pilih peran login">
@@ -4184,7 +4022,6 @@ function App() {
                 setAuthMessage('');
               }}>Daftar akun mahasiswa</button>
             </>
-          )}
           {!IS_PRODUCTION_ENVIRONMENT && (
             <div className="login-demo">
               <Info size={18} aria-hidden="true" />
