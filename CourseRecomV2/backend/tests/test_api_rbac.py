@@ -376,25 +376,79 @@ def test_admin_override_can_unlock_and_replace_courses():
         db.close()
 
 
-def test_student_public_registration_is_disabled():
+
+def test_student_registration_creates_student_only_account():
     nim = f'NEW{uuid4().hex[:12]}'
+    academic_year = client.get('/api/auth/academic-year')
+    assert academic_year.status_code == 200
+    angkatan = str(academic_year.json()['max_angkatan'])
+
     response = client.post('/api/auth/register', json={
         'nim': nim,
         'full_name': 'Mahasiswa Baru',
         'program_study': 'Sistem dan Teknologi Informasi',
         'interests': 'Manajemen Teknologi Informasi',
-        'angkatan': '2022',
+        'angkatan': angkatan,
         'password': 'password-baru-123',
         'role': 'admin',
     })
-    assert response.status_code == 403
-    assert 'Admin Prodi' in response.text
+    assert response.status_code == 201, response.text
+    assert response.json()['role'] == 'mahasiswa'
+    assert response.json()['nim'] == nim
+    assert response.json()['program_study'] == 'Sistem dan Teknologi Informasi'
+    assert response.json()['interests'] == 'Manajemen Teknologi Informasi'
+
+    duplicate = client.post('/api/auth/register', json={
+        'nim': nim,
+        'full_name': 'Nama Lain',
+        'program_study': 'Sistem dan Teknologi Informasi',
+        'interests': 'Manajemen Teknologi Informasi',
+        'angkatan': angkatan,
+        'password': 'password-baru-123',
+    })
+    assert duplicate.status_code == 409
+
+    login = client.post('/api/auth/login', json={
+        'username': nim,
+        'password': 'password-baru-123',
+        'role': 'mahasiswa',
+    })
+    assert login.status_code == 200
+    headers = {'Authorization': f'Bearer {login.json()["access_token"]}'}
+    current_user = client.get('/api/auth/me', headers=headers)
+    assert current_user.status_code == 200
+    assert current_user.json()['role'] == 'mahasiswa'
+    assert client.get('/api/admin/courses', headers=headers).status_code == 403
 
     db = SessionLocal()
     try:
-        assert db.query(User).filter(User.nim == nim).count() == 0
+        student = db.query(User).filter(User.nim == nim).one()
+        assert student.role == 'mahasiswa'
+        assert student.password_hash != 'password-baru-123'
+        db.query(AuditLog).filter(AuditLog.actor_id == student.id).delete(synchronize_session=False)
+        db.delete(student)
+        db.commit()
     finally:
         db.close()
+
+
+def test_student_registration_rejects_invalid_angkatan_and_short_password():
+    academic_year = client.get('/api/auth/academic-year')
+    assert academic_year.status_code == 200
+    max_year = int(academic_year.json()['max_angkatan'])
+    base = {
+        'nim': f'BADREG{uuid4().hex[:8]}',
+        'full_name': 'Mahasiswa Uji',
+        'program_study': 'Sistem dan Teknologi Informasi',
+        'interests': 'Manajemen Teknologi Informasi',
+        'password': 'password-baru-123',
+    }
+    non_numeric = client.post('/api/auth/register', json={**base, 'angkatan': f'{max_year}A'})
+    assert non_numeric.status_code == 422
+    future_year = client.post('/api/auth/register', json={**base, 'angkatan': str(max_year + 1)})
+    assert future_year.status_code == 422
+    short_password = client.post('/api/auth/register', json={**base, 'angkatan': str(max_year), 'password': 'short'})
+    assert short_password.status_code == 422
 
 
 def test_admin_roster_import_rejects_invalid_angkatan():
