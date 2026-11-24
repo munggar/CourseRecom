@@ -9,6 +9,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
+from openpyxl import Workbook
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from playwright.sync_api import sync_playwright
 
@@ -68,7 +69,6 @@ def run_browser_smoke() -> None:
             'QR_VERIFICATION_SECRET': 'courserecom-e2e-qr-secret-value-at-least-32-bytes',
             'FRONTEND_URL': FRONTEND_URL,
             'SEED_DEMO_USERS': 'true',
-            'REQUIRE_STUDENT_ROSTER': 'true',
             'API_PROXY_TARGET': BACKEND_URL,
         })
 
@@ -140,11 +140,14 @@ def run_browser_smoke() -> None:
                     # Admin onboarding: import a roster row, create the account, and export its initial credentials.
                     student_nim = 'E2E' + str(int(time.time()))[-10:]
                     student_name = 'Mahasiswa Browser Uji'
-                    roster_file = temp_path / 'roster-e2e.csv'
-                    with roster_file.open('w', encoding='utf-8-sig', newline='') as stream:
-                        writer = csv.writer(stream)
-                        writer.writerow(['NIM', 'Nama Lengkap', 'Program Studi', 'Angkatan'])
-                        writer.writerow([student_nim, student_name, 'Sistem dan Teknologi Informasi', '2022'])
+                    roster_file = temp_path / 'roster-e2e.xlsx'
+                    workbook = Workbook()
+                    worksheet = workbook.active
+                    worksheet.title = 'Data Mahasiswa'
+                    worksheet.append(['NIM', 'Nama Lengkap', 'Program Studi', 'Angkatan'])
+                    worksheet.append([student_nim, student_name, 'Sistem dan Teknologi Informasi', '2022'])
+                    worksheet['A2'].number_format = '@'
+                    workbook.save(roster_file)
 
                     page.get_by_role('button', name='Impor & Akun Mahasiswa').click()
                     page.get_by_role('heading', name='Impor Data & Pembuatan Akun').wait_for(state='visible', timeout=15000)
@@ -172,11 +175,11 @@ def run_browser_smoke() -> None:
                     page.get_by_role('button', name='Keluar').click()
                     page.get_by_text('Rencanakan Studi Lebih Cerdas').wait_for(state='visible', timeout=15000)
                     assert not any(cookie['name'] == 'course_recom_session' for cookie in context.cookies())
+                    blocked_signup = page.request.post(f'{FRONTEND_URL}/api/auth/register', data={})
+                    assert blocked_signup.status == 403, 'Public student registration must be disabled.'
                     login(page, 'Mahasiswa', student_nim, initial_password)
 
-
-                    # Login as the newly registered student and open KHS upload screen.
-                    login(page, 'Mahasiswa', student_nim, 'secure-student-password-123')
+                    # The Admin-provisioned student is signed in with the initial password.
                     assert page.locator('.topbar-label').inner_text() == 'Dashboard Mahasiswa'
                     page.get_by_role('button', name='Upload KHS').click()
                     page.get_by_role('heading', name='Unggah KHS Lengkap').wait_for(
