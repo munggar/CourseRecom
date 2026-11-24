@@ -48,7 +48,7 @@ def _cleanup(nims: list[str], admin_id: int | None) -> None:
         db.close()
 
 
-def test_admin_import_creates_student_account_and_disables_public_registration():
+def test_admin_import_creates_student_account():
     nim = f'ROSTER{uuid4().hex[:10]}'
     client = TestClient(app)
     admin_id = None
@@ -57,20 +57,6 @@ def test_admin_import_creates_student_account_and_disables_public_registration()
         db = SessionLocal()
         admin_id = db.query(User.id).filter(User.nim == 'admin').scalar()
         db.close()
-
-        disabled_registration = client.post(
-            '/api/auth/register',
-            json={
-                'nim': nim,
-                'full_name': 'Mahasiswa Roster Uji',
-                'program_study': 'Sistem dan Teknologi Informasi',
-                'interests': 'Manajemen Teknologi Informasi',
-                'angkatan': '2022',
-                'password': 'password-roster-123',
-            },
-        )
-        assert disabled_registration.status_code == 403
-        assert 'impor roster' in disabled_registration.text
 
         imported = client.post(
             '/api/admin/student-roster/import',
@@ -157,6 +143,67 @@ def test_admin_import_creates_student_account_and_disables_public_registration()
     finally:
         _cleanup([nim], admin_id)
         client.close()
+
+
+
+def test_manual_signup_then_admin_import_links_the_existing_account_without_resetting_password():
+    nim = f'MANUAL{uuid4().hex[:10]}'
+    password = 'manual-student-password-123'
+    client = TestClient(app)
+    admin_id = None
+    try:
+        headers = _login_admin(client)
+        db = SessionLocal()
+        admin_id = db.query(User.id).filter(User.nim == 'admin').scalar()
+        db.close()
+
+        year = client.get('/api/auth/academic-year').json()['max_angkatan']
+        signup = client.post('/api/auth/register', json={
+            'nim': nim,
+            'full_name': 'Mahasiswa Daftar Manual',
+            'program_study': 'Sistem dan Teknologi Informasi',
+            'interests': 'Manajemen Teknologi Informasi',
+            'angkatan': str(year),
+            'password': password,
+        })
+        assert signup.status_code == 201, signup.text
+        assert signup.json()['role'] == 'mahasiswa'
+
+        imported = client.post(
+            '/api/admin/student-roster/import',
+            headers=headers,
+            files={
+                'file': (
+                    'roster-manual.csv',
+                    _roster_csv([[nim, 'Mahasiswa Daftar Manual', 'Sistem dan Teknologi Informasi', str(year)]]),
+                    'text/csv',
+                )
+            },
+        )
+        assert imported.status_code == 200, imported.text
+        result = imported.json()
+        assert result['created_accounts'] == 0
+        assert result['already_registered'] == 1
+        assert result['waiting'] == 0
+        assert result['credentials'] == []
+
+        login = client.post('/api/auth/login', json={
+            'username': nim,
+            'password': password,
+            'role': 'mahasiswa',
+        })
+        assert login.status_code == 200, login.text
+
+        db = SessionLocal()
+        roster = db.query(StudentRosterEntry).filter(StudentRosterEntry.nim == nim).one()
+        student = db.query(User).filter(User.nim == nim).one()
+        assert roster.registered_user_id == student.id
+        assert student.password_hash != password
+        db.close()
+    finally:
+        _cleanup([nim], admin_id)
+        client.close()
+
 
 
 def test_student_roster_excel_import_creates_accounts():
