@@ -328,7 +328,8 @@ Tabel API utama:
 
 | Area | Endpoint | Fungsi |
 |---|---|---|
-| Auth | `/api/auth/register`, `/api/auth/login`, `/api/auth/me` | Daftar, login, sesi |
+| Auth | `/api/auth/register`, `/api/auth/login`, `/api/auth/me` | Pendaftaran publik ditolak; login dan sesi |
+| Admin | `/api/admin/student-roster/import`, `/api/admin/student-roster/template.xlsx` | Impor Excel/CSV dan pembuatan akun mahasiswa oleh Admin Prodi |
 | Mahasiswa | `/api/mahasiswa/kurikulum` | Katalog aktif |
 | Mahasiswa | `/api/mahasiswa/khs/*` | Preview, konfirmasi, daftar, hapus KHS |
 | Mahasiswa | `/api/mahasiswa/profil` | Lihat/ubah minat |
