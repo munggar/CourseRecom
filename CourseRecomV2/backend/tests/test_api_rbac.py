@@ -409,7 +409,11 @@ def test_admin_roster_import_enforces_numeric_angkatan_and_active_academic_year(
     })
     assert admin_login.status_code == 200, admin_login.text
     headers = {'Authorization': f"Bearer {admin_login.json()['access_token']}"}
-    admin_id = admin_login.json().get('user', {}).get('id')
+    db = SessionLocal()
+    try:
+        admin_id = db.query(User.id).filter(User.nim == 'admin').scalar()
+    finally:
+        db.close()
 
     academic_year = client.get('/api/auth/academic-year')
     assert academic_year.status_code == 200
