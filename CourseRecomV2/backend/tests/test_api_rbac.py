@@ -1,3 +1,5 @@
+import csv
+from io import StringIO
 from datetime import datetime, timezone
 from uuid import uuid4
 from urllib.parse import urlsplit
@@ -370,91 +372,83 @@ def test_admin_override_can_unlock_and_replace_courses():
         db.query(Course).filter(Course.code == course_code).delete(synchronize_session=False)
         db.query(AuditLog).filter(AuditLog.actor_id == admin_id).delete(synchronize_session=False)
         db.query(User).filter(User.nim.in_([student_nim, admin_nim])).delete(synchronize_session=False)
-        db.commit()
-        db.close()
-
-
-def test_student_registration_creates_student_only_account():
+      def test_student_public_registration_cannot_create_or_escalate_an_account():
     nim = f'NEW{uuid4().hex[:12]}'
+    response = client.post('/api/auth/register', json={
+        'nim': nim,
+        'full_name': 'Mahasiswa Baru',
+        'program_study': 'Sistem dan Teknologi Informasi',
+        'interests': 'Manajemen Teknologi Informasi',
+        'password': 'password-baru-123',
+        'role': 'admin',
+    })
+    assert response.status_code == 403
+    assert 'impor roster' in response.text
+    db = SessionLocal()
     try:
-        response = client.post('/api/auth/register', json={
-            'nim': nim,
-            'full_name': 'Mahasiswa Baru',
-            'program_study': 'Sistem dan Teknologi Informasi',
-            'interests': 'Manajemen Teknologi Informasi',
-            'password': 'password-baru-123',
-            'role': 'admin',
-        })
-        assert response.status_code == 201, response.text
-        assert response.json()['role'] == 'mahasiswa'
-        assert response.json()['program_study'] == 'Sistem dan Teknologi Informasi'
-        assert response.json()['interests'] == 'Manajemen Teknologi Informasi'
-
-        duplicate = client.post('/api/auth/register', json={
-            'nim': nim,
-            'full_name': 'Nama Lain',
-            'program_study': 'Sistem dan Teknologi Informasi',
-            'interests': 'Manajemen Teknologi Informasi',
-            'password': 'password-baru-123',
-        })
-        assert duplicate.status_code == 409
-
-        login = client.post('/api/auth/login', json={
-            'username': nim,
-            'password': 'password-baru-123',
-        })
-        assert login.status_code == 200
-        headers = {'Authorization': f'Bearer {login.json()["access_token"]}'}
-        current_user = client.get('/api/auth/me', headers=headers)
-        assert current_user.status_code == 200
-        assert current_user.json()['role'] == 'mahasiswa'
-        assert client.get('/api/admin/courses', headers=headers).status_code == 403
+        assert db.query(User).filter(User.nim == nim).count() == 0
     finally:
-        db = SessionLocal()
-        db.query(AuditLog).filter(
-            AuditLog.actor_id.in_(
-                db.query(User.id).filter(User.nim == nim),
-            ),
-        ).delete(synchronize_session=False)
-        db.query(User).filter(User.nim == nim).delete()
-        db.commit()
         db.close()
 
 
-def test_student_registration_rejects_short_password():
+def test_student_public_registration_is_disabled_regardless_of_password_payload():
     response = client.post('/api/auth/register', json={
         'nim': f'NEW{uuid4().hex[:12]}',
         'full_name': 'Mahasiswa Baru',
         'password': 'short',
     })
-    assert response.status_code == 422
+    assert response.status_code == 403
+    assert 'dinonaktifkan' in response.text
 
 
-def test_student_registration_enforces_numeric_angkatan_and_active_academic_year():
+def test_admin_roster_import_enforces_numeric_angkatan_and_active_academic_year():
+    admin_login = client.post('/api/auth/login', json={
+        'username': 'admin',
+        'password': 'password123',
+        'role': 'admin',
+    })
+    assert admin_login.status_code == 200, admin_login.text
+    headers = {'Authorization': f"Bearer {admin_login.json()['access_token']}"}
+    admin_id = admin_login.json().get('user', {}).get('id')
+
     academic_year = client.get('/api/auth/academic-year')
     assert academic_year.status_code == 200
-    max_year = academic_year.json()['max_angkatan']
+    max_year = int(academic_year.json()['max_angkatan'])
+    test_nims = [f'BADYEAR{uuid4().hex[:8]}' for _ in range(2)]
 
-    non_numeric = client.post('/api/auth/register', json={
-        'nim': f'NEW{uuid4().hex[:12]}',
-        'full_name': 'Mahasiswa Angkatan Tidak Valid',
-        'program_study': 'Sistem dan Teknologi Informasi',
-        'interests': 'Manajemen Teknologi Informasi',
-        'angkatan': f'{max_year}A',
-        'password': 'password-baru-123',
-    })
-    assert non_numeric.status_code == 422
+    try:
+        invalid_years = [f'{max_year}A', str(max_year + 1)]
+        for nim, angkatan in zip(test_nims, invalid_years):
+            output = StringIO(newline='')
+            writer = csv.writer(output)
+            writer.writerow(['NIM', 'Nama Lengkap', 'Program Studi', 'Angkatan'])
+            writer.writerow([nim, 'Mahasiswa Angkatan Tidak Valid', 'Sistem dan Teknologi Informasi', angkatan])
+            response = client.post(
+                '/api/admin/student-roster/import',
+                headers=headers,
+                files={'file': ('roster-invalid.csv', output.getvalue().encode('utf-8'), 'text/csv')},
+            )
+            assert response.status_code == 422
+            assert str(max_year) in response.text
+            db = SessionLocal()
+            try:
+                assert db.query(User).filter(User.nim == nim).count() == 0
+            finally:
+                db.close()
+    finally:
+        db = SessionLocal()
+        try:
+            db.query(AuditLog).filter(
+                AuditLog.actor_id == admin_id,
+                AuditLog.entity_type == 'student_roster',
+                AuditLog.entity_id == 'batch',
+            ).delete(synchronize_session=False)
+            db.commit()
+        finally:
+            db.close()
 
-    future_year = client.post('/api/auth/register', json={
-        'nim': f'NEW{uuid4().hex[:12]}',
-        'full_name': 'Mahasiswa Angkatan Masa Depan',
-            'program_study': 'Sistem dan Teknologi Informasi',
-            'interests': 'Manajemen Teknologi Informasi',
-        'angkatan': str(max_year + 1),
-        'password': 'password-baru-123',
-    })
-    assert future_year.status_code == 422
-    assert str(max_year) in future_year.text
+
+tr(max_year) in future_year.text
 
 
 def test_admin_dashboard_lists_students_and_advisors_and_only_admin_can_delete_students():
