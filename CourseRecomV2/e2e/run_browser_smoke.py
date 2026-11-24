@@ -168,18 +168,14 @@ def run_browser_smoke() -> None:
                     initial_password = credentials['Password Awal']
                     assert len(initial_password) >= 12
 
-                    # The public signup link and form must no longer be available.
-                    assert page.get_by_role('button', name='Daftar akun mahasiswa').count() == 0
-
-                    # Logout revokes the cookie; the admin-provisioned student signs in with the initial password.
+                    # The public manual-signup link remains available.
                     page.get_by_role('button', name='Keluar').click()
                     page.get_by_text('Rencanakan Studi Lebih Cerdas').wait_for(state='visible', timeout=15000)
                     assert not any(cookie['name'] == 'course_recom_session' for cookie in context.cookies())
-                    blocked_signup = page.request.post(f'{FRONTEND_URL}/api/auth/register', data={})
-                    assert blocked_signup.status == 403, 'Public student registration must be disabled.'
-                    login(page, 'Mahasiswa', student_nim, initial_password)
+                    assert page.get_by_role('button', name='Daftar akun mahasiswa').count() == 1
 
-                    # The Admin-provisioned student is signed in with the initial password.
+                    # An account created by Admin can sign in with its exported initial password.
+                    login(page, 'Mahasiswa', student_nim, initial_password)
                     assert page.locator('.topbar-label').inner_text() == 'Dashboard Mahasiswa'
                     page.get_by_role('button', name='Upload KHS').click()
                     page.get_by_role('heading', name='Unggah KHS Lengkap').wait_for(
@@ -187,6 +183,25 @@ def run_browser_smoke() -> None:
                         timeout=15000,
                     )
                     assert page.locator('input[type="file"]').count() >= 1
+
+                    # A second student can still create an account manually without any registration code.
+                    page.get_by_role('button', name='Keluar').click()
+                    page.get_by_text('Rencanakan Studi Lebih Cerdas').wait_for(state='visible', timeout=15000)
+                    page.get_by_role('button', name='Daftar akun mahasiswa').click()
+                    page.get_by_role('heading', name='Daftar akun mahasiswa').wait_for(state='visible', timeout=10000)
+                    manual_nim = 'MANUAL' + str(int(time.time()))[-8:]
+                    manual_password = 'secure-manual-password-123'
+                    registration_form = page.locator('.login-box form')
+                    registration_form.get_by_role('textbox', name='NIM', exact=True).fill(manual_nim)
+                    registration_form.get_by_role('textbox', name='Nama lengkap', exact=True).fill('Mahasiswa Daftar Manual E2E')
+                    registration_form.get_by_role('combobox', name='Program studi', exact=True).select_option(label='Sistem dan Teknologi Informasi')
+                    registration_form.get_by_role('spinbutton', name='Angkatan', exact=True).fill('2022')
+                    registration_form.get_by_role('textbox', name='Password (minimal 8 karakter)', exact=True).fill(manual_password)
+                    registration_form.get_by_role('textbox', name='Konfirmasi password', exact=True).fill(manual_password)
+                    registration_form.get_by_role('button', name='Daftar sebagai mahasiswa').click()
+                    page.get_by_text('Pendaftaran berhasil', exact=False).wait_for(state='visible', timeout=15000)
+                    login(page, 'Mahasiswa', manual_nim, manual_password)
+                    assert page.locator('.topbar-label').inner_text() == 'Dashboard Mahasiswa'
                     assert page.evaluate("localStorage.getItem('courseRecomToken')") is None
                     assert not page_errors, f'Browser JavaScript errors: {page_errors}'
 
