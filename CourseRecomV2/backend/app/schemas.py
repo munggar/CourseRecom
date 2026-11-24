@@ -10,6 +10,47 @@ class UserLogin(BaseModel):
     role: Optional[Literal['mahasiswa', 'dosen', 'admin']] = None
 
 
+class StudentRegistration(BaseModel):
+    nim: str = Field(min_length=2, max_length=20)
+    full_name: str = Field(min_length=2, max_length=120)
+    username: str | None = Field(default=None, min_length=2, max_length=120)
+    program_study: str = Field(min_length=2, max_length=120)
+    interests: str = Field(min_length=2, max_length=255)
+    angkatan: str = Field(min_length=4, max_length=4)
+    password: str = Field(min_length=8, max_length=72)
+
+    @field_validator('angkatan')
+    @classmethod
+    def validate_angkatan(cls, value: str) -> str:
+        value = value.strip()
+        if not re.fullmatch(r'\\d{4}', value):
+            raise ValueError('Angkatan harus berupa 4 digit angka.')
+        return value
+
+    @field_validator('nim', 'full_name')
+    @classmethod
+    def strip_registration_text(cls, value: str) -> str:
+        value = value.strip()
+        if len(value) < 2:
+            raise ValueError('Nilai minimal harus berisi 2 karakter.')
+        return value
+
+    @field_validator('username')
+    @classmethod
+    def normalize_username(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+    @field_validator('password')
+    @classmethod
+    def validate_password_bytes(cls, value: str) -> str:
+        if len(value.encode('utf-8')) > 72:
+            raise ValueError('Password tidak boleh melebihi 72 byte.')
+        return value
+
+
 class LecturerRegistration(BaseModel):
     nip: str = Field(min_length=2, max_length=20)
     full_name: str = Field(min_length=2, max_length=120)
