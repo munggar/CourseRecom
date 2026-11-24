@@ -303,7 +303,6 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [pendingRequests, setPendingRequests] = useState(0);
   const [loginError, setLoginError] = useState('');
-  const [authMessage, setAuthMessage] = useState('');
   const [profileDraft, setProfileDraft] = useState('Kecerdasan Bisnis');
   const [accountProfileDraft, setAccountProfileDraft] = useState({
     full_name: '', email: '', username: '', phone_number: '', program_study: '', angkatan: '',
@@ -426,6 +425,7 @@ function App() {
 
   useEffect(() => {
     const handleExpiredSession = () => {
+      setStudentCredentials([]);
       setUser(null);
       setLoginError('Sesi telah berakhir. Silakan masuk kembali.');
       setLoading(false);
@@ -491,11 +491,6 @@ function App() {
     if (loginError) return deferToast(loginError, 'error');
     return undefined;
   }, [deferToast, loginError]);
-
-  useEffect(() => {
-    if (authMessage) return deferToast(authMessage, 'success');
-    return undefined;
-  }, [authMessage, deferToast]);
 
   useEffect(() => {
     if (khsError) return deferToast(khsError, 'error');
@@ -4016,6 +4011,9 @@ function App() {
                   {loading ? 'Memproses...' : 'Masuk'}
                 </button>
               </form>
+              <p className="notice" role="note" style={{ marginTop: 12 }}>
+                Akun mahasiswa dibuat oleh Admin Prodi melalui impor data Excel/CSV. Hubungi Admin Prodi untuk memperoleh username dan password awal.
+              </p>
             </>
           {!IS_PRODUCTION_ENVIRONMENT && (
             <div className="login-demo">
