@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.deps import AUTH_COOKIE_NAME, authenticate_user, clear_session_cookie, create_access_token, get_current_user, get_db, get_password_hash, set_session_cookie, verify_password
 from app.models import SystemSetting, User
-from app.schemas import AccountProfileResponse, AccountProfileUpdate, PasswordChange, TokenResponse, UserLogin, UserOut
+from app.schemas import AccountProfileResponse, AccountProfileUpdate, PasswordChange, StudentRegistration, TokenResponse, UserLogin, UserOut
 from app.services.validation import get_sks_quota
 from app.services.audit import write_audit
 from app.services.program_interests import get_program_interest_catalog, normalize_program_name, validate_program_interest
@@ -40,12 +40,73 @@ def get_academic_year(db: Session = Depends(get_db)):
     return _academic_year_context(db)
 
 
-@router.post('/auth/register', status_code=status.HTTP_403_FORBIDDEN)
-def register_student():
-    raise HTTPException(
-        status_code=status.HTTP_403_FORBIDDEN,
-        detail='Pendaftaran mandiri dinonaktifkan. Akun mahasiswa dibuat oleh Admin Prodi melalui impor roster Excel/CSV.',
+@router.post('/auth/register', status_code=status.HTTP_201_CREATED, response_model=UserOut)
+def register_student(payload: StudentRegistration, db: Session = Depends(get_db)):
+    academic_year = _academic_year_context(db)
+    try:
+        program_study, interests = validate_program_interest(payload.program_study, payload.interests)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    if int(payload.angkatan) > academic_year['max_angkatan']:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f'Angkatan maksimal adalah {academic_year["max_angkatan"]} sesuai tahun ajaran {academic_year["academic_year"]}.',
+        )
+
+    if db.query(User).filter(User.nim == payload.nim).first():
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='NIM sudah terdaftar.')
+
+    username = (payload.username or payload.nim).strip().casefold()
+    if db.query(User).filter(
+        (func.lower(User.username) == username) | (func.lower(User.nim) == username),
+    ).first():
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='Username sudah terdaftar.')
+
+    student = User(
+        nim=payload.nim,
+        full_name=payload.full_name,
+        username=username,
+        program_study=program_study,
+        angkatan=payload.angkatan,
+        role='mahasiswa',
+        password_hash=get_password_hash(payload.password),
+        semester=1,
+        sks_lulus=0,
+        sks_sisa=settings.total_curriculum_sks,
+        kuota_sks=get_sks_quota(None, db),
+        interests=interests,
+        advisor_id=None,
     )
+    db.add(student)
+    try:
+        db.flush()
+        write_audit(
+            db,
+            student,
+            'student_self_registered',
+            'user',
+            student.id,
+            None,
+            {
+                'nim': student.nim,
+                'program_study': student.program_study,
+                'angkatan': student.angkatan,
+                'registration_method': 'manual',
+            },
+        )
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail='NIM atau username sudah terdaftar.',
+        ) from exc
+
+    db.refresh(student)
+    return student
+
+
 
 
 @router.post('/auth/login', response_model=TokenResponse)
