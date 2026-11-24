@@ -6,6 +6,8 @@ CourseRecom membantu mahasiswa menyusun rencana mata kuliah semester berikutnya 
 
 ### Deployment Render satu service
 
+Aplikasi yang saat ini digunakan tersedia di [https://courserecom-api.onrender.com](https://courserecom-api.onrender.com); API menggunakan origin yang sama dengan prefix `/api` (`https://courserecom-api.onrender.com/api`). Frontend production memakai path relatif `/api`, sehingga frontend dan backend pada service gabungan tetap terhubung tanpa alamat API terpisah.
+
 Render Blueprint hanya mendefinisikan satu Web Service, `courserecom-api`. Dockerfile root membangun frontend React dan backend FastAPI dalam satu image; FastAPI menyajikan aplikasi web di `/` dan API di `/api`. Pengguna hanya perlu satu alamat Render, tanpa proxy frontend atau service backend terpisah.
 
 1. Di Render, buat atau perbarui Blueprint dari repository dan pilih root repository sebagai Root Directory (jangan set ke `CourseRecomV2`). Blueprint memakai `render.yaml` dan Dockerfile root.
@@ -71,7 +73,7 @@ Supabase Free saat ini mencantumkan batas 500 MB dan jeda setelah satu minggu ti
 - Dosen PA: `pa001` / `password123`
 - Admin Prodi: `admin` / `password123`
 
-Mahasiswa baru dapat mendaftar dari halaman masuk menggunakan NIM, nama lengkap, dan password minimal 8 karakter. Pendaftaran publik hanya membuat akun dengan peran mahasiswa; akun dosen PA dan admin tetap dikelola oleh administrator.
+Akun mahasiswa tidak dibuat melalui pendaftaran mandiri. Admin Prodi mengimpor data roster dari Excel `.xlsx` atau CSV UTF-8 melalui menu **Impor & Akun Mahasiswa**. Setiap NIM baru dibuatkan akun mahasiswa dengan username awal berupa NIM dan password awal acak. Setelah impor, Admin mengunduh file kredensial satu kali dan membagikan setiap akun secara pribadi kepada mahasiswa terkait. Password awal tidak disimpan dalam bentuk teks biasa dan impor ulang tidak mereset password akun yang sudah ada. Akun dosen PA dan admin tetap dikelola oleh administrator.
 
 ## Alur KHS mahasiswa
 
@@ -112,8 +114,11 @@ Semua endpoint selain health dan login memerlukan token Bearer. Endpoint mahasis
 | Method | Path | Fungsi |
 |---|---|---|
 | `POST` | `/api/auth/login` | Login |
-| `POST` | `/api/auth/register` | Mendaftarkan akun mahasiswa |
+| `POST` | `/api/auth/register` | Dinonaktifkan; mengembalikan HTTP 403 karena akun mahasiswa dibuat Admin melalui impor roster |
 | `GET` | `/api/auth/me` | Pengguna aktif |
+| `GET` | `/api/admin/student-roster/template.xlsx` | Mengunduh template roster Excel (khusus Admin) |
+| `POST` | `/api/admin/student-roster/import` | Memvalidasi roster Excel/CSV dan membuat akun mahasiswa |
+| `GET` | `/api/admin/student-roster` | Ringkasan data roster dan akun yang dibuat |
 | `POST` | `/api/mahasiswa/khs/preview` | Unggah satu PDF atau beberapa gambar dan simpan pratinjau sementara |
 | `GET` | `/api/mahasiswa/khs` | Status dan hasil ekstraksi dokumen milik mahasiswa |
 | `POST` | `/api/mahasiswa/khs/{id}/confirm` | Validasi koreksi dan konfirmasi riwayat |
