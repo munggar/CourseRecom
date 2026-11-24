@@ -137,7 +137,7 @@ def run_browser_smoke() -> None:
                     downloaded_path = Path(download.path())
                     assert downloaded_path.read_bytes()[:2] == b'PK', 'Excel template is not a valid XLSX ZIP package.'
 
-                    # Admin onboarding journey: import a temporary official roster row and issue one-time code.
+                    # Admin onboarding: import a roster row, create the account, and export its initial credentials.
                     student_nim = 'E2E' + str(int(time.time()))[-10:]
                     student_name = 'Mahasiswa Browser Uji'
                     roster_file = temp_path / 'roster-e2e.csv'
@@ -146,46 +146,34 @@ def run_browser_smoke() -> None:
                         writer.writerow(['NIM', 'Nama Lengkap', 'Program Studi', 'Angkatan'])
                         writer.writerow([student_nim, student_name, 'Sistem dan Teknologi Informasi', '2022'])
 
-                    page.get_by_role('button', name='Pendaftaran Mahasiswa').click()
-                    page.get_by_role('heading', name='Pendaftaran Mahasiswa').wait_for(state='visible', timeout=15000)
+                    page.get_by_role('button', name='Impor & Akun Mahasiswa').click()
+                    page.get_by_role('heading', name='Impor Data & Pembuatan Akun').wait_for(state='visible', timeout=15000)
                     page.locator('input[type="file"]').set_input_files(str(roster_file))
-                    page.get_by_role('button', name='Validasi & impor roster').click()
-                    page.get_by_text('1 / 100').wait_for(state='visible', timeout=15000)
                     page.once('dialog', lambda dialog: dialog.accept())
-                    with page.expect_download(timeout=20000) as invitation_download_info:
-                        page.get_by_role('button', name='Buat & unduh 1 kode pendaftaran').click()
-                    invitation_path = Path(invitation_download_info.value.path())
-                    with invitation_path.open('r', encoding='utf-8-sig', newline='') as stream:
-                        invitation = next(csv.DictReader(stream))
-                    assert invitation['NIM'] == student_nim
-                    invitation_code = invitation['Kode Pendaftaran']
-                    assert len(invitation_code) >= 24
-
-                    # Logout must revoke and remove the cookie before the new real-style student registers.
-                    page.get_by_role('button', name='Keluar').click()
-                    page.get_by_text('Rencanakan Studi Lebih Cerdas').wait_for(state='visible', timeout=15000)
-                    assert not any(cookie['name'] == 'course_recom_session' for cookie in context.cookies())
-
-                    # Student self-registration: ensure the API has enabled roster-gated mode
-                    # and wait for the asynchronously loaded form configuration before filling.
-                    academic_year_response = page.request.get(f'{FRONTEND_URL}/api/auth/academic-year')
-                    assert academic_year_response.status == 200
-                    assert academic_year_response.json()['registration_requires_invitation'] is True
-                    page.get_by_role('button', name='Daftar akun mahasiswa').click()
-                    page.locator('.login-box input[autocomplete="one-time-code"]').wait_for(
+                    page.get_by_role('button', name='Validasi & buat akun mahasiswa').click()
+                    page.get_by_role('heading', name='Kredensial akun awal siap diunduh').wait_for(
                         state='visible',
                         timeout=20000,
                     )
-                    registration_form = page.locator('.login-box form')
-                    registration_form.get_by_role('textbox', name='NIM', exact=True).fill(student_nim)
-                    registration_form.get_by_role('textbox', name='Nama lengkap', exact=True).fill(student_name)
-                    registration_form.get_by_role('combobox', name='Program studi', exact=True).select_option(label='Sistem dan Teknologi Informasi')
-                    registration_form.locator('input[type="number"]').fill('2022')
-                    registration_form.locator('input[autocomplete="one-time-code"]').fill(invitation_code)
-                    registration_form.get_by_role('textbox', name='Password (minimal 8 karakter)', exact=True).fill('secure-student-password-123')
-                    registration_form.get_by_role('textbox', name='Konfirmasi password', exact=True).fill('secure-student-password-123')
-                    registration_form.get_by_role('button', name='Daftar sebagai mahasiswa').click()
-                    page.get_by_text('Pendaftaran mahasiswa berhasil', exact=False).wait_for(state='visible', timeout=15000)
+                    with page.expect_download(timeout=20000) as credentials_download_info:
+                        page.get_by_role('button', name='Unduh 1 kredensial akun mahasiswa').click()
+                    credentials_path = Path(credentials_download_info.value.path())
+                    with credentials_path.open('r', encoding='utf-8-sig', newline='') as stream:
+                        credentials = next(csv.DictReader(stream))
+                    assert credentials['NIM'] == student_nim
+                    assert credentials['Username'] == student_nim
+                    initial_password = credentials['Password Awal']
+                    assert len(initial_password) >= 12
+
+                    # The public signup link and form must no longer be available.
+                    assert page.get_by_role('button', name='Daftar akun mahasiswa').count() == 0
+
+                    # Logout revokes the cookie; the admin-provisioned student signs in with the initial password.
+                    page.get_by_role('button', name='Keluar').click()
+                    page.get_by_text('Rencanakan Studi Lebih Cerdas').wait_for(state='visible', timeout=15000)
+                    assert not any(cookie['name'] == 'course_recom_session' for cookie in context.cookies())
+                    login(page, 'Mahasiswa', student_nim, initial_password)
+
 
                     # Login as the newly registered student and open KHS upload screen.
                     login(page, 'Mahasiswa', student_nim, 'secure-student-password-123')
